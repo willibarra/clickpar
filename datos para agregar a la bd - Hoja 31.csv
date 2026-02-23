@@ -1,0 +1,306 @@
+Estado,Fecha Vencimiento de la Cuenta MADRE,Dias Restantes de la cuenta madre,Plataforma o Cuenta Madre - todas las plataformas son PERFILES como NETFLIX DISNEY,Usuario,Clave,Pantalla ( si es PAGO CUENTA COMPLETA) quiere decir que esa cuenta tiene perfiles ,"PIN ( si esta vacio o tiene 0 entonces colocar NO REQUIERE. si encontras un no requiere en mi ninuscula o que no esta bien escrito, reemplazar por NO REQUIERE",Fecha de Entrega al CLIENTE,Días de Servicio,Celular Proveedor,Nombre Proveedor,Celular Cliente,Número de Pantallas,Precio de Venta,Precio Comprada
+Activo,2026-02-28,10,CRUNCHYROLL,juan53frs@hotmail.com,@Premium85123,PAGO CUENTA COMPLETA,0,2026-01-28,31,,CITY,595994540904,0,0,80000
+Activo,2026-03-19,29,CRUNCHYROLL,veronica.olvera@panelstream.xyz,BX32bDJhp4fe7FW,PAGO CUENTA COMPLETA,0,2026-02-17,30,,Gwen - Telegram,595994540904,0,0,10000
+Activo,2026-03-10,20,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,PAGO CUENTA COMPLETA,0,2026-02-11,27,,CITY,595994540904,0,0,28000
+Activo,2026-03-01,11,CRUNCHYROLL,jose98df@hotmail.com,@premium8562,PAGO CUENTA COMPLETA,0,2026-02-14,15,,CITY,595994540904,0,0,8000
+Activo,2026-12-24,309,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,PAGO CUENTA COMPLETA,0,2025-12-24,365,,G2G - 1766525658099XEND,595994540904,0,0,30000
+Activo,2026-02-20,2,CRUNCHYROLL,martin63gfa@hotmail.com,@Premium8742,PAGO CUENTA COMPLETA,0,2026-01-21,30,,CITY - 1 PERFIL,595994540904,0,0,8000
+Activo,2026-03-02,12,CRUNCHYROLL,manuel83tg@hotmail.com,@Premium7623,PAGO CUENTA COMPLETA,0,2026-02-15,15,,City,595994540904,0,0,70000
+Activo,2026-03-01,11,CRUNCHYROLL,juan53frs@hotmail.com,@Premium85123,Perfil 1,,2026-01-30,30,,CITY,595972248222,1,25000,0
+A la Venta  Disponible,,,CRUNCHYROLL,veronica.olvera@panelstream.xyz,BX32bDJhp4fe7FW,Perfil 1,no requiere,,30,,Gwen - Telegram,,1,30000,0
+Activo,2026-02-22,4,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,Perfil 1,,2025-11-24,90,,CITY,595975829816,1,80000,0
+Activo,2026-07-13,145,CRUNCHYROLL,jose98df@hotmail.com,@premium8562,Perfil 1,,2026-01-14,180,,CITY,595976454527,1,100000,0
+Activo,2026-03-16,26,CRUNCHYROLL,jose98df@hotmail.com,@premium8562,Perfil 1,,2025-12-16,90,,CITY,595986114026,1,50000,0
+Congelado,,,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,Perfil 1,NO REQUIERE,,30,,G2G - 1766525658099XEND,,1,30000,40000
+Activo,2026-03-10,20,CRUNCHYROLL,jose98df@hotmail.com,@premium3467,Perfil 1,NO REQUIERE,2025-12-10,90,,City,595983133490,1,80000,70000
+Activo,2026-02-28,10,CRUNCHYROLL,manuel83tg@hotmail.com,@Premium7623,Perfil 1,NO REQUIERE,2026-01-29,30,,City,595984157766,1,25000,0
+Activo,2026-03-21,31,CRUNCHYROLL,manuel83tg@hotmail.com,@Premium7623,Perfil 2,NO REQUIERE,2025-12-21,90,,City,595975896448,1,80000,0
+Activo,2026-03-08,18,CRUNCHYROLL,juan53frs@hotmail.com,@Premium85123,Perfil 2,,2026-02-06,30,,CITY,595971652451,1,25000,0
+A la Venta  Disponible,,,CRUNCHYROLL,veronica.olvera@panelstream.xyz,BX32bDJhp4fe7FW,Perfil 2,no requiere,,30,,Gwen - Telegram,,1,30000,0
+Activo,2026-03-13,23,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,Perfil 2,,2026-02-11,30,,CITY,595975295598,1,30000,0
+Congelado,2026-01-17,-32,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,Perfil 2,NO REQUIERE,2025-10-19,90,,G2G - 1766525658099XEND,,1,50000,15000
+Activo,2026-03-09,19,CRUNCHYROLL,juan53frs@hotmail.com,@Premium85123,Perfil 3,,2026-02-07,30,,CITY,595992712930,1,25000,0
+A la Venta  Disponible,,,CRUNCHYROLL,veronica.olvera@panelstream.xyz,BX32bDJhp4fe7FW,Perfil 3,no requiere,,30,,Gwen - Telegram,,1,30000,0
+A la Venta  Disponible,,,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,Perfil 3,,,30,,CITY,,1,30000,0
+Activo,2026-02-27,9,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,Perfil 3,NO REQUIERE,2025-12-29,60,,G2G - 1766525658099XEND,595991953627,1,50000,0
+Activo,2026-02-20,2,CRUNCHYROLL,martin63gfa@hotmail.com,@Premium8742,Perfil 3,NO REQUIERE,2026-01-21,30,,CITY - 1 PERFIL,595975287984,1,25000,0
+Activo,2026-04-23,64,CRUNCHYROLL,martin63gfa@hotmail.com,@Premium8742,Perfil 3,NO REQUIERE,2026-01-23,90,,CITY - 1 PERFIL,595986162244,1,50000,0
+A la Venta  Disponible,,,CRUNCHYROLL,veronica.olvera@panelstream.xyz,BX32bDJhp4fe7FW,Perfil 4,no requiere,,30,,Gwen - Telegram,,1,30000,0
+A la Venta  Disponible,,,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,Perfil 4,,,30,,CITY,,1,30000,0
+Congelado,,,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,Perfil 4,NO REQUIERE,,30,,G2G - 1766525658099XEND,,1,30000,18000
+A la Venta  Disponible,,,CRUNCHYROLL,julian63th@hotmail.com,@Premium4856,Perfil 5,,,30,,CITY,,1,30000,0
+Congelado,,,CRUNCHYROLL,Pedroregianinho@gmail.com,henrique060404,Perfil 5,NO REQUIERE,,30,,G2G - 1766525658099XEND,,1,30000,8000
+Activo,2026-04-16,57,FLUJOTV,maginap151,mags1409,PAGO CUENTA COMPLETA,0,2025-09-14,214,,CLICKPAR,595994540904,0,0,7
+Congelado,2026-01-17,-32,FLUJOTV,maginap109,mag0701,PAGO CUENTA COMPLETA,0,2025-06-17,214,59175651711,Esthercita,595994540904,0,100000,200000
+Activo,2026-05-25,96,FLUJOTV,maginap103,1102magins,PAGO CUENTA COMPLETA,0,2025-10-25,212,59175651711,Esthercita,595994540904,0,0,100000
+Activo,2026-05-25,96,FLUJOTV,maginap104,1102maginp,PAGO CUENTA COMPLETA,0,2025-10-25,212,,Esthercita,595994540904,0,0,100000
+Activo,2026-08-25,188,FLUJOTV,maginap105,0601mags,PAGO CUENTA COMPLETA,0,2025-03-25,518,,Esthercita,595994540904,0,0,100000
+Caducado,2026-02-17,-1,FLUJOTV,maginap106,mag2001,PAGO CUENTA COMPLETA,0,2025-11-17,92,595975764548,Esthercita,595994540904,0,0,100000
+Caducado,2026-02-17,-1,FLUJOTV,maginap107,MAG1510,PAGO CUENTA COMPLETA,0,2025-11-17,92,595975764548,Esthercita,595994540904,0,0,100000
+Activo,2026-06-11,113,FLUJOTV,maginap153,fflujo2801,PAGO CUENTA COMPLETA,0,2025-11-13,210,,,595994540904,0,0,1
+Activo,2026-04-15,56,FLUJOTV,maginap150,1212mags,PAGO CUENTA COMPLETA,0,2025-09-13,214,,CLICKPAR,595994540904,0,0,7000
+Activo,2026-03-14,24,FLUJOTV,maginap151,mags1409,Perfil 1,,2025-09-15,180,,CLICKPAR,595971993579,3,100000,0
+Congelado,,,FLUJOTV,maginap109,mag0701,Perfil 1,NO REQUIERE,,30,59175651711,Esthercita,,1,100000,0
+Activo,2026-04-30,71,FLUJOTV,maginap103,1102magins,Perfil 1,NA,2025-11-01,180,59175651711,Esthercita,595983705852,1,100000,0
+Activo,2026-07-19,151,FLUJOTV,maginap104,1102maginp,Perfil 1,NA,2026-01-20,180,,Esthercita,595975764548,1,100000,0
+A la Venta  Disponible,2000-05-28,-739882,FLUJOTV,maginap107,MAG1510,Perfil 1,NA,,180,595975764548,Esthercita,,1,100000,100000
+Activo,2026-05-12,83,FLUJOTV,maginap153,fflujo2801,Perfil 1,utilizar en 1 dispotiviso,2025-11-13,180,,,595985551623,1,100000,0
+Activo,2026-06-26,128,FLUJOTV,maginap150,1212mags,Perfil 1,,2025-12-28,180,,CLICKPAR,595976328102,3,100000,100000
+Activo,2026-07-07,139,FLUJOTV,maginap105,0601mags,Perfil 1,NA,2026-01-08,180,,Esthercita,595973656518,1,100000,40000
+Congelado,,,FLUJOTV,maginap106,mag2001,Perfil 1 - Marcelo Pereira,NA,,30,595975764548,Esthercita,,1,30000,0
+Activo,2026-09-14,208,FLUJOTV,maginap151,mags1409,Perfil 2,,2026-03-18,180,,CLICKPAR,34611419802,3,100000,0
+Congelado,2000-05-28,-739882,FLUJOTV,maginap109,mag0701,Perfil 2,NA,,180,59175651711,Esthercita,,1,100000,56000
+Activo,2026-07-20,152,FLUJOTV,maginap103,1102magins,Perfil 2,NA,2026-01-21,180,59175651711,Esthercita,595974888168,1,100000,0
+Activo,2026-05-30,101,FLUJOTV,maginap104,1102maginp,Perfil 2,NA,2025-12-01,180,,Esthercita,595971670873,1,100000,100000
+Activo,2026-03-08,18,FLUJOTV,maginap105,0601mags,Perfil 2,NA,2025-09-09,180,,Esthercita,595984907902,1,100000,0
+Activo,2026-05-07,78,FLUJOTV,maginap107,MAG1510,Perfil 2,NA,2025-11-08,180,595975764548,Esthercita,595985690727,1,100000,0
+Activo,2026-03-07,17,FLUJOTV,maginap153,fflujo2801,Perfil 2,utilizar en 1 dispositivo,2025-09-08,180,,,595992809797,1,100000,0
+Activo,2026-04-30,71,FLUJOTV,maginap150,1212mags,Perfil 2,,2025-11-01,180,,CLICKPAR,595975277755,3,100000,0
+Congelado,,,FLUJOTV,maginap106,mag2001,Perfil 2 - Patricia Pereira,NA,,30,595975764548,Esthercita,,1,30000,0
+Activo,2026-03-18,28,FLUJOTV,maginap151,mags1409,Perfil 3,,2025-09-19,180,,CLICKPAR,595985852877,3,100000,0
+Congelado,,,FLUJOTV,maginap109,mag0701,Perfil 3,NA,,30,59175651711,Esthercita,,1,100000,0
+Activo,2026-07-07,139,FLUJOTV,maginap104,1102maginp,Perfil 3,NA,2026-01-08,180,,Esthercita,595985192500,1,30000,40000
+Congelado,2026-02-14,-4,FLUJOTV,maginap106,mag2001,Perfil 3,NA,2025-08-18,180,595975764548,Esthercita,,1,100000,0
+Activo,2026-03-03,13,FLUJOTV,maginap153,fflujo2801,Perfil 3,utilizar en 1 dispositivo,2025-09-04,180,,,595992264729,1,100000,100000
+Activo,2027-02-17,364,FLUJOTV,maginap150,1212mags,Perfil 3,,2026-02-17,365,,CLICKPAR,595991998757,1,100000,0
+A la Venta  Disponible,2000-05-28,-739882,FLUJOTV,maginap107,MAG1510,Perfil 3,NA,,180,595975764548,Esthercita,,1,100000,0
+Activo,2026-07-23,155,FLUJOTV,maginap103,1102magins,Perfil 3,NA,2026-01-24,180,59175651711,Esthercita,595994962006,1,100000,56000
+Activo,2026-03-30,40,FLUJOTV,maginap105,0601mags,Perfil 3 - Leticia Pereira,NA,2025-10-01,180,,Esthercita,595975764548,1,100000,0
+Activo,2026-02-19,1,HBOMAX,flixnet298686e@ecuacine.com,holavan6851,PAGO CUENTA COMPLETA,0,2026-01-19,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet275008e@ecuacine.com,holavan6250,PAGO CUENTA COMPLETA,0,2026-01-19,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet261478y@ecuacine.com,holavan2801,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet298596j@ecuacine.com,holavan1485,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-24,6,HBOMAX,flixnet228996b@ecuacine.com,holavan4926,PAGO CUENTA COMPLETA,0,2026-01-24,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet289047v@ecuacine.com,holavan4850,PAGO CUENTA COMPLETA,membresia en pausa,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix85071@pxbmail.com,frapehux343,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Web Ecuador,595994540904,0,0,80000
+Activo,2026-03-14,24,HBOMAX,flix73676@cinematienda.com,frapehux53,PAGO CUENTA COMPLETA,0,2026-02-14,28,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix92113@cinematienda.com,frapehux54,PAGO CUENTA COMPLETA,0,2026-02-14,28,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,lucas.miranda@picpart.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,valeria.escobar@picnet.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix17122@cinematienda.com,frapehux55,PAGO CUENTA COMPLETA,0,2026-02-14,28,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix85932@cinematienda.com,frapehux57,PAGO CUENTA COMPLETA,0,2026-02-14,28,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,marina.olmedo@clickyop.xyz,holavan6851,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,agustin.paredes@panelstream.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-02-21,3,HBOMAX,maxtv99@kunzir.com,@conejo1001,PAGO CUENTA COMPLETA,0,2026-02-06,15,,GLOBAL STORE,595994540904,0,0,45500
+Activo,2026-03-16,26,HBOMAX,nicolas.farias@picpart.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,80000
+Activo,2026-03-16,26,HBOMAX,carolina.leiva@picnet.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,tomas.arce@panelstream.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,florencia.sosa@clickyop.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,diego.benitez@picpart.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-03-16,26,HBOMAX,julieta.peralta@panelstream.xyz,max.202320,PAGO CUENTA COMPLETA,0,2026-02-14,30,,~Covenant - posible autopay,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,flixnet213951f@ecuacine.com,frapeweb432,PAGO CUENTA COMPLETA,0,2026-01-23,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,flixnet277192j@ecuacine.com,frapeweb983,PAGO CUENTA COMPLETA,0,2026-01-23,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,flixnet711283@ecuacine.com,frapevan26,PAGO CUENTA COMPLETA,0,2026-01-23,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,kar531@pxbmail.com,frapewebs786,PAGO CUENTA COMPLETA,0,2026-01-23,30,,,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,kar532@pxbmail.com,frapeweb32,PAGO CUENTA COMPLETA,MEMBRESIA EN PAUSA,2026-01-23,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,kar540@pxbmail.com,frapeweb322,PAGO CUENTA COMPLETA,0,2026-01-23,30,,,595994540904,0,0,8000
+Activo,2026-02-22,4,HBOMAX,kar542@pxbmail.com,frapev3001,PAGO CUENTA COMPLETA,0,2026-01-23,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flix47870@cinematienda.com,frapevasn34,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-17,27,HBOMAX,melissa.velazquez.hbo@panelstream.xyz,1702maxtv1,PAGO CUENTA COMPLETA,0,2026-02-17,28,,Bigotes streaming,595994540904,0,0,10000
+Activo,2026-02-21,3,HBOMAX,maxtv78k@gofuru.com,@conejo1002,PAGO CUENTA COMPLETA,0,2026-02-06,15,,GLOBAL STORES,595994540904,0,30000,60500
+Activo,2026-02-19,1,HBOMAX,flixnet297166n@ecuacine.com,holavan7183,PAGO CUENTA COMPLETA,MEMBRESIA EN PAUSA,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet229139i@ecuacine.com,holavan0598,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-17,27,HBOMAX,gabriel.caballero.hbo@picpart.xyz,1702maxtv2,PAGO CUENTA COMPLETA,0,2026-02-17,28,,Bigotes streaming,595994540904,0,0,10000
+Activo,2026-02-19,1,HBOMAX,flixnet208985b@ecuacine.com,holavan6834,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-24,6,HBOMAX,flixnet848236@ecuacine.com,frapeweb87,PAGO CUENTA COMPLETA,0,2026-01-24,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-17,27,HBOMAX,rodrigo.insfran.hbo@clickyop.xyz,1702maxrv3,PAGO CUENTA COMPLETA,0,2026-02-17,28,,Bigotes Streaming,595994540904,0,0,10000
+Activo,2026-02-24,6,HBOMAX,flixnet394004@ecuacine.com,frapeweb322,PAGO CUENTA COMPLETA,0,2026-01-24,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix98428@cinematienda.com,frapehux58,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Bstore,595994540904,0,0,8000
+Activo,2026-02-24,6,HBOMAX,flixnet257276g@ecuacine.com,holavan7819,PAGO CUENTA COMPLETA,0,2026-01-24,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix30928@cinematienda.com,frapehux59,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Bstore,595994540904,0,0,80000
+Activo,2026-03-14,24,HBOMAX,flix77218@cinematienda.com,frapehux56,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Bstore,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix83630@cinematienda.com,frapehux61,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Bstore,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flixnet355662@ecuacine.com,frapehux329,PAGO CUENTA COMPLETA,0,2026-02-05,30,,,595994540904,0,0,8000
+Activo,2026-03-14,24,HBOMAX,flix82874@cinematienda.com,frapehux62,PAGO CUENTA COMPLETA,0,2026-02-14,28,,Bstore,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix55055@cinematienda.com,frapehux98,PAGO CUENTA COMPLETA,0,2026-02-05,30,,Compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix40750@cinematienda.com,frapehux99,PAGO CUENTA COMPLETA,0,2026-02-05,30,,,595994540904,0,0,0
+Activo,2026-03-07,17,HBOMAX,flix31855@cinematienda.com,frapehux32,PAGO CUENTA COMPLETA,0,2026-02-05,30,,Compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,fra052@cinematienda.com,frapehux86,PAGO CUENTA COMPLETA,0,2026-02-05,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix13663@cinematienda.com,frapehux88,PAGO CUENTA COMPLETA,0,2026-02-05,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix76351@cinematienda.com,frapehux89,PAGO CUENTA COMPLETA,0,2026-02-05,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix96061@cinematienda.com,frapehux94,PAGO CUENTA COMPLETA,0,2026-02-05,30,,,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix48709@cinematienda.com,,PAGO CUENTA COMPLETA,0,2026-02-05,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-03-07,17,HBOMAX,flix92048@cinematienda.com,frapehux96,PAGO CUENTA COMPLETA,0,2026-02-05,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet249958n@ecuacine.com,holavan7980,PAGO CUENTA COMPLETA,0,2026-01-20,30,,compras web ecuador,595994540904,0,0,8000
+Activo,2026-02-24,6,HBOMAX,flix84377@cinematienda.com,frapeweb654,PAGO CUENTA COMPLETA,0,2026-01-24,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-07-13,145,HBOMAX,hbo+101@clickpar.net,0808maxplus,PAGO CUENTA COMPLETA,SUSPENDIDA,2025-07-13,365,595994501010,CLICKPAR,595994540904,0,0,15000
+Activo,2026-02-19,1,HBOMAX,flixnet764757@ecuacine.com,frapevans74,PAGO CUENTA COMPLETA,0,2026-01-19,31,,Compras Web Ecuador,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet384210@ecuacine.com,frapevasn467,PAGO CUENTA COMPLETA,0,2026-01-19,31,,COMPRAS WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-02-19,1,HBOMAX,flixnet262126x@ecuacine.com,holavan9243,PAGO CUENTA COMPLETA,0,2026-01-19,31,,WEB ECUADOR,595994540904,0,0,8000
+Activo,2026-03-01,11,HBOMAX,flixnet275008e@ecuacine.com,holavan6250,Perfil 1,NO REQUIERE,2026-01-30,30,,WEB ECUADOR,595986700144,1,25000,0
+Activo,2026-03-10,20,HBOMAX,flixnet261478y@ecuacine.com,holavan2801,Perfil 1,no requiere,2026-02-08,30,,compras web ecuador,595971882069,1,30000,0
+Activo,2026-03-15,25,HBOMAX,flixnet298596j@ecuacine.com,holavan1485,Perfil 1,no requiere,2026-02-13,30,,compras web ecuador,595975925965,1,40000,0
+Activo,2026-02-27,9,HBOMAX,flixnet228996b@ecuacine.com,holavan4926,Perfil 1,no requiere,2025-12-29,60,,WEB ECUADOR,595986922526,1,25000,45000
+Congelado,,,HBOMAX,flixnet289047v@ecuacine.com,holavan4850,Perfil 1,no requiere,,30,,compras web ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix85071@pxbmail.com,frapehux343,Perfil 1,no requiere,,30,,Web Ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix73676@cinematienda.com,frapehux53,Perfil 1,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix92113@cinematienda.com,frapehux54,Perfil 1,NO REQUIERE,,30,,WEB ECUADOR,,0,30000,0
+A la Venta  Disponible,,,HBOMAX,lucas.miranda@picpart.xyz,max.202320,Perfil 1,no requiere pin,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,valeria.escobar@picnet.xyz,max.202320,Perfil 1,no requiere,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix17122@cinematienda.com,frapehux55,Perfil 1,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+Activo,2026-03-10,20,HBOMAX,flixnet394004@ecuacine.com,frapeweb322,Perfil 1,NO REQUIERE,2026-02-08,30,,WEB ECUADOR,595986362264,1,30000,8000
+A la Venta  Disponible,,,HBOMAX,flix85932@cinematienda.com,frapehux57,Perfil 1,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+Activo,2026-03-08,18,HBOMAX,flixnet298686e@ecuacine.com,holavan6851,Perfil 1,NO REQUIERE,2026-02-06,30,,WEB ECUADOR,595987211664,1,25000,8000
+A la Venta  Disponible,,,HBOMAX,marina.olmedo@clickyop.xyz,holavan6851,Perfil 1,no requiere pin,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-03-17,27,HBOMAX,agustin.paredes@panelstream.xyz,max.202320,Perfil 1,no requiere pin,2026-02-15,30,,~Covenant - posible autopay,595994545347,1,40000,0
+Activo,2026-02-27,9,HBOMAX,maxtv99@kunzir.com,@conejo1001,Perfil 1,2801,2026-01-28,30,,GLOBAL STORE,595992253662,1,30000,8000
+Activo,2026-03-18,28,HBOMAX,nicolas.farias@picpart.xyz,max.202320,Perfil 1,,2026-02-16,30,,~Covenant - posible autopay,595981495386,1,250000,0
+A la Venta  Disponible,,,HBOMAX,carolina.leiva@picnet.xyz,max.202320,Perfil 1,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,tomas.arce@panelstream.xyz,max.202320,Perfil 1,,,30,,~Covenant - posible autopay,,1,300000,0
+Activo,2026-03-17,27,HBOMAX,florencia.sosa@clickyop.xyz,max.202320,Perfil 1,,2026-02-15,30,,~Covenant - posible autopay,595993353415,1,25000,0
+A la Venta  Disponible,,,HBOMAX,diego.benitez@picpart.xyz,max.202320,Perfil 1,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,julieta.peralta@panelstream.xyz,max.202320,Perfil 1,,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-03-12,22,HBOMAX,flixnet213951f@ecuacine.com,frapeweb432,Perfil 1,no requiere pin,2026-01-11,60,,compras web ecuador,595983255293,1,50000,18000
+Activo,2026-03-16,26,HBOMAX,flixnet277192j@ecuacine.com,frapeweb983,Perfil 1,no requiere,2026-02-14,30,,compras web ecuador,595973806500,1,30000,8000
+Activo,2026-03-17,27,HBOMAX,flixnet711283@ecuacine.com,frapevan26,Perfil 1,no requiere,2026-02-15,30,,compras web ecuador,595986185605,1,40000,0
+Activo,2026-03-19,29,HBOMAX,kar531@pxbmail.com,frapewebs786,Perfil 1,no requiere,2026-01-18,60,,,595991564710,1,25000,15000
+Congelado,,,HBOMAX,kar532@pxbmail.com,frapeweb32,Perfil 1,no requiere,,30,,compras web ecuador,,1,30000,0
+Activo,2026-02-23,5,HBOMAX,kar540@pxbmail.com,frapeweb322,Perfil 1,no requiere,2025-11-25,90,,,595982105869,1,30000,15000
+Activo,2026-03-14,24,HBOMAX,kar542@pxbmail.com,frapev3001,Perfil 1,no requiere,2026-02-12,30,,compras web ecuador,595975531538,1,40000,18000
+Activo,2026-03-19,29,HBOMAX,flix47870@cinematienda.com,frapevasn34,Perfil 1,no requiere,2025-12-19,90,,compras web ecuador,595986500286,1,30000,0
+A la Venta  Disponible,,,HBOMAX,melissa.velazquez.hbo@panelstream.xyz,1702maxtv1,Perfil 1,,,30,,Bigotes streaming,,1,30000,0
+Activo,2026-02-22,4,HBOMAX,maxtv78k@gofuru.com,@conejo1002,Perfil 1,NO REQUIERE,2026-01-23,30,,GLOBAL STORES,595981822093,1,50000,18000
+Activo,2026-02-19,1,HBOMAX,flixnet297166n@ecuacine.com,holavan7183,Perfil 1,no requiere,2026-01-20,30,,compras web ecuador,595985241662,1,25000,0
+Activo,2026-03-15,25,HBOMAX,flixnet764757@ecuacine.com,frapevans74,Perfil 1,NO REQUIERE,2026-02-13,30,,Compras Web Ecuador,595994135480,1,40000,8000
+Activo,2026-03-04,14,HBOMAX,flixnet229139i@ecuacine.com,holavan0598,Perfil 1,no requiere pin,2025-09-05,180,,compras web ecuador,595972576156,1,100000,0
+A la Venta  Disponible,,,HBOMAX,gabriel.caballero.hbo@picpart.xyz,1702maxtv2,Perfil 1,,,30,,Bigotes streaming,,1,30000,0
+Caducado,2026-02-16,-2,HBOMAX,flixnet208985b@ecuacine.com,holavan6834,Perfil 1,no requiere pin,2026-01-17,30,,compras web ecuador,595973108248,1,25000,18000
+Congelado,,,HBOMAX,flixnet848236@ecuacine.com,frapeweb87,Perfil 1,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,rodrigo.insfran.hbo@clickyop.xyz,1702maxrv3,Perfil 1,,,30,,Bigotes Streaming,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix98428@cinematienda.com,frapehux58,Perfil 1,,,30,,Bstore,,1,30000,0
+Activo,2026-02-24,6,HBOMAX,flixnet257276g@ecuacine.com,holavan7819,Perfil 1,NO REQUIERE,2026-01-25,30,,WEB ECUADOR,595983834582,1,25000,0
+A la Venta  Disponible,,,HBOMAX,flix30928@cinematienda.com,frapehux59,Perfil 1,,,30,,Bstore,,3,30000,0
+A la Venta  Disponible,,,HBOMAX,flix77218@cinematienda.com,frapehux56,Perfil 1,,,30,,Bstore,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix83630@cinematienda.com,frapehux61,Perfil 1,,,30,,Bstore,,1,30000,0
+Activo,2026-05-11,82,HBOMAX,flixnet355662@ecuacine.com,frapehux329,Perfil 1,no requiere,2026-02-10,90,,,595993328776,1,50000,0
+A la Venta  Disponible,,,HBOMAX,flix82874@cinematienda.com,frapehux62,Perfil 1,,,30,,Bstore,,1,30000,0
+Activo,2026-03-13,23,HBOMAX,flix55055@cinematienda.com,frapehux98,Perfil 1,no requiere,2026-02-11,30,,Compras web ecuador,595986491475,1,40000,0
+A la Venta  Disponible,,,HBOMAX,flix40750@cinematienda.com,frapehux99,Perfil 1,no requiere,,30,,,,1,30000,8000
+Activo,2026-02-18,0,HBOMAX,flix31855@cinematienda.com,frapehux32,Perfil 1,no requiere pin,2026-01-19,30,,Compras web ecuador,595971975779,1,15000,15000
+Activo,2026-03-15,25,HBOMAX,fra052@cinematienda.com,frapehux86,Perfil 1,no requiere,2026-02-13,30,,compras web ecuador,595982026393,1,40000,0
+Activo,2026-03-04,14,HBOMAX,flix13663@cinematienda.com,frapehux88,Perfil 1,no requiere,2026-02-02,30,,compras web ecuador,595981305466,1,50000,0
+Activo,2026-03-13,23,HBOMAX,flix76351@cinematienda.com,frapehux89,Perfil 1,no requiere,2026-02-11,30,,compras web ecuador,595983132930,1,40000,0
+Activo,2026-03-13,23,HBOMAX,flix96061@cinematienda.com,frapehux94,Perfil 1,no requiere,2026-02-11,30,,,595972116813,1,40000,0
+Activo,2026-03-01,11,HBOMAX,flix48709@cinematienda.com,,Perfil 1,no requiere,2025-12-01,90,,compras web ecuador,595983821797,1,30000,0
+Activo,2026-05-11,82,HBOMAX,flix92048@cinematienda.com,frapehux96,Perfil 1,no requiere,2026-02-10,90,,compras web ecuador,595983729698,1,50000,0
+Activo,2026-03-06,16,HBOMAX,flixnet249958n@ecuacine.com,holavan7980,Perfil 1,no requiere,2026-01-05,60,,compras web ecuador,595984850007,1,50000,0
+Activo,2026-03-01,11,HBOMAX,flix84377@cinematienda.com,frapeweb654,Perfil 1,NO REQUIERE,2026-01-30,30,,WEB ECUADOR,595974264227,1,25000,0
+Activo,2026-02-19,1,HBOMAX,flixnet384210@ecuacine.com,frapevasn467,Perfil 1,NO REQUIERE,2026-01-20,30,,COMPRAS WEB ECUADOR,34688331102,1,25000,0
+Activo,2026-02-22,4,HBOMAX,flixnet262126x@ecuacine.com,holavan9243,Perfil 1,NO REQUIERE,2026-01-23,30,,WEB ECUADOR,595985427439,1,25000,0
+Activo,2026-03-11,21,HBOMAX,flixnet298686e@ecuacine.com,holavan6851,Perfil 2,NO REQUIERE,2026-02-09,30,,WEB ECUADOR,595973106818,1,30000,40000
+Activo,2026-03-03,13,HBOMAX,flixnet275008e@ecuacine.com,holavan6250,Perfil 2,NO REQUIERE,2026-01-02,60,,WEB ECUADOR,595986189497,1,30000,0
+Caducado,2026-02-16,-2,HBOMAX,flixnet261478y@ecuacine.com,holavan2801,Perfil 2,no requiere,2026-01-17,30,,compras web ecuador,595983752238,1,30000,18000
+Activo,2026-03-05,15,HBOMAX,flixnet298596j@ecuacine.com,holavan1485,Perfil 2,no requiere,2025-12-05,90,,compras web ecuador,595971162554,1,60000,15000
+Activo,2026-02-17,-1,HBOMAX,flixnet228996b@ecuacine.com,holavan4926,Perfil 2,no requiere,2026-01-18,30,,WEB ECUADOR,595992662655,1,25000,15000
+Congelado,,,HBOMAX,flixnet289047v@ecuacine.com,holavan4850,Perfil 2,no requiere,,30,,compras web ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix85071@pxbmail.com,frapehux343,Perfil 2,no requiere,,30,,Web Ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix73676@cinematienda.com,frapehux53,Perfil 2,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix92113@cinematienda.com,frapehux54,Perfil 2,NO REQUIERE,,30,,WEB ECUADOR,,0,30000,0
+A la Venta  Disponible,,,HBOMAX,lucas.miranda@picpart.xyz,max.202320,Perfil 2,no requiere pin,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,valeria.escobar@picnet.xyz,max.202320,Perfil 2,no requiere,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix17122@cinematienda.com,frapehux55,Perfil 2,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix85932@cinematienda.com,frapehux57,Perfil 2,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,marina.olmedo@clickyop.xyz,holavan6851,Perfil 2,no requiero pin,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-03-17,27,HBOMAX,agustin.paredes@panelstream.xyz,max.202320,Perfil 2,no requiere pin,2026-02-15,30,,~Covenant - posible autopay,595976663316,1,25000,0
+A la Venta  Disponible,,,HBOMAX,maxtv99@kunzir.com,@conejo1001,Perfil 2,NO REQUIERE,,30,,GLOBAL STORE,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,nicolas.farias@picpart.xyz,max.202320,Perfil 2,,,30,,~Covenant - posible autopay,,1,300000,0
+A la Venta  Disponible,,,HBOMAX,carolina.leiva@picnet.xyz,max.202320,Perfil 2,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,tomas.arce@panelstream.xyz,max.202320,Perfil 2,,,30,,~Covenant - posible autopay,,1,300000,0
+Activo,2026-03-17,27,HBOMAX,florencia.sosa@clickyop.xyz,max.202320,Perfil 2,,2026-02-15,30,,~Covenant - posible autopay,595975764814,1,40000,0
+A la Venta  Disponible,,,HBOMAX,diego.benitez@picpart.xyz,max.202320,Perfil 2,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,julieta.peralta@panelstream.xyz,max.202320,Perfil 2,,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-02-26,8,HBOMAX,flixnet213951f@ecuacine.com,frapeweb432,Perfil 2,no requiere pin,2025-12-28,60,,compras web ecuador,595986274756,0,19000,40000
+Activo,2026-02-22,4,HBOMAX,flixnet277192j@ecuacine.com,frapeweb983,Perfil 2,no requiere,2026-01-23,30,,compras web ecuador,595984906782,1,50000,0
+Activo,2026-03-02,12,HBOMAX,flixnet711283@ecuacine.com,frapevan26,Perfil 2,no requiere,2026-01-01,60,,compras web ecuador,595972142636,1,15000,15000
+Activo,2026-03-15,25,HBOMAX,kar531@pxbmail.com,frapewebs786,Perfil 2,no requiere,2026-01-14,60,,,595983613054,1,57500,0
+Activo,2026-02-22,4,HBOMAX,kar532@pxbmail.com,frapeweb32,Perfil 2,no requiere,2026-01-23,30,,compras web ecuador,595986306995,1,300000,0
+Activo,2026-03-09,19,HBOMAX,kar540@pxbmail.com,frapeweb322,Perfil 2,no requiere,2026-01-08,60,,,595981773684,1,50000,18000
+Activo,2026-03-03,13,HBOMAX,kar542@pxbmail.com,frapev3001,Perfil 2,no requiere,2026-02-01,30,,compras web ecuador,595971770289,1,15000,40000
+Activo,2026-02-22,4,HBOMAX,flix47870@cinematienda.com,frapevasn34,Perfil 2,no requiere,2026-01-23,30,,compras web ecuador,595986162244,1,25000,0
+A la Venta  Disponible,,,HBOMAX,melissa.velazquez.hbo@panelstream.xyz,1702maxtv1,Perfil 2,,,30,,Bigotes streaming,,1,30000,0
+Activo,2026-03-08,18,HBOMAX,maxtv78k@gofuru.com,@conejo1002,Perfil 2,NO REQUIERE,2025-12-10,88,,GLOBAL STORES,595986369297,1,80000,0
+Activo,2026-04-06,47,HBOMAX,flixnet297166n@ecuacine.com,holavan7183,Perfil 2,no requiere,2026-01-06,90,,compras web ecuador,595982863927,1,30000,0
+Activo,2026-02-28,10,HBOMAX,flixnet229139i@ecuacine.com,holavan0598,Perfil 2,no requiere pin,2026-01-29,30,,compras web ecuador,595994998381,1,30000,0
+A la Venta  Disponible,,,HBOMAX,gabriel.caballero.hbo@picpart.xyz,1702maxtv2,Perfil 2,,,30,,Bigotes streaming,,1,30000,0
+Activo,2026-04-25,66,HBOMAX,flixnet208985b@ecuacine.com,holavan6834,Perfil 2,no requiere pin,2025-10-27,180,,compras web ecuador,595992286125,1,100000,0
+Congelado,,,HBOMAX,flixnet848236@ecuacine.com,frapeweb87,Perfil 2,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,rodrigo.insfran.hbo@clickyop.xyz,1702maxrv3,Perfil 2,,,30,,Bigotes Streaming,,1,30000,0
+Activo,2026-02-27,9,HBOMAX,flixnet394004@ecuacine.com,frapeweb322,Perfil 2,NO REQUIERE,2026-01-28,30,,WEB ECUADOR,595973555953,1,25000,0
+A la Venta  Disponible,,,HBOMAX,flix98428@cinematienda.com,frapehux58,Perfil 2,,,30,,Bstore,,1,30000,0
+Activo,2026-04-25,66,HBOMAX,flixnet257276g@ecuacine.com,holavan7819,Perfil 2,NO REQUIERE,2026-01-25,90,,WEB ECUADOR,595991183374,1,50000,0
+A la Venta  Disponible,,,HBOMAX,flix30928@cinematienda.com,frapehux59,Perfil 2,,,30,,Bstore,,3,30000,0
+A la Venta  Disponible,,,HBOMAX,flix77218@cinematienda.com,frapehux56,Perfil 2,,,30,,Bstore,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix83630@cinematienda.com,frapehux61,Perfil 2,,,30,,Bstore,,1,30000,0
+Activo,2026-03-15,25,HBOMAX,flixnet764757@ecuacine.com,frapevans74,Perfil 2,NO REQUIERE,2026-02-13,30,,Compras Web Ecuador,595983369427,1,40000,8000
+Activo,2026-03-13,23,HBOMAX,flixnet355662@ecuacine.com,frapehux329,Perfil 2,no requiere,2026-02-11,30,,,595982741038,1,40000,0
+A la Venta  Disponible,,,HBOMAX,flix82874@cinematienda.com,frapehux62,Perfil 2,,,30,,Bstore,,1,30000,0
+Activo,2026-03-13,23,HBOMAX,flix55055@cinematienda.com,frapehux98,Perfil 2,no requiere,2026-02-11,30,,Compras web ecuador,595981217451,1,40000,0
+Activo,2026-03-16,26,HBOMAX,flix40750@cinematienda.com,frapehux99,Perfil 2,no requiere,2026-02-14,30,,,595986580690,1,40000,0
+Activo,2026-03-02,12,HBOMAX,flix31855@cinematienda.com,frapehux32,Perfil 2,no requiere pin,2026-01-31,30,,Compras web ecuador,595983932749,1,30000,0
+Activo,2026-03-15,25,HBOMAX,fra052@cinematienda.com,frapehux86,Perfil 2,no requiere,2026-02-13,30,,compras web ecuador,595985562167,1,25000,0
+Activo,2026-02-17,-1,HBOMAX,flix13663@cinematienda.com,frapehux88,Perfil 2,no requiere,2026-01-18,30,,compras web ecuador,595984037503,1,15000,0
+Activo,2026-03-13,23,HBOMAX,flix76351@cinematienda.com,frapehux89,Perfil 2,no requiere,2026-02-11,30,,compras web ecuador,595973889745,1,40000,0
+Activo,2026-03-13,23,HBOMAX,flix96061@cinematienda.com,frapehux94,Perfil 2,no requiere,2026-02-11,30,,,595984623313,1,40000,0
+Activo,2026-03-09,19,HBOMAX,flix48709@cinematienda.com,,Perfil 2,no requiere,2026-02-07,30,,compras web ecuador,595986799460,1,25000,0
+Activo,2026-03-10,20,HBOMAX,flix92048@cinematienda.com,frapehux96,Perfil 2,no requiere,2026-02-10,28,,compras web ecuador,595973546299,1,30000,0
+Activo,2026-02-18,0,HBOMAX,flixnet249958n@ecuacine.com,holavan7980,Perfil 2,no requiere,2026-01-19,30,,compras web ecuador,595975752778,1,30000,35000
+Activo,2026-03-04,14,HBOMAX,flix84377@cinematienda.com,frapeweb654,Perfil 2,NO REQUIERE,2026-02-02,30,,WEB ECUADOR,34631506460,1,50000,0
+Activo,2026-02-20,2,HBOMAX,flixnet384210@ecuacine.com,frapevasn467,Perfil 2,NO REQUIERE,2026-01-21,30,,COMPRAS WEB ECUADOR,595991473478,1,30000,0
+Activo,2026-02-27,9,HBOMAX,flixnet262126x@ecuacine.com,holavan9243,Perfil 2,NO REQUIERE,2025-11-29,90,,WEB ECUADOR,595984951162,1,80000,15000
+Activo,2026-02-22,4,HBOMAX,flixnet261478y@ecuacine.com,holavan2801,Perfil 3,no requiere,2026-01-23,30,,compras web ecuador,595994821135,1,50000,0
+Activo,2026-03-18,28,HBOMAX,flixnet298596j@ecuacine.com,holavan1485,Perfil 3,no requiere,2025-12-18,90,,compras web ecuador,595986684611,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flixnet228996b@ecuacine.com,holavan4926,Perfil 3,no requiere,,30,,WEB ECUADOR,,1,30000,0
+Congelado,,,HBOMAX,flixnet289047v@ecuacine.com,holavan4850,Perfil 3,no requiere,,30,,compras web ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix85071@pxbmail.com,frapehux343,Perfil 3,no requiere,,30,,Web Ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix73676@cinematienda.com,frapehux53,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix92113@cinematienda.com,frapehux54,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,0,30000,0
+A la Venta  Disponible,,,HBOMAX,lucas.miranda@picpart.xyz,max.202320,Perfil 3,no requiere pin,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,valeria.escobar@picnet.xyz,max.202320,Perfil 3,no requiere,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix17122@cinematienda.com,frapehux55,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+Activo,2026-03-13,23,HBOMAX,flixnet229139i@ecuacine.com,holavan0598,Perfil 3,no requiere pin,2026-02-11,30,,compras web ecuador,595973641453,1,25000,8000
+A la Venta  Disponible,,,HBOMAX,flix85932@cinematienda.com,frapehux57,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,marina.olmedo@clickyop.xyz,holavan6851,Perfil 3,no requiere pin,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-03-17,27,HBOMAX,agustin.paredes@panelstream.xyz,max.202320,Perfil 3,no requiere pin,2026-02-15,30,,~Covenant - posible autopay,595986884590,1,25000,0
+Activo,2026-03-18,28,HBOMAX,maxtv99@kunzir.com,@conejo1001,Perfil 3,NO REQUIERE,2025-12-18,90,,GLOBAL STORE,595984789963,1,30000,0
+A la Venta  Disponible,,,HBOMAX,nicolas.farias@picpart.xyz,max.202320,Perfil 3,,,30,,~Covenant - posible autopay,,1,300000,0
+A la Venta  Disponible,,,HBOMAX,carolina.leiva@picnet.xyz,max.202320,Perfil 3,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,tomas.arce@panelstream.xyz,max.202320,Perfil 3,,,30,,~Covenant - posible autopay,,1,300000,0
+Activo,2026-03-17,27,HBOMAX,florencia.sosa@clickyop.xyz,max.202320,Perfil 3,,2026-02-15,30,,~Covenant - posible autopay,595971515493,1,25000,0
+A la Venta  Disponible,,,HBOMAX,diego.benitez@picpart.xyz,max.202320,Perfil 3,,,30,,~Covenant - posible autopay,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,julieta.peralta@panelstream.xyz,max.202320,Perfil 3,,,30,,~Covenant - posible autopay,,1,30000,0
+Activo,2026-03-19,29,HBOMAX,flixnet213951f@ecuacine.com,frapeweb432,Perfil 3,no requiere pin,2026-02-17,30,,compras web ecuador,595994441089,0,25000,40000
+Activo,2026-02-26,8,HBOMAX,flixnet277192j@ecuacine.com,frapeweb983,Perfil 3,no requiere,2026-01-27,30,,compras web ecuador,595976864862,1,25000,0
+Activo,2026-02-21,3,HBOMAX,flix47870@cinematienda.com,frapevasn34,Perfil 3,no requiere,2026-01-22,30,,compras web ecuador,595983067850,1,30000,0
+A la Venta  Disponible,,,HBOMAX,melissa.velazquez.hbo@panelstream.xyz,1702maxtv1,Perfil 3,,,30,,Bigotes streaming,,1,30000,0
+Congelado,,,HBOMAX,flixnet297166n@ecuacine.com,holavan7183,Perfil 3,no requiere,,30,,compras web ecuador,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,gabriel.caballero.hbo@picpart.xyz,1702maxtv2,Perfil 3,,,30,,Bigotes streaming,,1,30000,0
+Activo,2026-02-20,2,HBOMAX,flixnet208985b@ecuacine.com,holavan6834,Perfil 3,no requiere pin,2026-01-21,30,,compras web ecuador,595975287984,1,25000,0
+Congelado,,,HBOMAX,flixnet848236@ecuacine.com,frapeweb87,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,rodrigo.insfran.hbo@clickyop.xyz,1702maxrv3,Perfil 3,,,30,,Bigotes Streaming,,1,30000,0
+Activo,2026-04-28,69,HBOMAX,flixnet394004@ecuacine.com,frapeweb322,Perfil 3,NO REQUIERE,2026-01-28,90,,WEB ECUADOR,595992225502,1,50000,0
+A la Venta  Disponible,,,HBOMAX,flix98428@cinematienda.com,frapehux58,Perfil 3,,,30,,Bstore,,1,30000,0
+Activo,2026-04-25,66,HBOMAX,flixnet257276g@ecuacine.com,holavan7819,Perfil 3,NO REQUIERE,2026-01-25,90,,WEB ECUADOR,34602012457,1,50000,0
+A la Venta  Disponible,,,HBOMAX,flix30928@cinematienda.com,frapehux59,Perfil 3,,,30,,Bstore,,3,30000,0
+A la Venta  Disponible,,,HBOMAX,flix77218@cinematienda.com,frapehux56,Perfil 3,,,30,,Bstore,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix83630@cinematienda.com,frapehux61,Perfil 3,,,30,,Bstore,,1,30000,0
+A la Venta  Disponible,,,HBOMAX,flix82874@cinematienda.com,frapehux62,Perfil 3,,,30,,Bstore,,1,30000,0
+Activo,2026-03-14,24,HBOMAX,flixnet249958n@ecuacine.com,holavan7980,Perfil 3,no requiere,2026-02-12,30,,compras web ecuador,595975724459,1,40000,0
+Activo,2026-03-06,16,HBOMAX,flix84377@cinematienda.com,frapeweb654,Perfil 3,NO REQUIERE,2026-02-04,30,,WEB ECUADOR,595973581666,1,25000,0
+Activo,2026-03-21,31,HBOMAX,maxtv78k@gofuru.com,@conejo1002,Perfil 4,NO REQUIERE,2025-12-21,90,,GLOBAL STORES,595983528196,1,50000,15000
+Activo,2026-03-09,19,HBOMAX,maxtv99@kunzir.com,@conejo1001,Perfil 4,NO REQUIERE,2026-02-09,28,,GLOBAL STORE,595981384594,1,30000,8000
+Activo,2026-06-17,119,HBOMAX,hbo+101@clickpar.net,0808maxplus,Perfil 4,NO REQUIERE,2025-06-17,365,595994501010,CLICKPAR,595991747637,5,30000,0
+Activo,2026-02-28,10,HBOMAX,maxtv99@kunzir.com,@conejo1001,Perfil 5,2801,2026-01-29,30,,GLOBAL STORE,595994779947,1,50000,8000
+Activo,2026-02-28,10,HBOMAX,maxtv78k@gofuru.com,@conejo1002,Perfil 5,NO REQUIERE,2025-09-01,180,,GLOBAL STORES,595982141137,1,30000,0
+Activo,2026-02-22,4,PARAMOUNT,alexiscastro9837@hotmail.com,premium7621,PAGO CUENTA COMPLETA,0,2026-01-23,30,,city,595994540904,0,0,8000
+Activo,2026-02-25,7,PARAMOUNT,flix12485@stivmail.com,frapehux30,PAGO CUENTA COMPLETA,NO ESTA PREMIUM,2026-01-25,31,,WEB ECUADOR,595994540904,0,0,80000
+Activo,2026-02-23,5,PARAMOUNT,luis49yg@hotmail.com,@Premium8561,PAGO CUENTA COMPLETA,0,2026-01-24,30,,CITY,595994540904,0,0,80000
+Activo,2026-03-06,16,PARAMOUNT,paulo962h@hotmail.com,@Premium6485,PAGO CUENTA COMPLETA,0,2026-02-04,30,,CITY,595994540904,0,0,8000
+Activo,2026-02-22,4,PARAMOUNT,alexiscastro9837@hotmail.com,premium7621,Perfil 1,,2026-01-23,30,,city,595971882599,1,30000,0
+Activo,2026-03-06,16,PARAMOUNT,flix12485@stivmail.com,frapehux30,Perfil 1,NO REQUIERE,2026-02-04,30,,WEB ECUADOR,595993393719,1,25000,0
+Activo,2026-03-15,25,PARAMOUNT,paulo962h@hotmail.com,@Premium6485,Perfil 1,,2026-02-13,30,,CITY,595986215256,1,30000,0
+Activo,2026-03-08,18,PARAMOUNT,flix12485@stivmail.com,frapehux30,Perfil 2,NO REQUIERE,2025-12-10,88,,WEB ECUADOR,595986369297,1,80000,20000
+A la Venta  Disponible,,,PARAMOUNT,flix12485@stivmail.com,frapehux30,Perfil 3,NO REQUIERE,,30,,WEB ECUADOR,,1,30000,0
+Activo,2026-07-19,151,PARAMOUNT,luis49yg@hotmail.com,@Premium8561,Perfil 4,NO REQUIERE,2026-01-20,180,,CITY,595986263995,1,100000,0
+Activo,2026-02-21,3,PARAMOUNT,luis49yg@hotmail.com,@Premium8561,Perfil 4,NO REQUIERE,2026-01-22,30,,CITY,595991247949,1,25000,0
+Activo,2026-02-23,5,PARAMOUNT,luis49yg@hotmail.com,@Premium8561,Perfil 6,,2026-01-24,30,,CITY,595981061867,1,25000,80000
+Activo,2026-03-02,12,PARAMOUNT,luis49yg@hotmail.com,@Premium8561,Perfil 6,,2026-01-31,30,,CITY,595971203082,1,30000,80000
