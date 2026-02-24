@@ -60,8 +60,9 @@ export default function StaffLoginPage() {
         setError(null);
 
         try {
-            // Verify reCAPTCHA
-            const recaptchaToken = await executeRecaptcha();
+            // Verify reCAPTCHA (skip in local development)
+            const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const recaptchaToken = isDev ? null : await executeRecaptcha();
             if (siteKey && recaptchaToken) {
                 const verifyRes = await fetch('/api/auth/verify-recaptcha', {
                     method: 'POST',
