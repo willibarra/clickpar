@@ -6,9 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { Tv, History, HelpCircle, LogOut, Zap } from 'lucide-react';
 
 const navItems = [
-    { href: '/portal', label: 'Servicios', icon: Tv },
-    { href: '/portal/historial', label: 'Historial', icon: History },
-    { href: '/portal/soporte', label: 'Soporte', icon: HelpCircle },
+    { href: '/cliente', label: 'Servicios', icon: Tv },
+    { href: '/cliente/historial', label: 'Historial', icon: History },
+    { href: '/cliente/soporte', label: 'Soporte', icon: HelpCircle },
 ];
 
 export function PortalHeader({ userName }: { userName?: string }) {
@@ -17,14 +17,14 @@ export function PortalHeader({ userName }: { userName?: string }) {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        router.push('/portal/login');
+        router.push('/cliente/login');
         router.refresh();
     };
 
     return (
         <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
             <div className="mx-auto flex h-16 max-w-2xl items-center justify-between px-4">
-                <Link href="/portal" className="flex items-center gap-2">
+                <Link href="/cliente" className="flex items-center gap-2">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#86EFAC]">
                         <Zap className="h-5 w-5 text-black" />
                     </div>
@@ -62,8 +62,8 @@ export function PortalNav() {
                             key={item.href}
                             href={item.href}
                             className={`flex flex-col items-center gap-0.5 px-4 py-3 text-xs font-medium transition-colors sm:flex-row sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm ${isActive
-                                    ? 'text-[#86EFAC] sm:bg-[#86EFAC]/10'
-                                    : 'text-muted-foreground hover:text-foreground sm:hover:bg-muted/50'
+                                ? 'text-[#86EFAC] sm:bg-[#86EFAC]/10'
+                                : 'text-muted-foreground hover:text-foreground sm:hover:bg-muted/50'
                                 }`}
                         >
                             <item.icon className={`h-5 w-5 sm:h-4 sm:w-4 ${isActive ? 'text-[#86EFAC]' : ''}`} />

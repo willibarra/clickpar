@@ -1,15 +1,69 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { UserManagementPanel } from '@/components/settings/user-management-panel';
+import { StaffManagementPanel } from '@/components/settings/staff-management-panel';
 import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
+import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
+
+// ==========================================
+// Collapsible Section Component
+// ==========================================
+function CollapsibleSection({
+    icon,
+    iconColor = 'text-[#86EFAC]',
+    title,
+    description,
+    children,
+    defaultOpen = false,
+}: {
+    icon: ReactNode;
+    iconColor?: string;
+    title: string;
+    description?: string;
+    children: ReactNode;
+    defaultOpen?: boolean;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+
+    return (
+        <Card className="border-border bg-card overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+                <div className="flex items-center gap-3">
+                    <div className={iconColor}>{icon}</div>
+                    <div>
+                        <h3 className="font-semibold text-foreground">{title}</h3>
+                        {description && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                        )}
+                    </div>
+                </div>
+                <ChevronDown
+                    className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+                />
+            </button>
+            <div
+                className={`transition-all duration-300 ease-in-out ${open ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
+                    }`}
+            >
+                <div className="border-t border-border">
+                    {children}
+                </div>
+            </div>
+        </Card>
+    );
+}
 
 export default function SettingsPage() {
     const supabase = createClient();
@@ -74,6 +128,7 @@ export default function SettingsPage() {
     };
 
     const isAdmin = profile?.role === 'super_admin' || profile?.role === 'staff' || !profile?.role;
+    const isSuperAdmin = profile?.role === 'super_admin';
 
     const initials = fullName
         ?.split(' ')
@@ -91,164 +146,185 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* Header */}
-            <div>
+            <div className="mb-2">
                 <h1 className="text-2xl font-bold text-foreground">Configuración</h1>
                 <p className="text-muted-foreground">Administra tu cuenta y preferencias</p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
-                {/* Profile Card */}
-                <Card className="border-border bg-card lg:col-span-2">
-                    <CardHeader>
-                        <div className="flex items-center gap-2">
-                            <User className="h-5 w-5 text-[#86EFAC]" />
-                            <CardTitle>Perfil de Usuario</CardTitle>
+            {/* 1. Perfil de Usuario */}
+            <CollapsibleSection
+                icon={<User className="h-5 w-5" />}
+                title="Perfil de Usuario"
+                description="Actualiza tu información personal"
+                defaultOpen={true}
+            >
+                <CardContent className="space-y-4 pt-4">
+                    {message && (
+                        <div className={`rounded-lg p-3 text-sm ${message.type === 'success'
+                            ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
+                            : 'bg-red-500/20 text-red-500'
+                            }`}>
+                            {message.text}
                         </div>
-                        <CardDescription>Actualiza tu información personal</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {message && (
-                            <div className={`rounded-lg p-3 text-sm ${message.type === 'success'
-                                ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
-                                : 'bg-red-500/20 text-red-500'
-                                }`}>
-                                {message.text}
-                            </div>
-                        )}
+                    )}
 
-                        <div className="flex items-center gap-4">
-                            <Avatar className="h-16 w-16">
-                                <AvatarFallback className="bg-[#86EFAC] text-black text-lg">
-                                    {initials}
-                                </AvatarFallback>
-                            </Avatar>
-                            <div>
-                                <p className="font-medium text-foreground">{user?.email}</p>
-                                <span className="inline-block mt-1 rounded-full bg-[#F97316]/20 px-2 py-0.5 text-xs font-medium text-[#F97316]">
-                                    {roleLabels[profile?.role] || profile?.role}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-foreground">
-                                    Nombre completo
-                                </label>
-                                <Input
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                    placeholder="Tu nombre completo"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-foreground">
-                                    Teléfono (WhatsApp)
-                                </label>
-                                <Input
-                                    value={phoneNumber}
-                                    onChange={(e) => setPhoneNumber(e.target.value)}
-                                    placeholder="+595 9XX XXX XXX"
-                                />
-                            </div>
-                        </div>
-
-                        <Button
-                            onClick={handleSaveProfile}
-                            className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
-                            disabled={saving}
-                        >
-                            {saving ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Guardando...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="mr-2 h-4 w-4" />
-                                    Guardar Cambios
-                                </>
-                            )}
-                        </Button>
-                    </CardContent>
-                </Card>
-
-                {/* Account Info */}
-                <div className="space-y-6">
-                    <Card className="border-border bg-card">
-                        <CardHeader>
-                            <div className="flex items-center gap-2">
-                                <Shield className="h-5 w-5 text-[#86EFAC]" />
-                                <CardTitle className="text-base">Seguridad</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div>
-                                <p className="text-sm text-muted-foreground">Email</p>
-                                <p className="font-medium text-foreground">{user?.email}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">Última conexión</p>
-                                <p className="text-sm text-foreground">
-                                    {user?.last_sign_in_at
-                                        ? new Date(user.last_sign_in_at).toLocaleString('es-PY')
-                                        : 'N/A'}
-                                </p>
-                            </div>
-                            <Button variant="outline" className="w-full mt-2">
-                                Cambiar Contraseña
-                            </Button>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border-border bg-card">
-                        <CardHeader>
-                            <div className="flex items-center gap-2">
-                                <Bell className="h-5 w-5 text-[#F97316]" />
-                                <CardTitle className="text-base">Notificaciones</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                                Las notificaciones de WhatsApp se enviarán al número de teléfono registrado.
-                            </p>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
-
-            {/* User Management - Only for Admins */}
-            {isAdmin && (
-                <UserManagementPanel />
-            )}
-
-            {/* Stock Alert Settings - Only for Admins */}
-            {isAdmin && (
-                <StockAlertSettings />
-            )}
-
-            {/* Email Settings - Only for Admins */}
-            {isAdmin && (
-                <EmailSettingsPanel />
-            )}
-
-            {/* Platforms Management */}
-            <Card className="border-border bg-card">
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <SettingsIcon className="h-5 w-5 text-[#86EFAC]" />
-                            <CardTitle>Plataformas Disponibles</CardTitle>
+                    <div className="flex items-center gap-4">
+                        <Avatar className="h-16 w-16">
+                            <AvatarFallback className="bg-[#86EFAC] text-black text-lg">
+                                {initials}
+                            </AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <p className="font-medium text-foreground">{user?.email}</p>
+                            <span className="inline-block mt-1 rounded-full bg-[#F97316]/20 px-2 py-0.5 text-xs font-medium text-[#F97316]">
+                                {roleLabels[profile?.role] || profile?.role}
+                            </span>
                         </div>
                     </div>
-                    <CardDescription>
-                        Estas son las plataformas de streaming que puedes agregar en el inventario
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                                Nombre completo
+                            </label>
+                            <Input
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                                placeholder="Tu nombre completo"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                                Teléfono (WhatsApp)
+                            </label>
+                            <Input
+                                value={phoneNumber}
+                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                placeholder="+595 9XX XXX XXX"
+                            />
+                        </div>
+                    </div>
+
+                    <Button
+                        onClick={handleSaveProfile}
+                        className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                        disabled={saving}
+                    >
+                        {saving ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Guardando...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="mr-2 h-4 w-4" />
+                                Guardar Cambios
+                            </>
+                        )}
+                    </Button>
+                </CardContent>
+            </CollapsibleSection>
+
+            {/* 2. Seguridad */}
+            <CollapsibleSection
+                icon={<Shield className="h-5 w-5" />}
+                title="Seguridad"
+                description="Email, contraseña y sesión"
+            >
+                <CardContent className="space-y-3 pt-4">
+                    <div>
+                        <p className="text-sm text-muted-foreground">Email</p>
+                        <p className="font-medium text-foreground">{user?.email}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-muted-foreground">Última conexión</p>
+                        <p className="text-sm text-foreground">
+                            {user?.last_sign_in_at
+                                ? new Date(user.last_sign_in_at).toLocaleString('es-PY')
+                                : 'N/A'}
+                        </p>
+                    </div>
+                    <Button variant="outline" className="w-full mt-2">
+                        Cambiar Contraseña
+                    </Button>
+                </CardContent>
+            </CollapsibleSection>
+
+            {/* 3. Gestión de Usuarios (Admin) */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<UsersIcon className="h-5 w-5" />}
+                    title="Gestión de Usuarios"
+                    description="Administrar cuentas de staff y clientes"
+                >
+                    <div className="p-0">
+                        <UserManagementPanel />
+                    </div>
+                </CollapsibleSection>
+            )}
+
+            {/* 3b. Equipo (Super Admin only) */}
+            {isSuperAdmin && (
+                <CollapsibleSection
+                    icon={<Shield className="h-5 w-5" />}
+                    iconColor="text-yellow-400"
+                    title="Equipo de Trabajo"
+                    description="Crear y gestionar vendedoras y staff"
+                >
+                    <div className="p-0">
+                        <StaffManagementPanel />
+                    </div>
+                </CollapsibleSection>
+            )}
+
+            {/* 4. Alertas de Stock (Admin) */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<Package className="h-5 w-5" />}
+                    iconColor="text-[#F97316]"
+                    title="Alertas de Stock"
+                    description="Configurar notificaciones de inventario bajo"
+                >
+                    <div className="p-0">
+                        <StockAlertSettings />
+                    </div>
+                </CollapsibleSection>
+            )}
+
+            {/* 5. Configuración de Email (Admin) */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<Mail className="h-5 w-5" />}
+                    title="Configuración de Email"
+                    description="Cuenta de correo para notificaciones"
+                >
+                    <div className="p-0">
+                        <EmailSettingsPanel />
+                    </div>
+                </CollapsibleSection>
+            )}
+
+            {/* 6. WhatsApp */}
+            <CollapsibleSection
+                icon={<MessageSquare className="h-5 w-5" />}
+                title="WhatsApp"
+                description="Instancias, plantillas y envío automático"
+            >
+                <div className="p-0">
+                    <WhatsAppSettingsPanel />
+                </div>
+            </CollapsibleSection>
+
+            {/* 7. Plataformas Disponibles */}
+            <CollapsibleSection
+                icon={<Monitor className="h-5 w-5" />}
+                title="Plataformas Disponibles"
+                description="Plataformas de streaming en el inventario"
+            >
+                <CardContent className="pt-4">
                     <div className="flex flex-wrap gap-2">
                         {['Netflix', 'Spotify', 'HBO', 'Disney+', 'Amazon Prime', 'YouTube Premium', 'Apple TV+', 'Crunchyroll', 'Paramount+', 'Star+'].map((platform) => (
                             <div
@@ -264,17 +340,16 @@ export default function SettingsPage() {
                         <code className="bg-muted px-1 rounded">components/inventory/add-account-modal.tsx</code>
                     </p>
                 </CardContent>
-            </Card>
+            </CollapsibleSection>
 
-            {/* Platform Info */}
-            <Card className="border-border bg-card">
-                <CardHeader>
-                    <div className="flex items-center gap-2">
-                        <SettingsIcon className="h-5 w-5 text-muted-foreground" />
-                        <CardTitle>Información del Sistema</CardTitle>
-                    </div>
-                </CardHeader>
-                <CardContent>
+            {/* 8. Información del Sistema */}
+            <CollapsibleSection
+                icon={<Info className="h-5 w-5" />}
+                iconColor="text-muted-foreground"
+                title="Información del Sistema"
+                description="Versiones y tecnologías"
+            >
+                <CardContent className="pt-4">
                     <div className="grid gap-4 md:grid-cols-4 text-sm">
                         <div>
                             <p className="text-muted-foreground">Versión</p>
@@ -294,7 +369,7 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 </CardContent>
-            </Card>
+            </CollapsibleSection>
         </div>
     );
 }

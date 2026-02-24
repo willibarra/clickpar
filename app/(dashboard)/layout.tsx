@@ -14,7 +14,7 @@ export default async function DashboardLayout({
 
     // Redirect to login if not authenticated
     if (!user) {
-        redirect('/login');
+        redirect('/staff/login');
     }
 
     return (

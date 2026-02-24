@@ -16,26 +16,47 @@ import {
   LogOut,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useEffect, useState } from 'react';
 
-const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/sales', label: 'Ventas', icon: ShoppingCart },
-  { href: '/inventory', label: 'Inventario', icon: Package },
-  { href: '/renewals', label: 'Renovaciones', icon: CalendarClock },
-  { href: '/customers', label: 'Clientes', icon: Users },
-  { href: '/emails', label: 'Correos', icon: Mail },
-  { href: '/finance', label: 'Finanzas', icon: Wallet },
-  { href: '/settings', label: 'Ajustes', icon: Settings },
+const allNavItems = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { href: '/sales', label: 'Ventas', icon: ShoppingCart, adminOnly: false },
+  { href: '/inventory', label: 'Inventario', icon: Package, adminOnly: false },
+  { href: '/renewals', label: 'Renovaciones', icon: CalendarClock, adminOnly: false },
+  { href: '/customers', label: 'Clientes', icon: Users, adminOnly: false },
+  { href: '/emails', label: 'Correos', icon: Mail, adminOnly: false },
+  { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
+  { href: '/settings', label: 'Ajustes', icon: Settings, adminOnly: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const [userRole, setUserRole] = useState<string>('super_admin');
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        (supabase.from('profiles') as any)
+          .select('role')
+          .eq('id', user.id)
+          .single()
+          .then(({ data }: any) => {
+            if (data?.role) setUserRole(data.role);
+          });
+      }
+    });
+  }, [supabase]);
+
+  const navItems = allNavItems.filter(item => {
+    if (item.adminOnly && userRole !== 'super_admin') return false;
+    return true;
+  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/login');
+    router.push('/staff/login');
     router.refresh();
   };
 
@@ -100,3 +121,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

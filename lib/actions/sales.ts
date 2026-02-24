@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { createKommoLead, addNoteToLead } from '@/lib/kommo';
+import { sendSaleCredentials, getWhatsAppSettings } from '@/lib/whatsapp';
 
 interface QuickSaleData {
     platform: string;
@@ -14,6 +15,7 @@ interface QuickSaleData {
     platformPrice?: number;
     durationDays?: number; // Duración en días (default: 30)
     notes?: string;
+    whatsappInstance?: string; // Nombre de la instancia de WhatsApp usada para esta venta
 }
 
 export async function createQuickSale(data: QuickSaleData) {
@@ -120,7 +122,8 @@ export async function createQuickSale(data: QuickSaleData) {
                 start_date: startDate.toISOString().split('T')[0],
                 end_date: endDate.toISOString().split('T')[0],
                 is_active: true,
-                payment_method: 'cash'
+                payment_method: 'cash',
+                whatsapp_instance: data.whatsappInstance || null,
             });
 
         if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
@@ -151,6 +154,47 @@ export async function createQuickSale(data: QuickSaleData) {
             }
         } catch (kommoError) {
             console.error('[Kommo] Error (non-blocking):', kommoError);
+        }
+
+        // 6. Enviar credenciales por WhatsApp (sin bloquear la venta si falla)
+        try {
+            const waSettings = await getWhatsAppSettings();
+            if (waSettings.auto_send_credentials) {
+                // Wait 2 seconds before sending WhatsApp message
+                await new Promise(r => setTimeout(r, 2000));
+
+                // Obtener credenciales del slot/cuenta madre
+                const { data: slotInfo } = await (supabase.from('sale_slots') as any)
+                    .select(`
+                        slot_identifier,
+                        pin_code,
+                        mother_accounts:mother_account_id (
+                            email,
+                            password,
+                            platform
+                        )
+                    `)
+                    .eq('id', slotToSell.slot_id || slotToSell.id)
+                    .single();
+
+                if (slotInfo?.mother_accounts) {
+                    const acct = slotInfo.mother_accounts;
+                    await sendSaleCredentials({
+                        customerPhone: data.customerPhone,
+                        customerName: data.customerName || data.customerPhone,
+                        platform: acct.platform || data.platform,
+                        email: acct.email || '',
+                        password: acct.password || '',
+                        profile: slotInfo.slot_identifier || 'Perfil asignado',
+                        expirationDate: endDate.toLocaleDateString('es-PY'),
+                        customerId,
+                        instanceName: data.whatsappInstance,
+                    });
+                    console.log('[WhatsApp] Credenciales enviadas a', data.customerPhone);
+                }
+            }
+        } catch (waError) {
+            console.error('[WhatsApp] Error (non-blocking):', waError);
         }
 
         revalidatePath('/');
@@ -805,6 +849,47 @@ export async function processComboSale(data: ComboSaleData) {
                 slotInfo: comboId.slice(0, 8),
             });
         } catch { /* CRM errors don't block the sale */ }
+
+        // 6. Enviar credenciales por WhatsApp para cada slot del combo (sin bloquear)
+        try {
+            const waSettings = await getWhatsAppSettings();
+            if (waSettings.auto_send_credentials) {
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() + 30);
+                const expDateStr = endDate.toLocaleDateString('es-PY');
+
+                for (const assigned of assignedSlots) {
+                    try {
+                        // Fetch slot credentials
+                        const { data: slotDetail } = await (supabase.from('sale_slots') as any)
+                            .select(`
+                                slot_identifier, pin_code,
+                                mother_accounts:mother_account_id (email, password, platform)
+                            `)
+                            .eq('id', assigned.slotId)
+                            .single();
+
+                        if (slotDetail?.mother_accounts) {
+                            const acct = slotDetail.mother_accounts;
+                            await sendSaleCredentials({
+                                customerPhone: data.customerPhone,
+                                customerName: data.customerName || data.customerPhone,
+                                platform: acct.platform || assigned.platform,
+                                email: acct.email || '',
+                                password: acct.password || '',
+                                profile: slotDetail.slot_identifier || 'Perfil asignado',
+                                expirationDate: expDateStr,
+                                customerId,
+                            });
+                        }
+                    } catch (slotWaErr) {
+                        console.error(`[WhatsApp] Error sending combo slot ${assigned.slotId}:`, slotWaErr);
+                    }
+                }
+            }
+        } catch (waError) {
+            console.error('[WhatsApp] Combo error (non-blocking):', waError);
+        }
 
         revalidatePath('/');
         revalidatePath('/sales');

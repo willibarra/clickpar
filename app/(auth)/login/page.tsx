@@ -358,45 +358,13 @@ export default function LoginPage() {
                         </form>
                     )}
 
-                    {/* Test Users - Temporary */}
-                    <div className="mt-6 p-3 rounded-lg bg-[#1a1a1a] border border-border">
-                        <p className="text-xs text-muted-foreground mb-2 text-center">Usuarios de prueba (contraseña: Admin123!)</p>
-                        <div className="space-y-1">
-                            <button
-                                type="button"
-                                onClick={() => { setAuthMethod('email'); setEmail('admin@clickpar.com'); setPassword('Admin123!'); }}
-                                className="w-full text-left px-2 py-1 text-sm rounded hover:bg-[#86EFAC]/10 text-foreground flex justify-between"
-                            >
-                                <span>admin@clickpar.com</span>
-                                <span className="text-xs text-[#86EFAC]">Admin</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setAuthMethod('email'); setEmail('vendedora@clickpar.com'); setPassword('Admin123!'); }}
-                                className="w-full text-left px-2 py-1 text-sm rounded hover:bg-[#86EFAC]/10 text-foreground flex justify-between"
-                            >
-                                <span>vendedora@clickpar.com</span>
-                                <span className="text-xs text-blue-400">Vendedor</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setAuthMethod('email'); setEmail('cliente@clickpar.com'); setPassword('Admin123!'); }}
-                                className="w-full text-left px-2 py-1 text-sm rounded hover:bg-[#86EFAC]/10 text-foreground flex justify-between"
-                            >
-                                <span>cliente@clickpar.com</span>
-                                <span className="text-xs text-orange-400">Cliente</span>
-                            </button>
-                        </div>
-                    </div>
 
                     <div className="mt-4 text-center text-sm text-muted-foreground">
-                        ¿No tienes cuenta?{' '}
-                        <Link href="/register" className="text-[#86EFAC] hover:underline">
-                            Registrarse
-                        </Link>
+                        <p>Panel de administración: <a href="/staff/login" className="text-[#86EFAC] hover:underline">Staff Login</a></p>
                     </div>
                 </CardContent>
             </Card>
         </div>
     );
 }
+

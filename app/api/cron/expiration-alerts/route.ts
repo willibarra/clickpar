@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { addNoteToLead, createVentaLead, refreshKommoToken } from '@/lib/kommo';
+import { sendPreExpiryReminder, sendExpiryNotification, getWhatsAppSettings } from '@/lib/whatsapp';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,6 +94,23 @@ export async function GET(request: NextRequest) {
         const yesterdayStr = formatDate(addDays(today, -1));
         const twoDaysAgoStr = formatDate(addDays(today, -2));
 
+        // Load WhatsApp settings once
+        let waSettings;
+        try {
+            waSettings = await getWhatsAppSettings();
+        } catch { waSettings = null; }
+
+        const batchInterval = (waSettings?.batch_send_interval_seconds || 30) * 1000;
+        let messagesSentCount = 0;
+
+        // Helper: wait between batch messages
+        const batchDelay = async () => {
+            if (messagesSentCount > 0) {
+                await new Promise(r => setTimeout(r, batchInterval));
+            }
+            messagesSentCount++;
+        };
+
         // ================================================
         // 1. Sales expiring TOMORROW (1 day before)
         // ================================================
@@ -120,7 +138,27 @@ export async function GET(request: NextRequest) {
                 );
                 results.reminder_1day.push(`${name} - ${platform}`);
             } catch (e: any) {
-                results.errors.push(`1day: ${name} - ${e.message}`);
+                results.errors.push(`1day-kommo: ${name} - ${e.message}`);
+            }
+
+            // WhatsApp directo (pre-vencimiento)
+            if (waSettings?.auto_send_pre_expiry) {
+                try {
+                    await batchDelay();
+                    await sendPreExpiryReminder({
+                        customerPhone: phone,
+                        customerName: name,
+                        platform,
+                        expirationDate: tomorrowStr,
+                        daysRemaining: 1,
+                        price: (sale.amount_gs || 0).toLocaleString(),
+                        customerId: sale.customer_id,
+                        saleId: sale.id,
+                        instanceName: sale.whatsapp_instance || undefined,
+                    });
+                } catch (e: any) {
+                    results.errors.push(`1day-wa: ${name} - ${e.message}`);
+                }
             }
         }
 
@@ -152,7 +190,25 @@ export async function GET(request: NextRequest) {
                 );
                 results.reminder_today.push(`${name} - ${platform}`);
             } catch (e: any) {
-                results.errors.push(`today: ${name} - ${e.message}`);
+                results.errors.push(`today-kommo: ${name} - ${e.message}`);
+            }
+
+            // WhatsApp directo (vencimiento hoy)
+            if (waSettings?.auto_send_expiry) {
+                try {
+                    await batchDelay();
+                    await sendExpiryNotification({
+                        customerPhone: phone,
+                        customerName: name,
+                        platform,
+                        price: (sale.amount_gs || 0).toLocaleString(),
+                        customerId: sale.customer_id,
+                        saleId: sale.id,
+                        instanceName: sale.whatsapp_instance || undefined,
+                    });
+                } catch (e: any) {
+                    results.errors.push(`today-wa: ${name} - ${e.message}`);
+                }
             }
         }
 

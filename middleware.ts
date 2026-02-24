@@ -4,8 +4,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
 
-    // Skip auth entirely for login pages to prevent redirect loops
-    if (pathname === '/portal/login' || pathname === '/login' || pathname === '/register') {
+    // Skip auth for login pages and API routes
+    if (
+        pathname === '/cliente/login' ||
+        pathname === '/staff/login' ||
+        pathname.startsWith('/api/')
+    ) {
         return NextResponse.next({ request });
     }
 
@@ -34,17 +38,62 @@ export async function middleware(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Portal routes — require auth
-    if (pathname.startsWith('/portal')) {
+    // Root domain: if not logged in → Instagram, if logged in → depends on role
+    if (pathname === '/') {
         if (!user) {
-            return NextResponse.redirect(new URL('/portal/login', request.url));
+            return NextResponse.redirect('https://instagram.com/click.par');
+        }
+        // Logged-in users accessing / → check role
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        const role = (profile as any)?.role;
+        if (role === 'super_admin' || role === 'staff') {
+            // Admin dashboard — let through to (dashboard)/page.tsx
+            return supabaseResponse;
+        }
+        if (role === 'customer') {
+            return NextResponse.redirect(new URL('/cliente', request.url));
+        }
+        // Unknown role → Instagram
+        return NextResponse.redirect('https://instagram.com/click.par');
+    }
+
+    // Cliente portal routes — require auth as customer
+    if (pathname.startsWith('/cliente')) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/cliente/login', request.url));
         }
         return supabaseResponse;
     }
 
-    // Dashboard routes — require auth
+    // Dashboard/admin routes — require auth as super_admin or staff
     if (!user) {
-        return NextResponse.redirect(new URL('/login', request.url));
+        return NextResponse.redirect(new URL('/staff/login', request.url));
+    }
+
+    // Check role for admin routes
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    const role = (profile as any)?.role;
+
+    // Block staff from accessing finance and settings
+    if (role === 'staff') {
+        if (pathname.startsWith('/finance') || pathname.startsWith('/settings')) {
+            return NextResponse.redirect(new URL('/sales', request.url));
+        }
+    }
+
+    // Only super_admin and staff can access admin routes
+    if (role !== 'super_admin' && role !== 'staff') {
+        return NextResponse.redirect(new URL('/cliente', request.url));
     }
 
     return supabaseResponse;
@@ -52,6 +101,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     matcher: [
-        '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+        '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     ],
 };

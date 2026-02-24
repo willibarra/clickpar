@@ -31,7 +31,7 @@ export async function createPlatform(formData: FormData) {
     const name = formData.get('name') as string;
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-    const data = {
+    const data: Record<string, any> = {
         name,
         slug,
         business_type: formData.get('business_type') as string || 'profile_sharing',
@@ -41,6 +41,14 @@ export async function createPlatform(formData: FormData) {
         slot_label: formData.get('slot_label') as string || 'Perfil',
         is_active: true,
     };
+
+    // Parse nicknames from JSON
+    const nicknamesStr = formData.get('nicknames') as string;
+    if (nicknamesStr) {
+        try {
+            data.nicknames = JSON.parse(nicknamesStr);
+        } catch { data.nicknames = []; }
+    }
 
     // Check if there's an inactive platform with the same name (previously deleted)
     const { data: existing } = await (supabase.from('platforms') as any)
@@ -103,6 +111,13 @@ export async function updatePlatform(id: string, formData: FormData) {
 
     const slotLabel = formData.get('slot_label');
     if (slotLabel) data.slot_label = slotLabel;
+
+    const nicknamesStr = formData.get('nicknames') as string;
+    if (nicknamesStr) {
+        try {
+            data.nicknames = JSON.parse(nicknamesStr);
+        } catch { data.nicknames = []; }
+    }
 
     const { error } = await (supabase.from('platforms') as any)
         .update(data)

@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Loader2, Users, Tv, Pencil, Trash2, ArrowLeft, Layers } from 'lucide-react';
+import { Plus, Loader2, Users, Tv, Pencil, Trash2, ArrowLeft, Layers, X, Tag } from 'lucide-react';
 import { getPlatforms, createPlatform, updatePlatform, deletePlatform } from '@/lib/actions/platforms';
 
 const defaultColors = [
@@ -33,6 +33,7 @@ interface Platform {
     default_max_slots: number;
     default_slot_price_gs: number;
     slot_label: string;
+    nicknames?: string[];
 }
 
 type ModalView = 'list' | 'form';
@@ -51,6 +52,8 @@ export function AddPlatformModal() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [formName, setFormName] = useState('');
+    const [nicknames, setNicknames] = useState<string[]>([]);
+    const [nicknameInput, setNicknameInput] = useState('');
 
     // Sorted platforms alphabetically
     const sortedPlatforms = useMemo(() =>
@@ -78,6 +81,8 @@ export function AddPlatformModal() {
     function openCreateForm() {
         setEditingPlatform(null);
         setFormName('');
+        setNicknames([]);
+        setNicknameInput('');
         setSelectedColor(defaultColors[0]);
         setBusinessType('profile_sharing');
         setError(null);
@@ -87,6 +92,8 @@ export function AddPlatformModal() {
     function openEditForm(platform: Platform) {
         setEditingPlatform(platform);
         setFormName(platform.name);
+        setNicknames(platform.nicknames || []);
+        setNicknameInput('');
         setSelectedColor(platform.icon_color || defaultColors[0]);
         setBusinessType((platform.business_type as 'profile_sharing' | 'family_account') || 'profile_sharing');
         setError(null);
@@ -124,6 +131,7 @@ export function AddPlatformModal() {
         formData.set('default_max_slots', '5');
         formData.set('default_slot_price_gs', '30000');
         formData.set('slot_label', businessType === 'family_account' ? 'Miembro' : 'Perfil');
+        formData.set('nicknames', JSON.stringify(nicknames));
 
         let result;
         if (editingPlatform) {
@@ -315,6 +323,55 @@ export function AddPlatformModal() {
                                         value={formName}
                                         onChange={(e) => setFormName(e.target.value)}
                                         required
+                                    />
+                                </div>
+
+                                {/* Nicknames / Apodos */}
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1.5">
+                                        <Tag className="h-3.5 w-3.5" />
+                                        Apodos para WhatsApp
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground -mt-1">
+                                        Nombres alternativos usados en mensajes de WhatsApp
+                                    </p>
+
+                                    {/* Tags display */}
+                                    {nicknames.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {nicknames.map((nick, idx) => (
+                                                <span
+                                                    key={idx}
+                                                    className="inline-flex items-center gap-1 rounded-full bg-[#86EFAC]/15 border border-[#86EFAC]/30 px-2.5 py-0.5 text-xs font-medium text-[#86EFAC]"
+                                                >
+                                                    {nick}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setNicknames(prev => prev.filter((_, i) => i !== idx))}
+                                                        className="text-[#86EFAC]/60 hover:text-[#86EFAC] transition-colors ml-0.5"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Input for new nickname */}
+                                    <Input
+                                        placeholder="Escribí un apodo y presioná Enter"
+                                        value={nicknameInput}
+                                        onChange={(e) => setNicknameInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if ((e.key === 'Enter' || e.key === ',') && nicknameInput.trim()) {
+                                                e.preventDefault();
+                                                const newNick = nicknameInput.trim().replace(/,/g, '');
+                                                if (newNick && !nicknames.includes(newNick)) {
+                                                    setNicknames(prev => [...prev, newNick]);
+                                                }
+                                                setNicknameInput('');
+                                            }
+                                        }}
                                     />
                                 </div>
 

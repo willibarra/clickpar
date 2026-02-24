@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X } from 'lucide-react';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare } from 'lucide-react';
 import { createQuickSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
@@ -23,6 +23,12 @@ interface Customer {
     id: string;
     full_name: string;
     phone: string;
+}
+
+interface WAInstance {
+    name: string;
+    connected: boolean;
+    alias?: string;
 }
 
 export function NewSaleModal() {
@@ -50,6 +56,10 @@ export function NewSaleModal() {
     const [defaultPrice, setDefaultPrice] = useState<number | null>(null);
     const [duration, setDuration] = useState<string>('30');
     const [priceOverridden, setPriceOverridden] = useState(false);
+
+    // WhatsApp instance selection
+    const [waInstances, setWaInstances] = useState<WAInstance[]>([]);
+    const [selectedWaInstance, setSelectedWaInstance] = useState<string>('');
 
     const supabase = createClient();
 
@@ -100,6 +110,28 @@ export function NewSaleModal() {
                     )];
                     setAvailablePlatforms(platformsWithStock);
                 });
+
+            // Fetch WhatsApp instances + settings (for aliases)
+            Promise.all([
+                fetch('/api/whatsapp?action=instances').then(r => r.json()),
+                fetch('/api/whatsapp?action=settings').then(r => r.json()),
+            ]).then(([instData, settData]) => {
+                const instances = (instData.instances || []) as WAInstance[];
+                const settings = settData.settings;
+                const connected = instances.filter(i => i.connected).map((inst, idx) => ({
+                    ...inst,
+                    alias: settings
+                        ? (inst.name === settings.instance_1_name ? settings.instance_1_alias
+                            : inst.name === settings.instance_2_name ? settings.instance_2_alias
+                                : inst.name)
+                        : inst.name,
+                }));
+                setWaInstances(connected);
+                // Auto-select the first one if only one is available
+                if (connected.length === 1) {
+                    setSelectedWaInstance(connected[0].name);
+                }
+            }).catch(() => { /* ignore */ });
         }
     }, [open, supabase]);
 
@@ -225,6 +257,7 @@ export function NewSaleModal() {
                 price: Number(salePrice),
                 specificSlotId: selectedSlotId,
                 durationDays: parseInt(duration) || 30,
+                whatsappInstance: selectedWaInstance || undefined,
             });
 
             if (result.error) {
@@ -269,6 +302,7 @@ export function NewSaleModal() {
         setShowNewCustomerForm(false);
         setNewCustomerName('');
         setNewCustomerPhone('');
+        setSelectedWaInstance('');
         setError(null);
         setSuccess(false);
     };
@@ -512,6 +546,32 @@ export function NewSaleModal() {
                                     />
                                 </div>
                             </div>
+
+                            {/* WhatsApp Instance Selector */}
+                            {waInstances.length > 1 && (
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <MessageSquare className="h-3.5 w-3.5 text-green-400" />
+                                        Número de WhatsApp
+                                    </Label>
+                                    <Select
+                                        value={selectedWaInstance}
+                                        onValueChange={setSelectedWaInstance}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar número" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {waInstances.map((inst) => (
+                                                <SelectItem key={inst.name} value={inst.name}>
+                                                    {inst.alias || inst.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">Los mensajes de esta venta se enviarán por este número.</p>
+                                </div>
+                            )}
                         </div>
 
                         <DialogFooter>
