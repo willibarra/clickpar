@@ -25,10 +25,11 @@ export async function getAllUsers(): Promise<{ users: UserProfile[]; error?: str
     const supabase = await createAdminClient();
 
     try {
-        // Obtener perfiles
-        const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
+        // Obtener perfiles (solo staff/admin, no clientes)
+        const { data: profiles, error: profilesError } = await (supabase
+            .from('profiles') as any)
             .select('*')
+            .in('role', ['super_admin', 'staff', 'vendedor', 'proveedor'])
             .order('created_at', { ascending: false });
 
         if (profilesError) throw profilesError;
