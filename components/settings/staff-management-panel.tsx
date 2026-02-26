@@ -16,7 +16,7 @@ type StaffUser = {
     id: string;
     full_name: string;
     email: string;
-    phone: string | null;
+    phone_number: string | null;
     role: string;
     created_at: string;
 };
@@ -131,7 +131,7 @@ export function StaffManagementPanel() {
         setEditingUser(user);
         setFormName(user.full_name || '');
         setFormEmail(user.email || '');
-        setFormPhone(user.phone || '');
+        setFormPhone(user.phone_number || '');
         setFormPassword('');
         setShowForm(true);
         setError(null);
@@ -296,7 +296,7 @@ export function StaffManagementPanel() {
                                             </Badge>
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            {user.email} {user.phone ? `· ${user.phone}` : ''}
+                                            {user.email} {user.phone_number ? `· ${user.phone_number}` : ''}
                                         </p>
                                     </div>
                                 </div>

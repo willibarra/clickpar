@@ -9,13 +9,26 @@ import { revalidatePath } from 'next/cache';
 export async function getStaffUsers() {
     const supabase = await createAdminClient();
 
-    const { data, error } = await (supabase.from('profiles') as any)
-        .select('id, full_name, email, phone, role, created_at')
+    // Get profiles with staff/admin role
+    const { data: profiles, error } = await (supabase.from('profiles') as any)
+        .select('id, full_name, phone_number, role, created_at')
         .in('role', ['staff', 'super_admin'])
         .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
-    return data || [];
+
+    // Get emails from auth.users for each profile
+    const staffWithEmails = await Promise.all(
+        (profiles || []).map(async (profile: any) => {
+            const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
+            return {
+                ...profile,
+                email: authData?.user?.email || '',
+            };
+        })
+    );
+
+    return staffWithEmails;
 }
 
 // ==========================================
@@ -47,15 +60,15 @@ export async function createStaffUser(formData: {
         return { error: 'No se pudo crear el usuario' };
     }
 
-    // 2. Create/update profile with staff role
+    // 2. The handle_new_user trigger already created a profile row.
+    //    Now update it with the staff role and phone_number.
     const { error: profileError } = await (supabase.from('profiles') as any)
-        .upsert({
-            id: authUser.user.id,
+        .update({
             full_name: formData.fullName,
-            email: formData.email,
-            phone: formData.phone || null,
+            phone_number: formData.phone || null,
             role: 'staff',
-        });
+        })
+        .eq('id', authUser.user.id);
 
     if (profileError) {
         return { error: `Error creando perfil: ${profileError.message}` };
@@ -78,15 +91,16 @@ export async function updateStaffUser(userId: string, data: {
     // Update profile
     const updateData: Record<string, any> = {};
     if (data.fullName) updateData.full_name = data.fullName;
-    if (data.phone !== undefined) updateData.phone = data.phone;
-    if (data.email) updateData.email = data.email;
+    if (data.phone !== undefined) updateData.phone_number = data.phone;
 
-    const { error } = await (supabase.from('profiles') as any)
-        .update(updateData)
-        .eq('id', userId);
+    if (Object.keys(updateData).length > 0) {
+        const { error } = await (supabase.from('profiles') as any)
+            .update(updateData)
+            .eq('id', userId);
 
-    if (error) {
-        return { error: `Error actualizando: ${error.message}` };
+        if (error) {
+            return { error: `Error actualizando: ${error.message}` };
+        }
     }
 
     // Update auth email if changed
