@@ -14,12 +14,8 @@ interface AddUserModalProps {
 }
 
 const roles: { value: UserRole; label: string; description: string }[] = [
+    { value: 'staff', label: 'Vendedor / Staff', description: 'Gestión de inventario y ventas' },
     { value: 'super_admin', label: 'Super Admin', description: 'Acceso total al sistema' },
-    { value: 'staff', label: 'Staff', description: 'Gestión de inventario y ventas' },
-    { value: 'vendedor', label: 'Vendedor', description: 'Solo puede vender' },
-    { value: 'customer', label: 'Cliente', description: 'Usuario final' },
-    { value: 'affiliate', label: 'Afiliado', description: 'Puede referir clientes' },
-    { value: 'proveedor', label: 'Proveedor', description: 'Proveedor de cuentas' },
 ];
 
 export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) {
@@ -30,7 +26,7 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
-    const [role, setRole] = useState<UserRole>('customer');
+    const [role, setRole] = useState<UserRole>('staff');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,7 +52,7 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
         setPassword('');
         setFullName('');
         setPhoneNumber('');
-        setRole('customer');
+        setRole('staff');
         setLoading(false);
         onSuccess();
     };

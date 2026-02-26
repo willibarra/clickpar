@@ -15,12 +15,8 @@ interface EditUserModalProps {
 }
 
 const roles: { value: UserRole; label: string }[] = [
+    { value: 'staff', label: 'Vendedor / Staff' },
     { value: 'super_admin', label: 'Super Admin' },
-    { value: 'staff', label: 'Staff' },
-    { value: 'vendedor', label: 'Vendedor' },
-    { value: 'customer', label: 'Cliente' },
-    { value: 'affiliate', label: 'Afiliado' },
-    { value: 'proveedor', label: 'Proveedor' },
 ];
 
 // Group permissions by module

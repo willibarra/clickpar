@@ -12,22 +12,18 @@ import { EditUserModal } from './edit-user-modal';
 import { getAllUsers, deleteUser } from '@/lib/actions/users';
 import { UserProfile, UserRole } from '@/lib/actions/users.types';
 
-const roleLabels: Record<UserRole, string> = {
+const roleLabels: Record<string, string> = {
     super_admin: 'Super Admin',
-    staff: 'Staff',
+    staff: 'Vendedor / Staff',
     customer: 'Cliente',
     affiliate: 'Afiliado',
-    vendedor: 'Vendedor',
-    proveedor: 'Proveedor',
 };
 
-const roleColors: Record<UserRole, string> = {
+const roleColors: Record<string, string> = {
     super_admin: 'bg-red-500/20 text-red-500',
     staff: 'bg-[#86EFAC]/20 text-[#86EFAC]',
     customer: 'bg-blue-500/20 text-blue-500',
     affiliate: 'bg-purple-500/20 text-purple-500',
-    vendedor: 'bg-[#F97316]/20 text-[#F97316]',
-    proveedor: 'bg-yellow-500/20 text-yellow-500',
 };
 
 export function UserManagementPanel() {
@@ -133,7 +129,7 @@ export function UserManagementPanel() {
                     </div>
                     <div className="rounded-lg bg-[#1a1a1a] p-3 text-center">
                         <p className="text-2xl font-bold text-[#F97316]">
-                            {users.filter(u => u.role === 'vendedor' || u.role === 'staff').length}
+                            {users.filter(u => u.role === 'staff').length}
                         </p>
                         <p className="text-xs text-muted-foreground">Staff/Vendedores</p>
                     </div>
