@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { Users, Plus, Loader2, Search, Shield, Trash2, Edit2, Phone, Mail } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ export function UserManagementPanel() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const loadUsers = async () => {
         setLoading(true);
@@ -48,6 +50,11 @@ export function UserManagementPanel() {
 
     useEffect(() => {
         loadUsers();
+        // Obtener el usuario actual
+        const supabase = createClient();
+        supabase.auth.getUser().then(({ data }) => {
+            setCurrentUserId(data.user?.id || null);
+        });
     }, []);
 
     const handleDeleteUser = async (userId: string) => {
@@ -197,19 +204,21 @@ export function UserManagementPanel() {
                                         >
                                             <Edit2 className="h-4 w-4" />
                                         </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDeleteUser(user.id)}
-                                            disabled={deletingUserId === user.id}
-                                            className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-500"
-                                        >
-                                            {deletingUserId === user.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                            )}
-                                        </Button>
+                                        {user.id !== currentUserId && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDeleteUser(user.id)}
+                                                disabled={deletingUserId === user.id}
+                                                className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-500"
+                                            >
+                                                {deletingUserId === user.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4" />
+                                                )}
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

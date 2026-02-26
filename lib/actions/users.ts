@@ -133,6 +133,12 @@ export async function deleteUser(userId: string) {
     const supabase = await createAdminClient();
 
     try {
+        // Verificar que no se está eliminando a sí mismo
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser?.id === userId) {
+            return { error: 'No podés eliminarte a vos mismo' };
+        }
+
         // Eliminar de auth.users (esto también eliminará el perfil por CASCADE)
         const { error } = await supabase.auth.admin.deleteUser(userId);
 
