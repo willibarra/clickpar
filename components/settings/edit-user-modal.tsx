@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { Loader2, X, User, Phone, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { updateUser, UserProfile, UserRole, AVAILABLE_PERMISSIONS, DEFAULT_PERMISSIONS } from '@/lib/actions/users';
+import { updateUser } from '@/lib/actions/users';
+import { UserProfile, UserRole, AVAILABLE_PERMISSIONS, DEFAULT_PERMISSIONS } from '@/lib/actions/users.types';
 
 interface EditUserModalProps {
     isOpen: boolean;
@@ -212,8 +213,8 @@ export function EditUserModal({ isOpen, user, onClose, onSuccess }: EditUserModa
                                                         disabled={isSuperAdmin}
                                                         onClick={() => togglePermission(key)}
                                                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${active
-                                                                ? 'bg-[#86EFAC]/20 text-[#86EFAC] border border-[#86EFAC]/30'
-                                                                : 'bg-muted/20 text-muted-foreground border border-border/30 hover:bg-muted/40'
+                                                            ? 'bg-[#86EFAC]/20 text-[#86EFAC] border border-[#86EFAC]/30'
+                                                            : 'bg-muted/20 text-muted-foreground border border-border/30 hover:bg-muted/40'
                                                             } ${isSuperAdmin ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                                                     >
                                                         {label}

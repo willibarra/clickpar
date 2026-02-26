@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Loader2, X, User, Mail, Lock, Phone, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { createUser, UserRole } from '@/lib/actions/users';
+import { createUser } from '@/lib/actions/users';
+import { UserRole } from '@/lib/actions/users.types';
 
 interface AddUserModalProps {
     isOpen: boolean;
@@ -168,8 +169,8 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
                                     type="button"
                                     onClick={() => setRole(r.value)}
                                     className={`rounded-lg border p-3 text-left transition-all ${role === r.value
-                                            ? 'border-[#86EFAC] bg-[#86EFAC]/10'
-                                            : 'border-border bg-[#1a1a1a] hover:border-[#333]'
+                                        ? 'border-[#86EFAC] bg-[#86EFAC]/10'
+                                        : 'border-border bg-[#1a1a1a] hover:border-[#333]'
                                         }`}
                                 >
                                     <p className="font-medium text-foreground text-sm">{r.label}</p>

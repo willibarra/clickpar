@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { UserManagementPanel } from '@/components/settings/user-management-panel';
-import { StaffManagementPanel } from '@/components/settings/staff-management-panel';
+
 import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
 import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
@@ -266,19 +266,7 @@ export default function SettingsPage() {
                 </CollapsibleSection>
             )}
 
-            {/* 3b. Equipo (Super Admin only) */}
-            {isSuperAdmin && (
-                <CollapsibleSection
-                    icon={<Shield className="h-5 w-5" />}
-                    iconColor="text-yellow-400"
-                    title="Equipo de Trabajo"
-                    description="Crear y gestionar vendedoras y staff"
-                >
-                    <div className="p-0">
-                        <StaffManagementPanel />
-                    </div>
-                </CollapsibleSection>
-            )}
+
 
             {/* 4. Alertas de Stock (Admin) */}
             {isAdmin && (

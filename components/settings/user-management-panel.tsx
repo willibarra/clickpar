@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { AddUserModal } from './add-user-modal';
 import { EditUserModal } from './edit-user-modal';
-import { getAllUsers, deleteUser, UserProfile, UserRole } from '@/lib/actions/users';
+import { getAllUsers, deleteUser } from '@/lib/actions/users';
+import { UserProfile, UserRole } from '@/lib/actions/users.types';
 
 const roleLabels: Record<UserRole, string> = {
     super_admin: 'Super Admin',
