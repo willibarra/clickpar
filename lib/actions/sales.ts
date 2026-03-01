@@ -123,7 +123,6 @@ export async function createQuickSale(data: QuickSaleData) {
                 end_date: endDate.toISOString().split('T')[0],
                 is_active: true,
                 payment_method: 'cash',
-                whatsapp_instance: data.whatsappInstance || null,
             });
 
         if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
