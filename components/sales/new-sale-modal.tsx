@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare } from 'lucide-react';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare, Copy } from 'lucide-react';
 import { createQuickSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
@@ -36,6 +36,7 @@ export function NewSaleModal() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [copied, setCopied] = useState(false);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [allSlots, setAllSlots] = useState<SlotWithAccount[]>([]);
     const [dbPlatforms, setDbPlatforms] = useState<DBPlatform[]>([]);
@@ -268,22 +269,7 @@ export function NewSaleModal() {
 
             // Show success
             setSuccess(true);
-
-            // Reset and close after delay
-            setTimeout(() => {
-                setSelectedPlatform('');
-                setSelectedSlotId(null);
-                setSalePrice('');
-                setDefaultPrice(null);
-                setPriceOverridden(false);
-                setSelectedCustomer(null);
-                setCustomerSearch('');
-                setSuccess(false);
-                setOpen(false);
-                setLoading(false);
-                // Force page refresh to show new sale
-                window.location.reload();
-            }, 1500);
+            setLoading(false);
 
         } catch (err: any) {
             setError(err.message || 'Error desconocido');
@@ -327,12 +313,57 @@ export function NewSaleModal() {
                 </DialogHeader>
 
                 {success ? (
-                    <div className="py-12 text-center">
+                    <div className="py-8 text-center">
                         <div className="mx-auto w-16 h-16 rounded-full bg-[#86EFAC]/20 flex items-center justify-center mb-4">
                             <Check className="h-8 w-8 text-[#86EFAC]" />
                         </div>
                         <h3 className="text-lg font-semibold text-foreground">¡Venta Registrada!</h3>
-                        <p className="text-muted-foreground text-sm mt-1">La venta se ha guardado correctamente</p>
+                        <p className="text-muted-foreground text-sm mt-1">
+                            {selectedPlatform} → {selectedCustomer?.full_name || 'Cliente'}
+                        </p>
+                        <p className="text-lg font-semibold text-[#86EFAC] mt-1">
+                            Gs. {Number(salePrice).toLocaleString('es-PY')}
+                        </p>
+                        <div className="flex gap-2 justify-center mt-4">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    const now = new Date();
+                                    const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                    const text = [
+                                        `✅ *Venta Registrada*`,
+                                        `📦 Servicio: ${selectedPlatform}`,
+                                        `👤 Cliente: ${selectedCustomer?.full_name || 'N/A'}`,
+                                        `📱 Teléfono: ${selectedCustomer?.phone || 'N/A'}`,
+                                        `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,
+                                        `⏰ Duración: ${duration} días`,
+                                        `📅 Fecha: ${fecha}`,
+                                    ].join('\n');
+                                    navigator.clipboard.writeText(text).then(() => {
+                                        setCopied(true);
+                                        setTimeout(() => setCopied(false), 2000);
+                                    });
+                                }}
+                                className={`gap-2 transition-all ${copied ? 'border-[#86EFAC] text-[#86EFAC]' : ''}`}
+                            >
+                                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                {copied ? '¡Copiado!' : 'Copiar Datos'}
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                                onClick={() => {
+                                    resetForm();
+                                    setOpen(false);
+                                    window.location.reload();
+                                }}
+                            >
+                                Cerrar
+                            </Button>
+                        </div>
                     </div>
                 ) : (
                     <form onSubmit={handleSubmit}>

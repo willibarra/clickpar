@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Repeat, Loader2, Monitor, ChevronDown, UserCircle, AlertTriangle, Trash2, Shield, ArrowRight, Check, X } from 'lucide-react';
+import { Repeat, Loader2, Monitor, ChevronDown, UserCircle, AlertTriangle, Trash2, Shield, ArrowRight, Check, X, Copy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { swapService, getAccountSiblings, bulkSwapAccountClients } from '@/lib/actions/sales';
 import { quarantineAccount, deleteMotherAccount } from '@/lib/actions/inventory';
@@ -76,6 +76,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [postSwapMessage, setPostSwapMessage] = useState('');
     const [accountActionDone, setAccountActionDone] = useState('');
+    const [copied, setCopied] = useState(false);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -483,7 +484,29 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                         )}
 
                         {/* Footer */}
-                        <div className="flex items-center justify-end border-t border-border p-5">
+                        <div className="flex items-center justify-between border-t border-border p-5">
+                            <button
+                                onClick={() => {
+                                    const now = new Date();
+                                    const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                    const text = [
+                                        `🔄 *Intercambio de Servicio*`,
+                                        `👤 Cliente: ${customerName}`,
+                                        `📦 Plataforma: ${service.platform}`,
+                                        `📧 Cuenta anterior: ${service.account_email}`,
+                                        `✅ ${postSwapMessage}`,
+                                        `📅 Fecha: ${fecha}`,
+                                    ].join('\n');
+                                    navigator.clipboard.writeText(text).then(() => {
+                                        setCopied(true);
+                                        setTimeout(() => setCopied(false), 2000);
+                                    });
+                                }}
+                                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${copied ? 'bg-[#86EFAC]/10 text-[#86EFAC]' : 'bg-[#222] text-muted-foreground hover:text-foreground hover:bg-[#333]'}`}
+                            >
+                                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                {copied ? '¡Copiado!' : 'Copiar Datos'}
+                            </button>
                             <button
                                 onClick={handleFinish}
                                 className="flex items-center gap-2 rounded-lg bg-[#86EFAC]/10 px-5 py-2 text-sm font-medium text-[#86EFAC] hover:bg-[#86EFAC]/20 transition-colors"

@@ -15,7 +15,9 @@ import {
     Layers,
     MousePointer2,
     Trash2,
-    AlertCircle
+    AlertCircle,
+    Copy,
+    Check
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { SlotSelectorModal } from './slot-selector-modal';
@@ -56,6 +58,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const [showSlotModal, setShowSlotModal] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<any>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
 
     // Combo mode state
     const [comboItems, setComboItems] = useState<ComboItem[]>([]);
@@ -150,10 +153,6 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
             setSaleComplete(true);
             setIsLoading(false);
 
-            setTimeout(() => {
-                handleReset();
-            }, 3000);
-
         } catch (error) {
             console.error(error);
             setErrorMsg('Error inesperado procesando la venta');
@@ -190,6 +189,22 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         return saleMode === 'combo' ? comboPrice : price;
     };
 
+    const handleCopyData = () => {
+        const now = new Date();
+        const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const text = [
+            `✅ *Venta Registrada*`,
+            `📦 Servicio: ${getSaleName()}`,
+            `📱 Cliente: ${customerPhone}`,
+            `💰 Precio: Gs. ${getFinalPrice().toLocaleString('es-PY')}`,
+            `📅 Fecha: ${fecha}`,
+        ].join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
     if (saleComplete) {
         return (
             <Card className="border-[#86EFAC]/50 bg-gradient-to-br from-[#86EFAC]/10 to-[#1a1a1a]">
@@ -202,6 +217,25 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                     <p className="mt-1 text-lg font-semibold text-[#86EFAC]">
                         Gs. {getFinalPrice().toLocaleString('es-PY')}
                     </p>
+                    <div className="flex gap-2 mt-4">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCopyData}
+                            className={`gap-2 transition-all ${copied ? 'border-[#86EFAC] text-[#86EFAC]' : ''}`}
+                        >
+                            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                            {copied ? '¡Copiado!' : 'Copiar Datos'}
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={handleReset}
+                            className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/80 gap-2"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Nueva Venta
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         );
