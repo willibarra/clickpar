@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { normalizePhone } from '@/lib/utils/phone';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
         const { data: customer } = await supabase
             .from('customers' as any)
             .select('id, full_name, phone, notes')
-            .eq('phone', customerPhone)
+            .eq('phone', normalizePhone(customerPhone))
             .single();
 
         if (!customer) {

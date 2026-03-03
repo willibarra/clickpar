@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { createKommoLead, addNoteToLead } from '@/lib/kommo';
 import { sendSaleCredentials, getWhatsAppSettings } from '@/lib/whatsapp';
+import { normalizePhone } from '@/lib/utils/phone';
 
 interface QuickSaleData {
     platform: string;
@@ -29,7 +30,7 @@ export async function createQuickSale(data: QuickSaleData) {
             const { data: existingCustomerData } = await (supabase
                 .from('customers') as any) // Cast required due to missing types
                 .select('id')
-                .eq('phone', data.customerPhone)
+                .eq('phone', normalizePhone(data.customerPhone))
                 .single();
 
             if (existingCustomerData) {
@@ -530,7 +531,7 @@ export async function createBundleSale(data: BundleSaleData) {
             const { data: existingCustomer } = await (supabase
                 .from('customers') as any)
                 .select('id')
-                .eq('phone', data.customerPhone)
+                .eq('phone', normalizePhone(data.customerPhone))
                 .single();
 
             if (existingCustomer) {
@@ -749,7 +750,7 @@ export async function processComboSale(data: ComboSaleData) {
             const { data: existingCustomer } = await (supabase
                 .from('customers') as any)
                 .select('id')
-                .eq('phone', data.customerPhone)
+                .eq('phone', normalizePhone(data.customerPhone))
                 .single();
 
             if (existingCustomer) {

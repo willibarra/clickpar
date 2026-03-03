@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { normalizePhone } from '@/lib/utils/phone';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -13,18 +14,23 @@ export async function GET(request: NextRequest) {
     const supabase = await createAdminClient();
     const pattern = `%${q}%`;
 
+    // If the query looks like a phone number, normalize to 595 format
+    const digits = q.replace(/\D/g, '');
+    const isPhoneQuery = digits.length >= 6 && /^\+?\d+$/.test(q);
+    const phonePattern = isPhoneQuery ? `%${normalizePhone(digits)}%` : pattern;
+
     try {
         // 1. Search customers by name or phone (partial)
         const { data: customers } = await (supabase.from('customers') as any)
             .select('id, full_name, phone, email')
-            .or(`full_name.ilike.${pattern},phone.ilike.${pattern}`)
+            .or(`full_name.ilike.${pattern},phone.ilike.${phonePattern}`)
             .limit(limit);
 
         // 2. Search mother accounts by email, platform, supplier_name
         const { data: accounts } = await supabase
             .from('mother_accounts')
             .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_slots(*)')
-            .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${pattern}`)
+            .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${phonePattern}`)
             .order('platform')
             .limit(limit);
 
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest) {
         const { data: suppliers } = await supabase
             .from('suppliers')
             .select('id, name, phone')
-            .or(`name.ilike.${pattern},phone.ilike.${pattern}`)
+            .or(`name.ilike.${pattern},phone.ilike.${phonePattern}`)
             .limit(limit);
 
         // 4. For found customers, get their active services with FULL details

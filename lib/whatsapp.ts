@@ -4,6 +4,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { normalizePhone } from '@/lib/utils/phone';
 
 // Untyped supabase client for whatsapp tables (not yet in database.types.ts)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -406,16 +407,7 @@ async function pickInstance(preferredInstance?: string): Promise<string> {
  * Returns: 595973682124
  */
 function formatPhone(phone: string): string {
-    let clean = phone.replace(/[\s\-\+\(\)]/g, '');
-    // If starts with 0, replace with 595 (Paraguay)
-    if (clean.startsWith('0')) {
-        clean = '595' + clean.substring(1);
-    }
-    // If doesn't start with country code, add 595
-    if (!clean.startsWith('595')) {
-        clean = '595' + clean;
-    }
-    return clean;
+    return normalizePhone(phone);
 }
 
 /**

@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
+import { normalizePhone } from '@/lib/utils/phone';
 import { revalidatePath } from 'next/cache';
 
 // Create an untyped Supabase client for bulk operations
@@ -34,10 +35,7 @@ export async function bulkImportCustomers(
             }
 
             // Normalizar teléfono
-            let phone = String(row.phone).trim().replace(/\D/g, '');
-            if (!phone.startsWith('595')) {
-                phone = '595' + phone.replace(/^0/, '');
-            }
+            const phone = normalizePhone(String(row.phone));
 
             // Verificar duplicado
             const { data: existing } = await supabase

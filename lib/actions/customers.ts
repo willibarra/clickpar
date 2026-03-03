@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/server';
+import { normalizePhone } from '@/lib/utils/phone';
 
 // ============================================
 // CUSTOMERS (Profiles with customer role)
@@ -33,7 +34,7 @@ export async function createCustomer(formData: FormData) {
         await (supabase.from('profiles') as any)
             .update({
                 full_name: formData.get('full_name') as string,
-                phone_number: formData.get('phone_number') as string,
+                phone_number: normalizePhone(formData.get('phone_number') as string || ''),
                 role: 'customer',
             })
             .eq('id', authData.user.id);
@@ -48,7 +49,7 @@ export async function updateCustomer(id: string, formData: FormData) {
 
     const data = {
         full_name: formData.get('full_name') as string,
-        phone_number: formData.get('phone_number') as string,
+        phone_number: normalizePhone(formData.get('phone_number') as string || ''),
     };
 
     const { error } = await (supabase.from('profiles') as any)

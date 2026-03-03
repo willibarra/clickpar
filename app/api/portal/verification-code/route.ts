@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAuthClient, createAdminClient } from '@/lib/supabase/server';
 import { createClient as createRawClient } from '@supabase/supabase-js';
 import { getValidGmailToken, searchVerificationEmails, extractVerificationCode } from '@/lib/gmail';
+import { normalizePhone } from '@/lib/utils/phone';
 
 /**
  * GET /api/portal/verification-code?saleId=xxx
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const { data: customer } = await (admin.from('customers') as any)
         .select('id')
-        .eq('phone', profile.phone_number)
+        .eq('phone', normalizePhone(profile.phone_number))
         .single();
 
     if (!customer) {

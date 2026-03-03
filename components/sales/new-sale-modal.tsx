@@ -12,6 +12,7 @@ import { createQuickSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
 import { SlotWithAccount } from '@/lib/utils/tetris-algorithm';
+import { normalizePhone } from '@/lib/utils/phone';
 
 interface DBPlatform {
     id: string;
@@ -140,10 +141,19 @@ export function NewSaleModal() {
     const filteredCustomers = useMemo(() => {
         if (!customerSearch.trim()) return [];
         const search = customerSearch.toLowerCase();
-        return customers.filter(c =>
-            c.full_name?.toLowerCase().includes(search) ||
-            c.phone?.includes(search)
-        ).slice(0, 8);
+        const searchDigits = search.replace(/\D/g, '');
+        // Normalize the search term so 0973… matches 595973… and vice-versa
+        const normalizedSearch = searchDigits.length >= 6 ? normalizePhone(searchDigits) : '';
+        return customers.filter(c => {
+            if (c.full_name?.toLowerCase().includes(search)) return true;
+            if (c.phone?.includes(search)) return true;
+            // Also match the normalized variant
+            if (normalizedSearch && c.phone) {
+                const normalizedPhone = normalizePhone(c.phone);
+                return normalizedPhone.includes(normalizedSearch);
+            }
+            return false;
+        }).slice(0, 8);
     }, [customers, customerSearch]);
 
     // Reset form when platform changes
@@ -188,11 +198,8 @@ export function NewSaleModal() {
         setCreatingCustomer(true);
         setError(null);
 
-        // Normalize phone
-        let phone = newCustomerPhone.trim().replace(/\D/g, '');
-        if (!phone.startsWith('595')) {
-            phone = '595' + phone.replace(/^0/, '');
-        }
+        // Normalize phone (0→595)
+        const phone = normalizePhone(newCustomerPhone);
 
         const { data, error: createError } = await (supabase
             .from('customers') as any)

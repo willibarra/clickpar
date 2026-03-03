@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { normalizePhone } from '@/lib/utils/phone';
 
 /**
  * GET /api/portal/services
@@ -32,7 +33,7 @@ export async function GET() {
     // Find customer by phone
     const { data: customer } = await (admin.from('customers') as any)
         .select('id, full_name')
-        .eq('phone', profile.phone_number)
+        .eq('phone', normalizePhone(profile.phone_number))
         .single();
 
     if (!customer) {

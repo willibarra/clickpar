@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createVentaLead, addNoteToLead, moveVentaLeadToStatus, formatEmailAntiSpam, formatPasswordAntiSpam } from '@/lib/kommo';
+import { normalizePhone } from '@/lib/utils/phone';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
         const { data: existingCustomer } = await supabase
             .from('customers' as any)
             .select('id')
-            .eq('phone', customerPhone)
+            .eq('phone', normalizePhone(customerPhone))
             .single();
 
         if (existingCustomer) {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
             const { data: newCustomer, error: createError } = await supabase
                 .from('customers' as any)
                 .insert({
-                    phone: customerPhone,
+                    phone: normalizePhone(customerPhone),
                     full_name: customerName || customerPhone,
                     notes: 'Creado desde Kommo (venta automática)',
                 })
