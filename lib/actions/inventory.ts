@@ -405,3 +405,30 @@ export async function reactivateAccount(accountId: string) {
     revalidatePath('/inventory');
     return { success: true };
 }
+
+/**
+ * Returns mother accounts where ALL slots are currently available.
+ * These are the "Cuentas Completas" that can be sold as a whole.
+ */
+export async function getAvailableFullAccounts() {
+    const supabase = await createClient();
+
+    const { data, error } = await (supabase.from('mother_accounts') as any)
+        .select(`
+            id, platform, email, max_slots, renewal_date, sale_price_gs,
+            sale_slots (id, status)
+        `)
+        .eq('status', 'active')
+        .order('platform');
+
+    if (error) return { data: [], error: error.message };
+
+    // Only return accounts where ALL slots are 'available'
+    const fullAccounts = (data || []).filter((account: any) => {
+        const slots = account.sale_slots || [];
+        return slots.length > 0 && slots.every((s: any) => s.status === 'available');
+    });
+
+    return { data: fullAccounts };
+}
+

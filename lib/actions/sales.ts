@@ -928,3 +928,110 @@ export async function processComboSale(data: ComboSaleData) {
         return { error: error.message || 'Error desconocido procesando combo' };
     }
 }
+
+/**
+ * Sell a complete mother account (all available slots) to a single customer.
+ * - Marks ALL slots as 'sold'
+ * - Creates one sales record per slot (same customer, same start_date)
+ * - Sends WhatsApp credentials if instance provided
+ */
+export async function createFullAccountSale({
+    motherAccountId,
+    customerId,
+    price,
+    durationDays = 30,
+    whatsappInstance,
+}: {
+    motherAccountId: string;
+    customerId: string;
+    price: number;
+    durationDays?: number;
+    whatsappInstance?: string;
+}) {
+    const supabase = await createAdminClient();
+
+    try {
+        // 1. Get the mother account with all available slots
+        const { data: account, error: accountError } = await (supabase
+            .from('mother_accounts') as any)
+            .select('id, platform, email, password, renewal_date, sale_slots (id, slot_identifier, status)')
+            .eq('id', motherAccountId)
+            .single();
+
+        if (accountError || !account) throw new Error('Cuenta madre no encontrada');
+
+        const availableSlots = (account.sale_slots || []).filter((s: any) => s.status === 'available');
+
+        if (availableSlots.length === 0) throw new Error('No hay slots disponibles en esta cuenta');
+
+        // 2. Get customer info
+        const { data: customer } = await (supabase.from('customers') as any)
+            .select('id, full_name, phone')
+            .eq('id', customerId)
+            .single();
+
+        if (!customer) throw new Error('Cliente no encontrado');
+
+        // 3. Calculate start date
+        const startDate = new Date().toISOString().split('T')[0];
+
+        // 4. Create one sale per slot
+        const salesInsert = availableSlots.map((slot: any) => ({
+            customer_id: customerId,
+            slot_id: slot.id,
+            amount_gs: Math.round(price / availableSlots.length),
+            start_date: startDate,
+            is_active: true,
+        }));
+
+        const { error: salesError } = await (supabase.from('sales') as any).insert(salesInsert);
+        if (salesError) throw new Error(`Error creando ventas: ${salesError.message}`);
+
+        // 5. Mark all slots as sold
+        const slotIds = availableSlots.map((s: any) => s.id);
+        await (supabase.from('sale_slots') as any)
+            .update({ status: 'sold' })
+            .in('id', slotIds);
+
+        // 6. Send WhatsApp credentials if instance provided
+        if (whatsappInstance && customer.phone) {
+            try {
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() + durationDays);
+                await sendSaleCredentials({
+                    customerPhone: normalizePhone(customer.phone),
+                    customerName: customer.full_name || customer.phone,
+                    platform: account.platform,
+                    email: account.email,
+                    password: account.password,
+                    profile: `Cuenta Completa (${availableSlots.length} perfiles)`,
+                    expirationDate: endDate.toLocaleDateString('es-PY'),
+                    instanceName: whatsappInstance,
+                });
+            } catch (waErr) {
+                console.warn('WhatsApp send failed (non-critical):', waErr);
+            }
+        }
+
+        // 7. Audit log
+        await logAction('create_full_account_sale', 'mother_account', motherAccountId, {
+            message: `vendió cuenta completa de ${account.platform} a ${customer.full_name || customer.phone} (${availableSlots.length} perfiles)`,
+        });
+
+        revalidatePath('/');
+        revalidatePath('/sales');
+        revalidatePath('/inventory');
+        revalidatePath('/renewals');
+
+        return {
+            success: true,
+            platform: account.platform,
+            slotsCount: availableSlots.length,
+        };
+
+    } catch (error: any) {
+        console.error('Error en createFullAccountSale:', error);
+        return { error: error.message || 'Error desconocido' };
+    }
+}
+

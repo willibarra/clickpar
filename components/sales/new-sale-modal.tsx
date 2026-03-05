@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare, Copy } from 'lucide-react';
-import { createQuickSale } from '@/lib/actions/sales';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare, Copy, Package } from 'lucide-react';
+import { createQuickSale, createFullAccountSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
 import { SlotWithAccount } from '@/lib/utils/tetris-algorithm';
@@ -32,6 +32,14 @@ interface WAInstance {
     alias?: string;
 }
 
+interface FullAccount {
+    id: string;
+    platform: string;
+    email: string;
+    max_slots: number;
+    renewal_date: string;
+}
+
 export function NewSaleModal() {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -42,6 +50,10 @@ export function NewSaleModal() {
     const [allSlots, setAllSlots] = useState<SlotWithAccount[]>([]);
     const [dbPlatforms, setDbPlatforms] = useState<DBPlatform[]>([]);
     const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+    const [fullAccounts, setFullAccounts] = useState<FullAccount[]>([]);
+
+    // Sale mode: 'profile' | 'full'
+    const [saleMode, setSaleMode] = useState<'profile' | 'full'>('profile');
 
     // Customer search & selection
     const [customerSearch, setCustomerSearch] = useState('');
@@ -54,6 +66,7 @@ export function NewSaleModal() {
     // Form state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
     const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+    const [selectedFullAccountId, setSelectedFullAccountId] = useState<string>('');
     const [salePrice, setSalePrice] = useState<string>('');
     const [defaultPrice, setDefaultPrice] = useState<number | null>(null);
     const [duration, setDuration] = useState<string>('30');
@@ -113,6 +126,19 @@ export function NewSaleModal() {
                     setAvailablePlatforms(platformsWithStock);
                 });
 
+            // Fetch full accounts (all slots available)
+            supabase
+                .from('mother_accounts' as any)
+                .select('id, platform, email, max_slots, renewal_date, sale_slots (id, status)')
+                .eq('status', 'active')
+                .then(({ data }) => {
+                    const full = ((data || []) as any[]).filter((acct: any) => {
+                        const slots = acct.sale_slots || [];
+                        return slots.length > 0 && slots.every((s: any) => s.status === 'available');
+                    });
+                    setFullAccounts(full as FullAccount[]);
+                });
+
             // Fetch WhatsApp instances + settings (for aliases)
             Promise.all([
                 fetch('/api/whatsapp?action=instances').then(r => r.json()),
@@ -120,7 +146,7 @@ export function NewSaleModal() {
             ]).then(([instData, settData]) => {
                 const instances = (instData.instances || []) as WAInstance[];
                 const settings = settData.settings;
-                const connected = instances.filter(i => i.connected).map((inst, idx) => ({
+                const connected = instances.filter(i => i.connected).map((inst) => ({
                     ...inst,
                     alias: settings
                         ? (inst.name === settings.instance_1_name ? settings.instance_1_alias
@@ -129,25 +155,22 @@ export function NewSaleModal() {
                         : inst.name,
                 }));
                 setWaInstances(connected);
-                // Auto-select the first one if only one is available
                 if (connected.length === 1) {
                     setSelectedWaInstance(connected[0].name);
                 }
             }).catch(() => { /* ignore */ });
         }
-    }, [open, supabase]);
+    }, [open]);
 
     // Filter customers based on search
     const filteredCustomers = useMemo(() => {
         if (!customerSearch.trim()) return [];
         const search = customerSearch.toLowerCase();
         const searchDigits = search.replace(/\D/g, '');
-        // Normalize the search term so 0973… matches 595973… and vice-versa
         const normalizedSearch = searchDigits.length >= 6 ? normalizePhone(searchDigits) : '';
         return customers.filter(c => {
             if (c.full_name?.toLowerCase().includes(search)) return true;
             if (c.phone?.includes(search)) return true;
-            // Also match the normalized variant
             if (normalizedSearch && c.phone) {
                 const normalizedPhone = normalizePhone(c.phone);
                 return normalizedPhone.includes(normalizedSearch);
@@ -156,9 +179,26 @@ export function NewSaleModal() {
         }).slice(0, 8);
     }, [customers, customerSearch]);
 
-    // Reset form when platform changes
+    // Full accounts filtered by selected platform
+    const filteredFullAccounts = useMemo(() => {
+        if (!selectedPlatform) return fullAccounts;
+        return fullAccounts.filter(a => a.platform === selectedPlatform);
+    }, [fullAccounts, selectedPlatform]);
+
+    // Unique platforms with full accounts available
+    const platformsWithFullAccounts = useMemo(() => {
+        return [...new Set(fullAccounts.map(a => a.platform))];
+    }, [fullAccounts]);
+
+    // All platforms with any stock (union of individual + full)
+    const allAvailablePlatforms = useMemo(() => {
+        return [...new Set([...availablePlatforms, ...platformsWithFullAccounts])].sort();
+    }, [availablePlatforms, platformsWithFullAccounts]);
+
+    // Reset form when platform or saleMode changes
     useEffect(() => {
         setSelectedSlotId(null);
+        setSelectedFullAccountId('');
         setPriceOverridden(false);
         if (selectedPlatform) {
             const plat = dbPlatforms.find(p => p.name === selectedPlatform);
@@ -169,7 +209,7 @@ export function NewSaleModal() {
             setDefaultPrice(null);
             setSalePrice('');
         }
-    }, [selectedPlatform, dbPlatforms]);
+    }, [selectedPlatform, saleMode, dbPlatforms]);
 
     const handleSlotSelect = useCallback((slotId: string, slotDefaultPrice: number | null) => {
         setSelectedSlotId(slotId);
@@ -198,7 +238,6 @@ export function NewSaleModal() {
         setCreatingCustomer(true);
         setError(null);
 
-        // Normalize phone (0→595)
         const phone = normalizePhone(newCustomerPhone);
 
         const { data, error: createError } = await (supabase
@@ -216,7 +255,6 @@ export function NewSaleModal() {
             return;
         }
 
-        // Add to list and select
         setCustomers(prev => [data, ...prev]);
         setSelectedCustomer(data);
         setShowNewCustomerForm(false);
@@ -249,32 +287,56 @@ export function NewSaleModal() {
             return;
         }
 
-        if (!selectedSlotId) {
-            setError('Selecciona un slot disponible');
-            return;
-        }
-
         setLoading(true);
         setError(null);
 
         try {
-            const result = await createQuickSale({
-                platform: selectedPlatform,
-                customerPhone: selectedCustomer.phone || '',
-                customerId: selectedCustomer.id,
-                price: Number(salePrice),
-                specificSlotId: selectedSlotId,
-                durationDays: parseInt(duration) || 30,
-                whatsappInstance: selectedWaInstance || undefined,
-            });
+            if (saleMode === 'full') {
+                // Venta de cuenta completa
+                if (!selectedFullAccountId) {
+                    setError('Selecciona una cuenta completa disponible');
+                    setLoading(false);
+                    return;
+                }
 
-            if (result.error) {
-                setError(result.error);
-                setLoading(false);
-                return;
+                const result = await createFullAccountSale({
+                    motherAccountId: selectedFullAccountId,
+                    customerId: selectedCustomer.id,
+                    price: Number(salePrice),
+                    durationDays: parseInt(duration) || 30,
+                    whatsappInstance: selectedWaInstance || undefined,
+                });
+
+                if (result.error) {
+                    setError(result.error);
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                // Venta de perfil individual
+                if (!selectedSlotId) {
+                    setError('Selecciona un slot disponible');
+                    setLoading(false);
+                    return;
+                }
+
+                const result = await createQuickSale({
+                    platform: selectedPlatform,
+                    customerPhone: selectedCustomer.phone || '',
+                    customerId: selectedCustomer.id,
+                    price: Number(salePrice),
+                    specificSlotId: selectedSlotId,
+                    durationDays: parseInt(duration) || 30,
+                    whatsappInstance: selectedWaInstance || undefined,
+                });
+
+                if (result.error) {
+                    setError(result.error);
+                    setLoading(false);
+                    return;
+                }
             }
 
-            // Show success
             setSuccess(true);
             setLoading(false);
 
@@ -287,6 +349,7 @@ export function NewSaleModal() {
     const resetForm = () => {
         setSelectedPlatform('');
         setSelectedSlotId(null);
+        setSelectedFullAccountId('');
         setSalePrice('');
         setDefaultPrice(null);
         setPriceOverridden(false);
@@ -298,7 +361,10 @@ export function NewSaleModal() {
         setSelectedWaInstance('');
         setError(null);
         setSuccess(false);
+        setSaleMode('profile');
     };
+
+    const selectedFullAccount = fullAccounts.find(a => a.id === selectedFullAccountId);
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => {
@@ -326,7 +392,7 @@ export function NewSaleModal() {
                         </div>
                         <h3 className="text-lg font-semibold text-foreground">¡Venta Registrada!</h3>
                         <p className="text-muted-foreground text-sm mt-1">
-                            {selectedPlatform} → {selectedCustomer?.full_name || 'Cliente'}
+                            {selectedPlatform} {saleMode === 'full' ? '(Cuenta Completa)' : ''} → {selectedCustomer?.full_name || 'Cliente'}
                         </p>
                         <p className="text-lg font-semibold text-[#86EFAC] mt-1">
                             Gs. {Number(salePrice).toLocaleString('es-PY')}
@@ -341,7 +407,7 @@ export function NewSaleModal() {
                                     const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
                                     const text = [
                                         `✅ *Venta Registrada*`,
-                                        `📦 Servicio: ${selectedPlatform}`,
+                                        `📦 Servicio: ${selectedPlatform}${saleMode === 'full' ? ' (Cuenta Completa)' : ''}`,
                                         `👤 Cliente: ${selectedCustomer?.full_name || 'N/A'}`,
                                         `📱 Teléfono: ${selectedCustomer?.phone || 'N/A'}`,
                                         `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,
@@ -463,7 +529,6 @@ export function NewSaleModal() {
                                             className="pl-9"
                                         />
 
-                                        {/* Dropdown de resultados - solo cuando hay búsqueda activa */}
                                         {customerSearch.trim() && (
                                             <div className="absolute z-10 w-full mt-1 rounded-lg border border-border bg-card shadow-lg max-h-48 overflow-y-auto">
                                                 {filteredCustomers.length > 0 ? (
@@ -513,17 +578,67 @@ export function NewSaleModal() {
                                         <SelectValue placeholder="Seleccionar plataforma" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {availablePlatforms.map((p) => (
-                                            <SelectItem key={p} value={p}>
-                                                {p}
-                                            </SelectItem>
-                                        ))}
+                                        {allAvailablePlatforms.map((p) => {
+                                            const indCount = allSlots.filter((s: any) => s.mother_accounts?.platform === p).length;
+                                            const fullCount = fullAccounts.filter(a => a.platform === p).length;
+                                            return (
+                                                <SelectItem key={p} value={p}>
+                                                    <span>{p}</span>
+                                                    <span className="ml-2 text-xs text-muted-foreground">
+                                                        {indCount > 0 && `Ind: ${indCount}`}
+                                                        {indCount > 0 && fullCount > 0 && ' · '}
+                                                        {fullCount > 0 && `Completas: ${fullCount}`}
+                                                    </span>
+                                                </SelectItem>
+                                            );
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {/* Slot Picker */}
+                            {/* Tipo de venta (only show when platform is selected) */}
                             {selectedPlatform && (
+                                <div className="space-y-2">
+                                    <Label>Tipo de Venta</Label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSaleMode('profile')}
+                                            className={`rounded-lg px-4 py-2.5 text-sm font-medium transition-all border ${saleMode === 'profile'
+                                                ? 'bg-[#86EFAC] text-black border-[#86EFAC]'
+                                                : 'bg-transparent text-muted-foreground border-border hover:border-[#86EFAC]/50'
+                                                }`}
+                                        >
+                                            Por Perfil
+                                            {availablePlatforms.includes(selectedPlatform) && (
+                                                <span className="ml-1 text-xs opacity-70">
+                                                    ({allSlots.filter((s: any) => s.mother_accounts?.platform === selectedPlatform).length})
+                                                </span>
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSaleMode('full')}
+                                            disabled={filteredFullAccounts.length === 0}
+                                            className={`rounded-lg px-4 py-2.5 text-sm font-medium transition-all border ${saleMode === 'full'
+                                                ? 'bg-[#F97316] text-white border-[#F97316]'
+                                                : filteredFullAccounts.length === 0
+                                                    ? 'opacity-40 cursor-not-allowed bg-transparent text-muted-foreground border-border'
+                                                    : 'bg-transparent text-muted-foreground border-border hover:border-[#F97316]/50'
+                                                }`}
+                                        >
+                                            <Package className="inline h-3.5 w-3.5 mr-1" />
+                                            Cuenta Completa
+                                            <span className="ml-1 text-xs opacity-70">
+                                                ({filteredFullAccounts.length})
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Slot Picker — Profile mode */}
+                            {selectedPlatform && saleMode === 'profile' && (
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2">
                                         Slot Asignado
@@ -541,11 +656,54 @@ export function NewSaleModal() {
                                 </div>
                             )}
 
+                            {/* Full Account Picker — Full mode */}
+                            {selectedPlatform && saleMode === 'full' && (
+                                <div className="space-y-2">
+                                    <Label>Cuenta Completa Disponible</Label>
+                                    {filteredFullAccounts.length === 0 ? (
+                                        <div className="rounded-lg border border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                                            No hay cuentas completas disponibles para {selectedPlatform}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {filteredFullAccounts.map(acct => (
+                                                <button
+                                                    key={acct.id}
+                                                    type="button"
+                                                    onClick={() => setSelectedFullAccountId(acct.id)}
+                                                    className={`w-full rounded-lg border p-3 text-left transition-all ${selectedFullAccountId === acct.id
+                                                        ? 'border-[#F97316] bg-[#F97316]/10'
+                                                        : 'border-border hover:border-[#F97316]/40 bg-transparent'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="font-medium text-foreground text-sm">{acct.email}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {acct.max_slots} perfiles · Vence: {acct.renewal_date ? new Date(acct.renewal_date + 'T12:00:00').toLocaleDateString('es-PY') : '—'}
+                                                            </p>
+                                                        </div>
+                                                        <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${selectedFullAccountId === acct.id ? 'border-[#F97316] bg-[#F97316]' : 'border-muted-foreground'}`}>
+                                                            {selectedFullAccountId === acct.id && <Check className="h-2.5 w-2.5 text-white" />}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Precio y Duración */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="sale_price_gs" className="flex items-center gap-2">
                                         Precio (Gs.)
+                                        {saleMode === 'full' && selectedFullAccount && (
+                                            <Badge variant="outline" className="text-xs text-[#F97316] border-[#F97316]/30">
+                                                {selectedFullAccount.max_slots} perfiles
+                                            </Badge>
+                                        )}
                                         {priceOverridden && (
                                             <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
                                                 Modificado
@@ -560,16 +718,11 @@ export function NewSaleModal() {
                                             type="number"
                                             value={salePrice}
                                             onChange={(e) => handlePriceChange(e.target.value)}
-                                            placeholder={defaultPrice?.toString() || '30000'}
+                                            placeholder={defaultPrice?.toString() || '0'}
                                             className="pl-9"
                                             required
                                         />
                                     </div>
-                                    {defaultPrice && (
-                                        <p className="text-xs text-muted-foreground">
-                                            Precio sugerido: Gs. {defaultPrice.toLocaleString('es-PY')}
-                                        </p>
-                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="duration_days">Duración (días)</Label>
@@ -618,14 +771,19 @@ export function NewSaleModal() {
                             </Button>
                             <Button
                                 type="submit"
-                                className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
-                                disabled={loading || !selectedCustomer || !selectedSlotId}
+                                className={saleMode === 'full'
+                                    ? 'bg-[#F97316] hover:bg-[#F97316]/90 text-white'
+                                    : 'bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90'
+                                }
+                                disabled={loading || !selectedCustomer || (saleMode === 'profile' ? !selectedSlotId : !selectedFullAccountId)}
                             >
                                 {loading ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         Procesando...
                                     </>
+                                ) : saleMode === 'full' ? (
+                                    'Vender Cuenta Completa'
                                 ) : (
                                     'Registrar Venta'
                                 )}
