@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { UserRole, UserProfile } from './users.types';
+import { logAction } from './audit';
 
 interface CreateUserData {
     email: string;
@@ -78,21 +79,31 @@ export async function createUser(data: CreateUserData) {
             throw new Error('No se pudo crear el usuario');
         }
 
-        // 2. Actualizar el perfil con los datos adicionales
+        // 2. Wait a moment for the handle_new_user trigger to create the profile row
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 3. Upsert the profile with the correct role and data
+        //    Using upsert instead of update to handle cases where the trigger
+        //    hasn't fired yet or the profile row doesn't exist
         const { error: profileError } = await (supabase
             .from('profiles') as any)
-            .update({
+            .upsert({
+                id: authData.user.id,
                 full_name: data.fullName,
                 phone_number: data.phoneNumber || null,
                 role: data.role,
-            })
-            .eq('id', authData.user.id);
+            }, { onConflict: 'id' });
 
         if (profileError) {
+            console.error('Profile upsert error:', profileError);
             // Si falla el perfil, intentar eliminar el usuario de auth
             await supabase.auth.admin.deleteUser(authData.user.id);
             throw profileError;
         }
+
+        await logAction('create_user', 'user', authData.user.id, {
+            message: `creó al usuario ${data.fullName} (${data.role})`
+        });
 
         revalidatePath('/settings');
         return { success: true, userId: authData.user.id };

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
+import { logAction } from './audit';
 
 // ============================================
 // CUSTOMERS (Profiles with customer role)
@@ -40,6 +41,10 @@ export async function createCustomer(formData: FormData) {
             .eq('id', authData.user.id);
     }
 
+    await logAction('create_customer', 'customer', authData.user?.id || '', {
+        message: `agregó al cliente ${formData.get('full_name')}`
+    });
+
     revalidatePath('/customers');
     return { success: true };
 }
@@ -60,6 +65,10 @@ export async function updateCustomer(id: string, formData: FormData) {
         return { error: error.message };
     }
 
+    await logAction('update_customer', 'customer', id, {
+        message: `actualizó los datos del cliente ${formData.get('full_name')}`
+    });
+
     revalidatePath('/customers');
     return { success: true };
 }
@@ -73,6 +82,10 @@ export async function deleteCustomer(id: string) {
     if (error) {
         return { error: error.message };
     }
+
+    await logAction('delete_customer', 'customer', id, {
+        message: `eliminó un cliente del sistema`
+    });
 
     revalidatePath('/customers');
     return { success: true };

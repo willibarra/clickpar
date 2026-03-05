@@ -2,12 +2,13 @@
 
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { UserManagementPanel } from '@/components/settings/user-management-panel';
+import { AuditLogPanel } from '@/components/settings/audit-log-panel';
 
 import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
@@ -262,6 +263,20 @@ export default function SettingsPage() {
                 >
                     <div className="p-0">
                         <UserManagementPanel />
+                    </div>
+                </CollapsibleSection>
+            )}
+
+            {/* Historial de Auditoría (Admin) */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<Activity className="h-5 w-5" />}
+                    iconColor="text-blue-400"
+                    title="Historial de Acciones"
+                    description="Registro de auditoría del sistema"
+                >
+                    <div className="p-0">
+                        <AuditLogPanel />
                     </div>
                 </CollapsibleSection>
             )}

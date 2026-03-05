@@ -84,7 +84,7 @@ export async function getAccountsForRenewal() {
 
     const { data, error } = await (supabase.from('mother_accounts') as any)
         .select(`
-            id, platform, email, renewal_date, purchase_cost_gs, max_slots, status,
+            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status,
             sale_slots (id, status, slot_identifier)
         `)
         .eq('status', 'active')
@@ -192,7 +192,7 @@ export async function bulkRenewAccounts(accountIds: string[], totalCostGs: numbe
             .eq('id', accountId);
 
         if (updateError) {
-            errors.push(`Error en ${(account as any).platform}: ${updateError.message}`);
+            errors.push(`Error en ${(account as any).platform}: ${updateError.message} `);
             continue;
         }
 
@@ -247,7 +247,7 @@ export async function bulkRenewSubscriptions(saleIds: string[], amountGs: number
             .eq('id', saleId);
 
         if (updateError) {
-            errors.push(`Error renovando venta ${saleId}: ${updateError.message}`);
+            errors.push(`Error renovando venta ${saleId}: ${updateError.message} `);
         }
     }
 
@@ -290,7 +290,7 @@ export async function bulkReleaseSubscriptions(saleIds: string[]) {
             .eq('id', saleId);
 
         if (saleError) {
-            errors.push(`Error desactivando venta ${saleId}: ${saleError.message}`);
+            errors.push(`Error desactivando venta ${saleId}: ${saleError.message} `);
             continue;
         }
 

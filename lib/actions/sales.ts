@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { createKommoLead, addNoteToLead } from '@/lib/kommo';
 import { sendSaleCredentials, getWhatsAppSettings } from '@/lib/whatsapp';
 import { normalizePhone } from '@/lib/utils/phone';
+import { logAction } from './audit';
 
 interface QuickSaleData {
     platform: string;
@@ -197,6 +198,10 @@ export async function createQuickSale(data: QuickSaleData) {
             console.error('[WhatsApp] Error (non-blocking):', waError);
         }
 
+        await logAction('create_sale', 'sale', slotToSell.slot_id || slotToSell.id, {
+            message: `realizó una venta de ${data.platform} a ${data.customerName || data.customerPhone}`
+        });
+
         revalidatePath('/');
         return { success: true, message: 'Venta realizada exitosamente' };
 
@@ -224,6 +229,10 @@ export async function cancelSubscription(saleId: string, slotId: string) {
             .eq('id', slotId);
 
         if (slotError) throw new Error(`Error liberando slot: ${slotError.message}`);
+
+        await logAction('cancel_sale', 'sale', saleId, {
+            message: `canceló una suscripción`
+        });
 
         revalidatePath('/');
         return { success: true };
@@ -333,6 +342,10 @@ export async function swapService(data: SwapServiceData) {
             .update({ status: 'sold' })
             .eq('id', newSlotId);
         if (updateError) throw new Error(`Error actualizando nuevo slot: ${updateError.message}`);
+
+        await logAction('swap_service', 'sale', data.oldSaleId, {
+            message: `realizó un cambio de perfil/cuenta a ${newPlatform || 'nuevo slot'}`
+        });
 
         revalidatePath('/');
         return {
@@ -607,6 +620,10 @@ export async function createBundleSale(data: BundleSaleData) {
 
             if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
         }
+
+        await logAction('create_bundle_sale', 'bundle', data.bundleId, {
+            message: `realizó una venta de combo a ${data.customerName || data.customerPhone}`
+        });
 
         revalidatePath('/');
         return {
@@ -890,6 +907,10 @@ export async function processComboSale(data: ComboSaleData) {
         } catch (waError) {
             console.error('[WhatsApp] Combo error (non-blocking):', waError);
         }
+
+        await logAction('create_combo_sale', 'combo', comboId, {
+            message: `realizó una venta múltiple a ${data.customerName || data.customerPhone}`
+        });
 
         revalidatePath('/');
         revalidatePath('/sales');

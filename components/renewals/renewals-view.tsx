@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
-    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock
+    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions } from '@/lib/actions/renewals';
 
 type FilterType = 'all' | 'expired' | 'today' | 'week';
@@ -140,6 +141,22 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         } else {
             setProvSelected(new Set(filteredAccounts.map((a: any) => a.id)));
         }
+    };
+
+    const handleCopyProviders = () => {
+        const selectedAccounts = filteredAccounts.filter((a: any) => provSelected.has(a.id));
+        if (selectedAccounts.length === 0) return;
+
+        const emailsStr = selectedAccounts.map((a: any) => a.email).join('\n');
+        const totalUsdt = selectedAccounts.reduce((sum: number, a: any) => sum + (Number(a.purchase_cost_usdt) || 0), 0);
+
+        const textToCopy = `CUENTAS: (${selectedAccounts.length})
+${emailsStr}
+
+TOTAL A PAGAR: ${totalUsdt} USDT`;
+
+        navigator.clipboard.writeText(textToCopy);
+        toast.success('Copiado al portapapeles', { description: 'Correos y total a pagar copiados.' });
     };
 
     const toggleClient = (id: string) => {
@@ -271,13 +288,23 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                             ))}
                         </div>
                         {provSelected.size > 0 && (
-                            <Button
-                                onClick={() => setShowProvModal(true)}
-                                className="bg-[#F97316] hover:bg-[#F97316]/90 text-white gap-2"
-                            >
-                                <RefreshCw className="h-4 w-4" />
-                                Renovar a Proveedor ({provSelected.size})
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={handleCopyProviders}
+                                    className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 gap-2 h-9 px-3 text-xs"
+                                >
+                                    <Copy className="h-3.5 w-3.5" />
+                                    COPIAR seleccionados
+                                </Button>
+                                <Button
+                                    onClick={() => setShowProvModal(true)}
+                                    className="bg-[#F97316] hover:bg-[#F97316]/90 text-white gap-2 h-9"
+                                >
+                                    <RefreshCw className="h-4 w-4" />
+                                    Renovar a Proveedor ({provSelected.size})
+                                </Button>
+                            </div>
                         )}
                     </div>
 

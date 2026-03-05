@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { OwnedEmailWithStatus } from '@/lib/actions/emails';
 import { updateOwnedEmail, deleteOwnedEmail } from '@/lib/actions/emails';
 import { AddEmailModal } from './add-email-modal';
+import { InboxModal } from './inbox-modal';
 
 type StatusFilter = 'all' | 'libre' | 'en_uso' | 'multi_uso';
 
@@ -67,9 +68,9 @@ export function EmailsView({ emails: initialEmails }: { emails: OwnedEmailWithSt
                                 key={f}
                                 onClick={() => setFilter(f)}
                                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${filter === f
-                                        ? f === 'all' ? 'bg-[#818CF8]/20 text-[#818CF8]'
-                                            : `${statusConfig[f as keyof typeof statusConfig].bg} text-[${statusConfig[f as keyof typeof statusConfig].color}]`
-                                        : 'bg-[#1a1a1a] text-muted-foreground hover:text-foreground'
+                                    ? f === 'all' ? 'bg-[#818CF8]/20 text-[#818CF8]'
+                                        : `${statusConfig[f as keyof typeof statusConfig].bg} text-[${statusConfig[f as keyof typeof statusConfig].color}]`
+                                    : 'bg-[#1a1a1a] text-muted-foreground hover:text-foreground'
                                     }`}
                                 style={filter === f && f !== 'all' ? { color: statusConfig[f as keyof typeof statusConfig].color } : {}}
                             >
@@ -127,6 +128,7 @@ function EmailRow({ email }: { email: OwnedEmailWithStatus }) {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [inboxOpen, setInboxOpen] = useState(false);
     const [error, setError] = useState('');
 
     // Edit state
@@ -280,6 +282,12 @@ function EmailRow({ email }: { email: OwnedEmailWithStatus }) {
                         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         {copied ? 'Copiado' : 'Copiar'}
                     </button>
+                    <button onClick={() => setInboxOpen(true)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+                        title="Ver Bandeja de Entrada"
+                    >
+                        <Mail className="h-3 w-3" />
+                    </button>
                     <button onClick={() => setEditing(true)}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 transition-colors">
                         <Pencil className="h-3 w-3" />
@@ -290,6 +298,12 @@ function EmailRow({ email }: { email: OwnedEmailWithStatus }) {
                     </button>
                 </div>
             </div>
+
+            <InboxModal
+                open={inboxOpen}
+                email={email.email}
+                onClose={() => setInboxOpen(false)}
+            />
         </div>
     );
 }

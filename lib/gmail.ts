@@ -214,3 +214,54 @@ export function extractVerificationCode(body: string, snippet: string): string |
 
     return null;
 }
+
+/**
+ * Generic search for the inbox.
+ */
+export async function searchInbox(
+    accessToken: string,
+    accountEmail: string,
+    queryTerm: string = '',
+): Promise<{ id: string; snippet: string; date: string; subject: string }[]> {
+    // Search for emails received to the account email
+    const query = `to:${accountEmail} ${queryTerm} newer_than:2d`.trim();
+
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=10`;
+
+    const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+        const error = await res.text();
+        console.error('[Gmail] Search Inbox error:', error);
+        throw new Error('Error buscando emails');
+    }
+
+    const data = await res.json();
+    const messageIds = (data.messages || []).map((m: any) => m.id);
+
+    if (messageIds.length === 0) return [];
+
+    // Fetch each message
+    const messages = await Promise.all(
+        messageIds.map(async (id: string) => {
+            const msgRes = await fetch(
+                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (!msgRes.ok) return null;
+            const msg = await msgRes.json();
+
+            const date = new Date(parseInt(msg.internalDate)).toISOString();
+            const snippet = msg.snippet || '';
+            const headers = msg.payload?.headers || [];
+            const subjectHeader = headers.find((h: any) => h.name.toLowerCase() === 'subject');
+            const subject = subjectHeader ? subjectHeader.value : 'Sin Asunto';
+
+            return { id, snippet, subject, date };
+        })
+    );
+
+    return messages.filter(Boolean) as any[];
+}

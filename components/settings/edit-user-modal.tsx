@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, X, User, Phone, Shield } from 'lucide-react';
+import { Loader2, X, User, Phone, Shield, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { updateUser } from '@/lib/actions/users';
 import { UserProfile, UserRole, AVAILABLE_PERMISSIONS, DEFAULT_PERMISSIONS } from '@/lib/actions/users.types';
+import { StaffScheduleEditor } from './staff-schedule-editor';
 
 interface EditUserModalProps {
     isOpen: boolean;
@@ -223,6 +224,19 @@ export function EditUserModal({ isOpen, user, onClose, onSuccess }: EditUserModa
                             </div>
                         )}
                     </div>
+
+                    {/* Schedule Manager (Only for staff or super_admin) */}
+                    {(role === 'staff' || role === 'super_admin') && (
+                        <div className="border-t border-border pt-4">
+                            <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-[#86EFAC]" />
+                                Horario Laboral
+                            </h3>
+                            <div className="bg-[#0d0d0d] rounded-lg border border-border/40 p-3">
+                                <StaffScheduleEditor userId={user.id} userName={fullName || user.email || ''} />
+                            </div>
+                        </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-2 pt-4">

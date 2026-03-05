@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { RealtimeProvider } from '@/components/providers/realtime-provider';
+import { AttendanceTracker } from '@/components/providers/attendance-tracker';
 
 export default async function DashboardLayout({
     children,
@@ -18,20 +20,23 @@ export default async function DashboardLayout({
     }
 
     return (
-        <div className="flex min-h-screen bg-background">
-            {/* Sidebar */}
-            <Sidebar />
+        <RealtimeProvider>
+            <AttendanceTracker />
+            <div className="flex min-h-screen bg-background">
+                {/* Sidebar */}
+                <Sidebar />
 
-            {/* Main Content Area */}
-            <div className="ml-20 flex flex-1 flex-col">
-                {/* Header */}
-                <Header />
+                {/* Main Content Area */}
+                <div className="ml-20 flex flex-1 flex-col">
+                    {/* Header */}
+                    <Header />
 
-                {/* Page Content */}
-                <main className="flex-1 p-6">
-                    {children}
-                </main>
+                    {/* Page Content */}
+                    <main className="flex-1 p-6">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </RealtimeProvider>
     );
 }

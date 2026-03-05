@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
+import { logAction } from './audit';
 
 // ============================================
 // MOTHER ACCOUNTS
@@ -61,6 +62,10 @@ export async function createMotherAccount(formData: FormData) {
     if (error) {
         return { error: error.message };
     }
+
+    await logAction('create_account', 'mother_account', newAccount.id, {
+        message: `agregó una nueva cuenta de ${data.platform} (${data.email})`
+    });
 
     // Skip slot creation for complete accounts
     if (saleType === 'complete' || maxSlots === 0) {
@@ -129,6 +134,10 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         return { error: error.message };
     }
 
+    await logAction('update_account', 'mother_account', id, {
+        message: `editó la cuenta de ${data.platform} (${data.email})`
+    });
+
     revalidatePath('/inventory');
     return { success: true };
 }
@@ -145,6 +154,10 @@ export async function deleteMotherAccount(id: string) {
     if (error) {
         return { error: error.message };
     }
+
+    await logAction('delete_account', 'mother_account', id, {
+        message: `eliminó una cuenta del inventario`
+    });
 
     revalidatePath('/inventory');
     return { success: true };
@@ -182,6 +195,10 @@ export async function createSlot(formData: FormData) {
             .update({ max_slots: (account.max_slots || 0) + 1 })
             .eq('id', motherAccountId);
     }
+
+    await logAction('create_slot', 'slot', motherAccountId, {
+        message: `agregó un slot (${data.slot_identifier}) a una cuenta madre`
+    });
 
     revalidatePath('/inventory');
     return { success: true };
@@ -262,6 +279,10 @@ export async function deleteSlot(id: string) {
             .update({ max_slots: account.max_slots - 1 })
             .eq('id', slot.mother_account_id);
     }
+
+    await logAction('delete_slot', 'slot', id, {
+        message: `eliminó un slot de una cuenta madre`
+    });
 
     revalidatePath('/inventory');
     return { success: true };
