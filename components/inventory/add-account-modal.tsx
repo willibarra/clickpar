@@ -55,7 +55,7 @@ export function AddAccountModal() {
     const [isOwnedEmail, setIsOwnedEmail] = useState(false);
     const [emailPassword, setEmailPassword] = useState('');
     const [showEmailPass, setShowEmailPass] = useState(false);
-    const [saleType, setSaleType] = useState<'profile' | 'complete'>('profile');
+
 
     useEffect(() => {
         if (open) {
@@ -66,7 +66,6 @@ export function AddAccountModal() {
             setIsOwnedEmail(false);
             setEmailPassword('');
             setShowEmailPass(false);
-            setSaleType('profile');
             setServiceDays(getDaysInCurrentMonth());
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
@@ -154,11 +153,8 @@ export function AddAccountModal() {
             formData.set('email_password', emailPassword);
         }
 
-        // Sale type
-        formData.set('sale_type', saleType);
-        if (saleType === 'complete') {
-            formData.set('max_slots', '0');
-        }
+        // Always profile type — Cuenta Completa is auto-detected by slot availability
+        formData.set('sale_type', 'profile');
 
         const result = await createMotherAccount(formData);
 
@@ -219,50 +215,22 @@ export function AddAccountModal() {
                             </Select>
                         </div>
 
-                        {/* Sale Type Toggle */}
-                        <div className="flex items-center gap-3 rounded-lg border border-border/40 bg-[#0d0d0d] p-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setSaleType('profile')}
-                                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${saleType === 'profile'
-                                        ? 'bg-[#86EFAC]/20 text-[#86EFAC] border border-[#86EFAC]/30'
-                                        : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
-                                        }`}
-                                >
-                                    Por Perfiles
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSaleType('complete')}
-                                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${saleType === 'complete'
-                                        ? 'bg-[#818CF8]/20 text-[#818CF8] border border-[#818CF8]/30'
-                                        : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
-                                        }`}
-                                >
-                                    Cuenta Completa
-                                </button>
-                            </div>
+                        {/* Max Slots */}
+                        <div className="space-y-2">
+                            <Label htmlFor="max_slots">
+                                Máx. {slotLabel}
+                            </Label>
+                            <Input
+                                id="max_slots"
+                                name="max_slots"
+                                type="number"
+                                value={maxSlots}
+                                onChange={(e) => setMaxSlots(parseInt(e.target.value) || 1)}
+                                min={1}
+                                max={10}
+                                required
+                            />
                         </div>
-
-                        {/* Max Slots - Only for profile type */}
-                        {saleType === 'profile' && (
-                            <div className="space-y-2">
-                                <Label htmlFor="max_slots">
-                                    Máx. {slotLabel}
-                                </Label>
-                                <Input
-                                    id="max_slots"
-                                    name="max_slots"
-                                    type="number"
-                                    value={maxSlots}
-                                    onChange={(e) => setMaxSlots(parseInt(e.target.value) || 1)}
-                                    min={1}
-                                    max={10}
-                                    required
-                                />
-                            </div>
-                        )}
 
                         {/* Row 2: Email + Password */}
                         <div className="grid grid-cols-2 gap-4">
@@ -405,24 +373,22 @@ export function AddAccountModal() {
                             </div>
                         </div>
 
-                        {/* Divider: Custom Slots Toggle - Only for profile type */}
-                        {saleType === 'profile' && (
-                            <div className="flex items-center gap-3 pt-2 border-t border-border">
-                                <input
-                                    type="checkbox"
-                                    id="customize_slots"
-                                    checked={customizeSlots}
-                                    onChange={(e) => setCustomizeSlots(e.target.checked)}
-                                    className="h-4 w-4 rounded border-border accent-[#86EFAC]"
-                                />
-                                <Label htmlFor="customize_slots" className="cursor-pointer text-sm">
-                                    Personalizar nombres y PINs de {slotLabel.toLowerCase()}
-                                </Label>
-                            </div>
-                        )}
+                        {/* Divider: Custom Slots Toggle */}
+                        <div className="flex items-center gap-3 pt-2 border-t border-border">
+                            <input
+                                type="checkbox"
+                                id="customize_slots"
+                                checked={customizeSlots}
+                                onChange={(e) => setCustomizeSlots(e.target.checked)}
+                                className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                            />
+                            <Label htmlFor="customize_slots" className="cursor-pointer text-sm">
+                                Personalizar nombres y PINs de {slotLabel.toLowerCase()}
+                            </Label>
+                        </div>
 
                         {/* Custom Slot Fields */}
-                        {saleType === 'profile' && customizeSlots && (
+                        {customizeSlots && (
                             <div className="space-y-2 rounded-lg border border-border p-3 bg-muted/30">
                                 <p className="text-xs text-muted-foreground mb-2">
                                     Asigna nombre y PIN a cada {slotLabel.toLowerCase().slice(0, -1)}
