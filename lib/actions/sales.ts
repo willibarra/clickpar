@@ -3,21 +3,25 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { createKommoLead, addNoteToLead } from '@/lib/kommo';
-import { sendSaleCredentials, getWhatsAppSettings } from '@/lib/whatsapp';
+import { sendSaleCredentials, sendFamilyCredentials, sendFamilyInvite, getWhatsAppSettings } from '@/lib/whatsapp';
 import { normalizePhone } from '@/lib/utils/phone';
 import { logAction } from './audit';
 
 interface QuickSaleData {
     platform: string;
     customerPhone: string;
-    customerName?: string; // Nombre opcional
-    customerId?: string; // Nuevo campo opcional
-    specificSlotId?: string; // Para asignación manual
+    customerName?: string;
+    customerId?: string;
+    specificSlotId?: string;
     price: number;
     platformPrice?: number;
-    durationDays?: number; // Duración en días (default: 30)
+    durationDays?: number;
     notes?: string;
-    whatsappInstance?: string; // Nombre de la instancia de WhatsApp usada para esta venta
+    whatsappInstance?: string;
+    // Family account fields
+    familyAccessType?: 'credentials' | 'invite'; // 'credentials' = we made the account, 'invite' = client uses own account
+    clientEmail?: string;    // email of the account we created / email invited
+    clientPassword?: string; // password if we created it
 }
 
 export async function createQuickSale(data: QuickSaleData) {
@@ -161,37 +165,77 @@ export async function createQuickSale(data: QuickSaleData) {
         try {
             const waSettings = await getWhatsAppSettings();
             if (waSettings.auto_send_credentials) {
-                // Wait 2 seconds before sending WhatsApp message
                 await new Promise(r => setTimeout(r, 2000));
 
-                // Obtener credenciales del slot/cuenta madre
-                const { data: slotInfo } = await (supabase.from('sale_slots') as any)
-                    .select(`
-                        slot_identifier,
-                        pin_code,
-                        mother_accounts:mother_account_id (
-                            email,
-                            password,
-                            platform
-                        )
-                    `)
-                    .eq('id', slotToSell.slot_id || slotToSell.id)
-                    .single();
+                const slotId = slotToSell.slot_id || slotToSell.id;
+                const expDateStr = endDate.toLocaleDateString('es-PY');
 
-                if (slotInfo?.mother_accounts) {
-                    const acct = slotInfo.mother_accounts;
-                    await sendSaleCredentials({
-                        customerPhone: data.customerPhone,
-                        customerName: data.customerName || data.customerPhone,
-                        platform: acct.platform || data.platform,
-                        email: acct.email || '',
-                        password: acct.password || '',
-                        profile: slotInfo.slot_identifier || 'Perfil asignado',
-                        expirationDate: endDate.toLocaleDateString('es-PY'),
-                        customerId,
-                        instanceName: data.whatsappInstance,
-                    });
-                    console.log('[WhatsApp] Credenciales enviadas a', data.customerPhone);
+                // == FAMILY ACCOUNT FLOW ==
+                if (data.familyAccessType && data.clientEmail) {
+                    // Save client email as slot_identifier and password as pin_code
+                    await (supabase.from('sale_slots') as any)
+                        .update({
+                            slot_identifier: data.clientEmail,
+                            pin_code: data.clientPassword || null,
+                        })
+                        .eq('id', slotId);
+
+                    if (data.familyAccessType === 'credentials' && data.clientPassword) {
+                        // We created the account — send email + password
+                        await sendFamilyCredentials({
+                            customerPhone: data.customerPhone,
+                            customerName: data.customerName || data.customerPhone,
+                            platform: data.platform,
+                            clientEmail: data.clientEmail,
+                            clientPassword: data.clientPassword,
+                            expirationDate: expDateStr,
+                            customerId,
+                            instanceName: data.whatsappInstance,
+                        });
+                    } else if (data.familyAccessType === 'invite') {
+                        // Client uses own account — send invitation notice
+                        await sendFamilyInvite({
+                            customerPhone: data.customerPhone,
+                            customerName: data.customerName || data.customerPhone,
+                            platform: data.platform,
+                            clientEmail: data.clientEmail,
+                            expirationDate: expDateStr,
+                            customerId,
+                            instanceName: data.whatsappInstance,
+                        });
+                    }
+                    console.log('[WhatsApp] Mensaje familiar enviado a', data.customerPhone);
+
+                } else {
+                    // == REGULAR SLOT FLOW ==
+                    const { data: slotInfo } = await (supabase.from('sale_slots') as any)
+                        .select(`
+                            slot_identifier,
+                            pin_code,
+                            mother_accounts:mother_account_id (
+                                email,
+                                password,
+                                platform
+                            )
+                        `)
+                        .eq('id', slotId)
+                        .single();
+
+                    if (slotInfo?.mother_accounts) {
+                        const acct = slotInfo.mother_accounts;
+                        await sendSaleCredentials({
+                            customerPhone: data.customerPhone,
+                            customerName: data.customerName || data.customerPhone,
+                            platform: acct.platform || data.platform,
+                            email: acct.email || '',
+                            password: acct.password || '',
+                            profile: slotInfo.slot_identifier || 'Perfil asignado',
+                            expirationDate: expDateStr,
+                            customerId,
+                            instanceName: data.whatsappInstance,
+                        });
+                        console.log('[WhatsApp] Credenciales enviadas a', data.customerPhone);
+                    }
                 }
             }
         } catch (waError) {

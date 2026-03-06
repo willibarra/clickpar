@@ -546,6 +546,94 @@ export async function sendSaleCredentials(params: {
 }
 
 /**
+ * Send family account credentials (we created the account for the customer)
+ * Includes email + password for the member account we created
+ */
+export async function sendFamilyCredentials(params: {
+    customerPhone: string;
+    customerName: string;
+    platform: string;
+    clientEmail: string;
+    clientPassword: string;
+    expirationDate: string;
+    customerId?: string;
+    saleId?: string;
+    instanceName?: string;
+}): Promise<SendResult> {
+    const displayName = await getPlatformDisplayName(params.platform);
+
+    // Try template first, fallback to hardcoded message
+    const templateMsg = await getRenderedTemplate('familia_credenciales', {
+        nombre: params.customerName,
+        plataforma: displayName,
+        email: params.clientEmail,
+        password: params.clientPassword,
+        fecha_vencimiento: params.expirationDate,
+    });
+
+    const message = templateMsg || [
+        `✅ *Tu acceso a ${displayName} (Plan Familiar)*`,
+        ``,
+        `👤 Hola ${params.customerName}!`,
+        `📧 *Correo:* ${params.clientEmail}`,
+        `🔑 *Contraseña:* ${params.clientPassword}`,
+        `📅 *Vigencia:* ${params.expirationDate}`,
+        ``,
+        `_Ingresá con estas credenciales a ${displayName}._`,
+    ].join('\n');
+
+    return sendText(params.customerPhone, message, {
+        templateKey: 'familia_credenciales',
+        customerId: params.customerId,
+        saleId: params.saleId,
+        instanceName: params.instanceName,
+    });
+}
+
+/**
+ * Send family account invitation notice (customer uses their own account)
+ * No password — customer just needs to accept the invitation link/email
+ */
+export async function sendFamilyInvite(params: {
+    customerPhone: string;
+    customerName: string;
+    platform: string;
+    clientEmail: string;
+    expirationDate: string;
+    customerId?: string;
+    saleId?: string;
+    instanceName?: string;
+}): Promise<SendResult> {
+    const displayName = await getPlatformDisplayName(params.platform);
+
+    const templateMsg = await getRenderedTemplate('familia_invitacion', {
+        nombre: params.customerName,
+        plataforma: displayName,
+        email: params.clientEmail,
+        fecha_vencimiento: params.expirationDate,
+    });
+
+    const message = templateMsg || [
+        `✅ *Acceso a ${displayName} (Plan Familiar)*`,
+        ``,
+        `👤 Hola ${params.customerName}!`,
+        `📧 Hemos enviado una invitación a: *${params.clientEmail}*`,
+        ``,
+        `⚠️ *Revisá tu correo y aceptá la invitación* para activar tu acceso.`,
+        `📅 *Vigencia:* ${params.expirationDate}`,
+    ].join('\n');
+
+    return sendText(params.customerPhone, message, {
+        templateKey: 'familia_invitacion',
+        customerId: params.customerId,
+        saleId: params.saleId,
+        instanceName: params.instanceName,
+    });
+}
+
+
+
+/**
  * Send pre-expiry reminder
  */
 export async function sendPreExpiryReminder(params: {

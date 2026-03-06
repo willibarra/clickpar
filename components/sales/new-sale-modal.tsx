@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare, Copy, Package } from 'lucide-react';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, MessageSquare, Copy, Package, Users } from 'lucide-react';
 import { createQuickSale, createFullAccountSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
@@ -18,6 +18,7 @@ interface DBPlatform {
     id: string;
     name: string;
     default_slot_price_gs: number | null;
+    business_type: string;
 }
 
 interface Customer {
@@ -72,6 +73,11 @@ export function NewSaleModal() {
     const [duration, setDuration] = useState<string>('30');
     const [priceOverridden, setPriceOverridden] = useState(false);
 
+    // Family account fields
+    const [familyAccessType, setFamilyAccessType] = useState<'credentials' | 'invite'>('credentials');
+    const [clientEmail, setClientEmail] = useState('');
+    const [clientPassword, setClientPassword] = useState('');
+
     // WhatsApp instance selection
     const [waInstances, setWaInstances] = useState<WAInstance[]>([]);
     const [selectedWaInstance, setSelectedWaInstance] = useState<string>('');
@@ -87,10 +93,9 @@ export function NewSaleModal() {
                 .order('full_name', { ascending: true })
                 .then(({ data }) => setCustomers(data || []));
 
-            // Fetch platforms from DB
             supabase
                 .from('platforms')
-                .select('id, name, default_slot_price_gs')
+                .select('id, name, default_slot_price_gs, business_type')
                 .eq('is_active', true)
                 .order('name')
                 .then(({ data }) => setDbPlatforms((data as DBPlatform[]) || []));
@@ -195,11 +200,18 @@ export function NewSaleModal() {
         return [...new Set([...availablePlatforms, ...platformsWithFullAccounts])].sort();
     }, [availablePlatforms, platformsWithFullAccounts]);
 
+    // Is the selected platform a family account?
+    const selectedPlatformObj = dbPlatforms.find(p => p.name === selectedPlatform);
+    const isFamilyPlatform = selectedPlatformObj?.business_type === 'family_account';
+
     // Reset form when platform or saleMode changes
     useEffect(() => {
         setSelectedSlotId(null);
         setSelectedFullAccountId('');
         setPriceOverridden(false);
+        setClientEmail('');
+        setClientPassword('');
+        setFamilyAccessType('credentials');
         if (selectedPlatform) {
             const plat = dbPlatforms.find(p => p.name === selectedPlatform);
             const price = plat?.default_slot_price_gs || 30000;
@@ -328,6 +340,10 @@ export function NewSaleModal() {
                     specificSlotId: selectedSlotId,
                     durationDays: parseInt(duration) || 30,
                     whatsappInstance: selectedWaInstance || undefined,
+                    // Family account fields (only sent when applicable)
+                    familyAccessType: isFamilyPlatform ? familyAccessType : undefined,
+                    clientEmail: isFamilyPlatform && clientEmail ? clientEmail : undefined,
+                    clientPassword: isFamilyPlatform && familyAccessType === 'credentials' ? clientPassword : undefined,
                 });
 
                 if (result.error) {
@@ -362,6 +378,9 @@ export function NewSaleModal() {
         setError(null);
         setSuccess(false);
         setSaleMode('profile');
+        setClientEmail('');
+        setClientPassword('');
+        setFamilyAccessType('credentials');
     };
 
     const selectedFullAccount = fullAccounts.find(a => a.id === selectedFullAccountId);
@@ -655,6 +674,70 @@ export function NewSaleModal() {
                                     />
                                 </div>
                             )}
+
+                            {/* Family Account — Access type toggle + client credentials */}
+                            {selectedPlatform && saleMode === 'profile' && isFamilyPlatform && (
+                                <div className="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-blue-400" />
+                                        <span className="text-sm font-medium text-foreground">Cuenta Familia — Acceso del cliente</span>
+                                    </div>
+
+                                    {/* Toggle */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFamilyAccessType('credentials')}
+                                            className={`rounded-md px-3 py-2 text-xs font-medium transition-all border ${familyAccessType === 'credentials'
+                                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                                : 'bg-transparent text-muted-foreground border-border hover:border-blue-500/30'
+                                                }`}
+                                        >
+                                            🔑 Nosotros creamos la cuenta
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFamilyAccessType('invite')}
+                                            className={`rounded-md px-3 py-2 text-xs font-medium transition-all border ${familyAccessType === 'invite'
+                                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                                : 'bg-transparent text-muted-foreground border-border hover:border-blue-500/30'
+                                                }`}
+                                        >
+                                            📩 Cliente usa su correo
+                                        </button>
+                                    </div>
+
+                                    {/* Client Email */}
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">
+                                            {familyAccessType === 'credentials' ? 'Correo creado para el cliente' : 'Correo del cliente a invitar'}
+                                        </Label>
+                                        <Input
+                                            type="email"
+                                            placeholder="cliente@gmail.com"
+                                            value={clientEmail}
+                                            onChange={(e) => setClientEmail(e.target.value)}
+                                            className="h-8 text-sm"
+                                        />
+                                    </div>
+
+                                    {/* Client Password — only when we created the account */}
+                                    {familyAccessType === 'credentials' && (
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">Contraseña asignada</Label>
+                                            <Input
+                                                type="text"
+                                                placeholder="Contraseña del cliente"
+                                                value={clientPassword}
+                                                onChange={(e) => setClientPassword(e.target.value)}
+                                                className="h-8 text-sm font-mono"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+
 
                             {/* Full Account Picker — Full mode */}
                             {selectedPlatform && saleMode === 'full' && (
