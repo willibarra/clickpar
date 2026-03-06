@@ -14,6 +14,19 @@ import { SlotPicker } from './slot-picker';
 import { SlotWithAccount } from '@/lib/utils/tetris-algorithm';
 import { normalizePhone } from '@/lib/utils/phone';
 
+/**
+ * Returns the number of days from today until the same calendar day next month.
+ * Example: March 6 → April 6 = 31 days (March has 31 days)
+ * Handles edge cases: Jan 31 → Feb 28 = 28 days
+ */
+function daysUntilSameDayNextMonth(): number {
+    const today = new Date();
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    const diff = next.getTime() - today.getTime();
+    return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+
 interface DBPlatform {
     id: string;
     name: string;
@@ -70,7 +83,7 @@ export function NewSaleModal() {
     const [selectedFullAccountId, setSelectedFullAccountId] = useState<string>('');
     const [salePrice, setSalePrice] = useState<string>('');
     const [defaultPrice, setDefaultPrice] = useState<number | null>(null);
-    const [duration, setDuration] = useState<string>('30');
+    const [duration, setDuration] = useState<string>(String(daysUntilSameDayNextMonth()));
     const [priceOverridden, setPriceOverridden] = useState(false);
 
     // Family account fields
