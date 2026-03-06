@@ -356,7 +356,7 @@ export default function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-4 text-sm">
                         <div>
                             <p className="text-muted-foreground">Versión</p>
-                            <p className="font-medium text-foreground">ClickPar v1.0.0</p>
+                            <p className="font-medium text-foreground">ClickPar v1.1.0</p>
                         </div>
                         <div>
                             <p className="text-muted-foreground">Framework</p>
