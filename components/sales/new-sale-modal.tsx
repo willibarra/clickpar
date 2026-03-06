@@ -424,15 +424,27 @@ export function NewSaleModal() {
                                 onClick={() => {
                                     const now = new Date();
                                     const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                                    const text = [
+                                    const lines = [
                                         `✅ *Venta Registrada*`,
-                                        `📦 Servicio: ${selectedPlatform}${saleMode === 'full' ? ' (Cuenta Completa)' : ''}`,
+                                        `📦 Servicio: ${selectedPlatform}${saleMode === 'full' ? ' (Cuenta Completa)' : isFamilyPlatform ? ' (Plan Familia)' : ''}`,
                                         `👤 Cliente: ${selectedCustomer?.full_name || 'N/A'}`,
                                         `📱 Teléfono: ${selectedCustomer?.phone || 'N/A'}`,
+                                    ];
+                                    // Family credentials
+                                    if (isFamilyPlatform && clientEmail) {
+                                        lines.push(`📧 Correo del cliente: ${clientEmail}`);
+                                        if (familyAccessType === 'credentials' && clientPassword) {
+                                            lines.push(`🔑 Contraseña: ${clientPassword}`);
+                                        } else if (familyAccessType === 'invite') {
+                                            lines.push(`📩 Invitación enviada a: ${clientEmail}`);
+                                        }
+                                    }
+                                    lines.push(
                                         `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,
                                         `⏰ Duración: ${duration} días`,
                                         `📅 Fecha: ${fecha}`,
-                                    ].join('\n');
+                                    );
+                                    const text = lines.join('\n');
                                     navigator.clipboard.writeText(text).then(() => {
                                         setCopied(true);
                                         setTimeout(() => setCopied(false), 2000);
