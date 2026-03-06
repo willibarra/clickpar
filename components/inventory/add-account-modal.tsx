@@ -55,6 +55,8 @@ export function AddAccountModal() {
     const [isOwnedEmail, setIsOwnedEmail] = useState(false);
     const [emailPassword, setEmailPassword] = useState('');
     const [showEmailPass, setShowEmailPass] = useState(false);
+    const [instructions, setInstructions] = useState('');
+    const [sendInstructions, setSendInstructions] = useState(false);
 
 
     useEffect(() => {
@@ -66,6 +68,8 @@ export function AddAccountModal() {
             setIsOwnedEmail(false);
             setEmailPassword('');
             setShowEmailPass(false);
+            setInstructions('');
+            setSendInstructions(false);
             setServiceDays(getDaysInCurrentMonth());
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
@@ -155,6 +159,12 @@ export function AddAccountModal() {
 
         // Always profile type — Cuenta Completa is auto-detected by slot availability
         formData.set('sale_type', 'profile');
+
+        // Instructions
+        if (instructions.trim()) {
+            formData.set('instructions', instructions.trim());
+        }
+        formData.set('send_instructions', sendInstructions ? 'true' : 'false');
 
         const result = await createMotherAccount(formData);
 
@@ -420,6 +430,36 @@ export function AddAccountModal() {
                                 ))}
                             </div>
                         )}
+
+                        {/* OBS / Instrucciones */}
+                        <div className="space-y-2 pt-2 border-t border-border">
+                            <Label htmlFor="instructions" className="flex items-center gap-2">
+                                📝 OBS / Instrucciones
+                                <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                            </Label>
+                            <textarea
+                                id="instructions"
+                                value={instructions}
+                                onChange={(e) => setInstructions(e.target.value)}
+                                placeholder="Ej: Para acceder ir a configuración → Perfil → Ingresar código de pantalla..."
+                                rows={3}
+                                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/50 placeholder:text-muted-foreground"
+                            />
+                            {instructions.trim() && (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="send_instructions"
+                                        checked={sendInstructions}
+                                        onChange={(e) => setSendInstructions(e.target.checked)}
+                                        className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                                    />
+                                    <Label htmlFor="send_instructions" className="cursor-pointer text-sm font-normal text-muted-foreground">
+                                        Enviar instrucciones por WhatsApp al vender
+                                    </Label>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <DialogFooter>
@@ -443,6 +483,6 @@ export function AddAccountModal() {
                     </DialogFooter>
                 </form>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

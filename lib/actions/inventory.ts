@@ -33,6 +33,8 @@ export async function createMotherAccount(formData: FormData) {
         supplier_phone: formData.get('supplier_phone') as string || null,
         sale_price_gs: parseFloat(formData.get('sale_price_gs') as string) || null,
         sale_type: saleType,
+        instructions: (formData.get('instructions') as string) || null,
+        send_instructions: formData.get('send_instructions') === 'true',
     };
 
     // Upsert owned email if checkbox was checked

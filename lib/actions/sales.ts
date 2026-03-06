@@ -215,7 +215,9 @@ export async function createQuickSale(data: QuickSaleData) {
                             mother_accounts:mother_account_id (
                                 email,
                                 password,
-                                platform
+                                platform,
+                                instructions,
+                                send_instructions
                             )
                         `)
                         .eq('id', slotId)
@@ -235,6 +237,18 @@ export async function createQuickSale(data: QuickSaleData) {
                             instanceName: data.whatsappInstance,
                         });
                         console.log('[WhatsApp] Credenciales enviadas a', data.customerPhone);
+
+                        // Send instructions as a second message if enabled
+                        if (acct.send_instructions && acct.instructions) {
+                            await new Promise(r => setTimeout(r, 1500));
+                            const { sendText } = await import('@/lib/whatsapp');
+                            await sendText(
+                                data.customerPhone,
+                                `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
+                                { instanceName: data.whatsappInstance, customerId }
+                            );
+                            console.log('[WhatsApp] Instrucciones enviadas a', data.customerPhone);
+                        }
                     }
                 }
             }
