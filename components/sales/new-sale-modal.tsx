@@ -90,6 +90,7 @@ export function NewSaleModal() {
     const [familyAccessType, setFamilyAccessType] = useState<'credentials' | 'invite'>('credentials');
     const [clientEmail, setClientEmail] = useState('');
     const [clientPassword, setClientPassword] = useState('');
+    const [saleInstructions, setSaleInstructions] = useState<string | null>(null);
 
     // WhatsApp instance selection
     const [waInstances, setWaInstances] = useState<WAInstance[]>([]);
@@ -364,6 +365,8 @@ export function NewSaleModal() {
                     setLoading(false);
                     return;
                 }
+                // Store instructions for copy button
+                if (result.instructions) setSaleInstructions(result.instructions);
             }
 
             setSuccess(true);
@@ -451,6 +454,10 @@ export function NewSaleModal() {
                                         } else if (familyAccessType === 'invite') {
                                             lines.push(`📩 Invitación enviada a: ${clientEmail}`);
                                         }
+                                    }
+                                    // Instructions (from mother account, if send_instructions enabled)
+                                    if (saleInstructions) {
+                                        lines.push(`📋 Instrucciones: ${saleInstructions}`);
                                     }
                                     lines.push(
                                         `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,

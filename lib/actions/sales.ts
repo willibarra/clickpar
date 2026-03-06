@@ -260,8 +260,19 @@ export async function createQuickSale(data: QuickSaleData) {
             message: `realizó una venta de ${data.platform} a ${data.customerName || data.customerPhone}`
         });
 
+        // Fetch instructions to return to the UI (for the copy button)
+        let saleInstructions: string | null = null;
+        try {
+            const { data: slotForInst } = await (supabase.from('sale_slots') as any)
+                .select('mother_accounts:mother_account_id (instructions, send_instructions)')
+                .eq('id', slotToSell.slot_id || slotToSell.id)
+                .single();
+            const acct = slotForInst?.mother_accounts;
+            if (acct?.send_instructions && acct?.instructions) saleInstructions = acct.instructions;
+        } catch { /* non-blocking */ }
+
         revalidatePath('/');
-        return { success: true, message: 'Venta realizada exitosamente' };
+        return { success: true, message: 'Venta realizada exitosamente', instructions: saleInstructions };
 
     } catch (error: any) {
         console.error('Quick Sale Error:', error);
