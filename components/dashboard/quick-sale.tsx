@@ -17,7 +17,9 @@ import {
     Trash2,
     AlertCircle,
     Copy,
-    Check
+    Check,
+    Calendar,
+    MessageSquare
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { SlotSelectorModal } from './slot-selector-modal';
@@ -59,6 +61,9 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const [selectedSlot, setSelectedSlot] = useState<any>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [deliveryDate, setDeliveryDate] = useState('');
+    const [waInstances, setWaInstances] = useState<{ name: string; alias: string }[]>([]);
+    const [selectedInstance, setSelectedInstance] = useState('');
 
     // Combo mode state
     const [comboItems, setComboItems] = useState<ComboItem[]>([]);
@@ -112,8 +117,29 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const handleCustomerNext = () => {
         if (customerPhone.length >= 10) {
             setStep('confirm');
+            // Load WhatsApp instances when entering confirm step
+            if (waInstances.length === 0) {
+                loadWaInstances();
+            }
         }
     };
+
+    async function loadWaInstances() {
+        try {
+            const supabase = createClient();
+            const { data } = await (supabase as any)
+                .from('whatsapp_settings')
+                .select('instance_1_name, instance_1_alias, instance_2_name, instance_2_alias')
+                .limit(1)
+                .single();
+            if (data) {
+                const list: { name: string; alias: string }[] = [];
+                if (data.instance_1_name) list.push({ name: data.instance_1_name, alias: data.instance_1_alias || 'Número 1' });
+                if (data.instance_2_name) list.push({ name: data.instance_2_name, alias: data.instance_2_alias || 'Número 2' });
+                setWaInstances(list);
+            }
+        } catch { /* silent */ }
+    }
 
     const handleSale = async () => {
         setIsLoading(true);
@@ -126,6 +152,8 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                     items: comboItems.map(ci => ({ platform: ci.platform, quantity: ci.quantity })),
                     customerPhone,
                     totalPrice: comboPrice,
+                    deliveryDate: deliveryDate || undefined,
+                    whatsappInstance: selectedInstance || undefined,
                 });
 
                 if (result.error) {
@@ -141,6 +169,8 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                     price,
                     platformPrice: price,
                     specificSlotId: selectedSlot?.id,
+                    deliveryDate: deliveryDate || undefined,
+                    whatsappInstance: selectedInstance || undefined,
                 });
 
                 if (result.error) {
@@ -172,6 +202,8 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         setComboItems([]);
         setComboPrice(0);
         setErrorMsg(null);
+        setDeliveryDate('');
+        setSelectedInstance('');
     };
 
     const getComboLabel = () => {
@@ -539,6 +571,56 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                                 </div>
                             )}
                         </div>
+
+                        {/* Fecha de Entrega */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Calendar className="h-3 w-3" />
+                                Fecha de Entrega
+                                <span className="text-muted-foreground/50">(opcional)</span>
+                            </label>
+                            <Input
+                                type="date"
+                                value={deliveryDate}
+                                onChange={(e) => setDeliveryDate(e.target.value)}
+                                className="text-sm"
+                            />
+                            {deliveryDate && (
+                                <p className="text-xs text-[#86EFAC]">
+                                    ✓ Vence el {new Date(deliveryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Selector de instancia WhatsApp */}
+                        {waInstances.length > 0 && (
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                    <MessageSquare className="h-3 w-3 text-[#25D366]" />
+                                    Número de WhatsApp usado
+                                </label>
+                                <div className="flex gap-2">
+                                    {waInstances.map(inst => (
+                                        <button
+                                            key={inst.name}
+                                            onClick={() => setSelectedInstance(inst.name === selectedInstance ? '' : inst.name)}
+                                            className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all text-left ${selectedInstance === inst.name
+                                                    ? 'border-[#25D366]/60 bg-[#25D366]/10 text-[#25D366]'
+                                                    : 'border-border/50 bg-[#111] text-muted-foreground hover:border-[#25D366]/30 hover:text-foreground'
+                                                }`}
+                                        >
+                                            <span className={`mr-1.5 ${selectedInstance === inst.name ? 'text-[#25D366]' : 'text-muted-foreground/50'}`}>●</span>
+                                            {inst.alias}
+                                        </button>
+                                    ))}
+                                </div>
+                                {selectedInstance && (
+                                    <p className="text-xs text-[#25D366]/80">
+                                        ✓ Se enviará y atenderá por: <span className="font-medium">{waInstances.find(i => i.name === selectedInstance)?.alias}</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         {/* Manual Assignment Toggle (only for individual) */}
                         {saleMode === 'individual' && (

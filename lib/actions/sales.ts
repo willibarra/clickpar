@@ -16,12 +16,13 @@ interface QuickSaleData {
     price: number;
     platformPrice?: number;
     durationDays?: number;
+    deliveryDate?: string;  // fecha de entrega personalizada (YYYY-MM-DD)
     notes?: string;
     whatsappInstance?: string;
     // Family account fields
-    familyAccessType?: 'credentials' | 'invite'; // 'credentials' = we made the account, 'invite' = client uses own account
-    clientEmail?: string;    // email of the account we created / email invited
-    clientPassword?: string; // password if we created it
+    familyAccessType?: 'credentials' | 'invite';
+    clientEmail?: string;
+    clientPassword?: string;
 }
 
 export async function createQuickSale(data: QuickSaleData) {
@@ -113,9 +114,15 @@ export async function createQuickSale(data: QuickSaleData) {
 
         // 3. Crear venta
         const startDate = new Date();
-        const durationDays = data.durationDays || 30;
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + durationDays);
+        let endDate: Date;
+        if (data.deliveryDate) {
+            // Fecha de entrega personalizada — usarla directamente como end_date
+            endDate = new Date(data.deliveryDate + 'T12:00:00');
+        } else {
+            const durationDays = data.durationDays || 30;
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + durationDays);
+        }
 
         const { error: saleError } = await (supabase
             .from('sales') as any)
@@ -773,6 +780,8 @@ export interface ComboSaleData {
     customerName?: string;
     customerId?: string;
     totalPrice: number;
+    deliveryDate?: string; // fecha de entrega personalizada (YYYY-MM-DD)
+    whatsappInstance?: string; // instancia de WhatsApp usada para la venta
 }
 
 export async function processComboSale(data: ComboSaleData) {
@@ -891,6 +900,9 @@ export async function processComboSale(data: ComboSaleData) {
 
                 // Create sale record
                 const isLast = assignedSlots.length === totalItems - 1;
+                const comboEndDate = data.deliveryDate
+                    ? data.deliveryDate
+                    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                 const { error: saleError } = await (supabase
                     .from('sales') as any)
                     .insert({
@@ -901,6 +913,7 @@ export async function processComboSale(data: ComboSaleData) {
                             : pricePerSlot,
                         original_price_gs: pricePerSlot,
                         start_date: today,
+                        end_date: comboEndDate,
                         is_active: true,
                         payment_method: 'cash'
                     });
@@ -966,6 +979,7 @@ export async function processComboSale(data: ComboSaleData) {
                                 profile: slotDetail.slot_identifier || 'Perfil asignado',
                                 expirationDate: expDateStr,
                                 customerId,
+                                instanceName: data.whatsappInstance,
                             });
                         }
                     } catch (slotWaErr) {

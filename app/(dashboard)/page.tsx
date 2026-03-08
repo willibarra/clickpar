@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, Package, Users, DollarSign, AlertTriangle, Bell, ShoppingCart } from 'lucide-react';
 import { QuickSaleWidget } from '@/components/dashboard/quick-sale';
@@ -30,6 +30,20 @@ export default async function DashboardPage({
 
     const supabase = await createAdminClient();
 
+    // Obtener rol del usuario actual
+    const authClient = await createClient();
+    const { data: { user: currentUser } } = await authClient.auth.getUser();
+    let currentRole = 'staff';
+    if (currentUser) {
+        const { data: profile } = await authClient
+            .from('profiles')
+            .select('role')
+            .eq('id', currentUser.id)
+            .single();
+        currentRole = (profile as any)?.role || 'staff';
+    }
+    const isStaff = currentRole === 'staff';
+
     // Obtener estadísticas reales
     const [
         { count: activeAccountsCount },
@@ -53,10 +67,12 @@ export default async function DashboardPage({
         supabase.from('sale_slots').select('*', { count: 'exact', head: true }).eq('status', 'available'),
         // Slots vendidos
         supabase.from('sale_slots').select('*', { count: 'exact', head: true }).eq('status', 'sold'),
-        // Ingresos del mes
-        supabase.from('sales')
-            .select('amount_gs')
-            .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+        // Ingresos del mes (solo para super_admin)
+        isStaff
+            ? Promise.resolve({ data: null })
+            : supabase.from('sales')
+                .select('amount_gs')
+                .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
         // Cuentas por vencer o ya vencidas (hasta 3 días adelante)
         supabase.from('mother_accounts')
             .select('id, platform, email, renewal_date')
@@ -228,21 +244,23 @@ export default async function DashboardPage({
                 </Card>
             )}
 
-            {/* Total Balance Card */}
-            <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                    <p className="text-sm text-muted-foreground">BALANCE TOTAL DEL MES</p>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold text-foreground">{formatGs(totalBalance)}</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-1 text-sm text-[#86EFAC]">
-                        <TrendingUp className="h-4 w-4" />
-                        <span>Ingresos del mes actual</span>
-                    </div>
-                </CardContent>
-            </Card>
+            {/* Total Balance Card — solo visible para super_admin */}
+            {!isStaff && (
+                <Card className="border-border bg-card">
+                    <CardHeader className="pb-2">
+                        <p className="text-sm text-muted-foreground">BALANCE TOTAL DEL MES</p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-bold text-foreground">{formatGs(totalBalance)}</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1 text-sm text-[#86EFAC]">
+                            <TrendingUp className="h-4 w-4" />
+                            <span>Ingresos del mes actual</span>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Stats Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -298,23 +316,25 @@ export default async function DashboardPage({
                     </CardContent>
                 </Card>
 
-                {/* Monthly Revenue */}
-                <Card className="border-border bg-[#1a1a1a]">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                            Ingresos del Mes
-                        </CardTitle>
-                        <div className="rounded-lg bg-[#86EFAC]/20 p-2">
-                            <DollarSign className="h-4 w-4 text-[#86EFAC]" />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">{formatGs(monthIncome)}</div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            {new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
-                        </p>
-                    </CardContent>
-                </Card>
+                {/* Monthly Revenue — solo visible para super_admin */}
+                {!isStaff && (
+                    <Card className="border-border bg-[#1a1a1a]">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Ingresos del Mes
+                            </CardTitle>
+                            <div className="rounded-lg bg-[#86EFAC]/20 p-2">
+                                <DollarSign className="h-4 w-4 text-[#86EFAC]" />
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-foreground">{formatGs(monthIncome)}</div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
+                            </p>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             {/* Platform Cards */}

@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SwapServiceModal } from './swap-service-modal';
 import { createSlot, deleteSlot, renumberSlots, reactivateAccount } from '@/lib/actions/inventory';
+import { cancelSubscription } from '@/lib/actions/sales';
 
 /* ── Types ───────────────────────────────────────────────────── */
 
@@ -233,6 +234,8 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     // Editable state
     const [status, setStatus] = useState(svc.slot_status);
@@ -258,6 +261,15 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
         finally { setSaving(false); }
     };
 
+    const handleDelete = async () => {
+        setDeleting(true); setError('');
+        try {
+            const result = await cancelSubscription(svc.sale_id, svc.slot_id);
+            if (result.error) throw new Error(result.error);
+            onSaved(); // refresh parent
+        } catch (err: any) { setError(err.message || 'Error'); setDeleting(false); setConfirmDelete(false); }
+    };
+
     // Use customer's service end date for vencimiento (not platform renewal)
     const customerExpiry = svc.sale_end_date || svc.renewal_date;
 
@@ -271,7 +283,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                 <div className="flex items-center gap-3 px-4 py-2.5">
                     <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
 
-                    <div className="flex-1 grid grid-cols-2 md:grid-cols-7 gap-x-4 gap-y-1 items-center min-w-0">
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-8 gap-x-3 gap-y-1 items-center min-w-0">
                         <div>
                             <span className="text-xs text-muted-foreground block">Plataforma</span>
                             <div className="flex items-center gap-1.5">
@@ -283,17 +295,24 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                                 )}
                             </div>
                         </div>
+                        {/* Cuenta del cliente: su perfil/slot */}
                         <div className="truncate">
-                            <span className="text-xs text-muted-foreground block">Usuario</span>
-                            <span className="text-sm text-foreground truncate block">{email || '—'}</span>
+                            <span className="text-xs text-muted-foreground block">Cuenta</span>
+                            <span className="text-sm text-foreground truncate block font-medium">{slotName || '—'}</span>
+                        </div>
+                        {/* PIN del cliente (si tiene) */}
+                        <div>
+                            <span className="text-xs text-muted-foreground block">PIN</span>
+                            <span className="text-sm text-foreground">{pin || '—'}</span>
+                        </div>
+                        {/* Acceso cuenta madre (email + clave) */}
+                        <div className="truncate">
+                            <span className="text-xs text-muted-foreground block">Acceso (madre)</span>
+                            <span className="text-sm text-muted-foreground truncate block">{email || '—'}</span>
                         </div>
                         <div>
                             <span className="text-xs text-muted-foreground block">Clave</span>
                             <VisiblePassword value={password} />
-                        </div>
-                        <div>
-                            <span className="text-xs text-muted-foreground block">Pantalla</span>
-                            <span className="text-sm text-foreground">{slotName || '—'}</span>
                         </div>
                         <div>
                             <span className="text-xs text-muted-foreground block">Vencimiento</span>
@@ -323,6 +342,31 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                         >
                             <Repeat className="h-3 w-3" /> Intercambiar
                         </button>
+                        {confirmDelete ? (
+                            <>
+                                <button
+                                    onClick={handleDelete}
+                                    disabled={deleting}
+                                    className="flex items-center gap-1 rounded-md bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                >
+                                    {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : '¿Seguro?'}
+                                </button>
+                                <button
+                                    onClick={() => setConfirmDelete(false)}
+                                    className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    No
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                onClick={() => setConfirmDelete(true)}
+                                className="flex items-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                                title="Cancelar suscripción"
+                            >
+                                <Trash2 className="h-3 w-3" /> Eliminar
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -384,6 +428,22 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
             <div className="flex items-center justify-between px-4 py-2 border-t border-border/30 bg-[#0d0d0d]">
                 <div>{error && <span className="text-xs text-red-500">{error}</span>}</div>
                 <div className="flex items-center gap-2">
+                    {confirmDelete ? (
+                        <>
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                className="flex items-center gap-1 rounded-md bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                            >
+                                {deleting ? <><Loader2 className="h-3 w-3 animate-spin" /> Eliminando...</> : '¿Confirmar eliminación?'}
+                            </button>
+                            <button onClick={() => setConfirmDelete(false)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5">No</button>
+                        </>
+                    ) : (
+                        <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1 rounded-md bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors">
+                            <Trash2 className="h-3 w-3" /> Eliminar
+                        </button>
+                    )}
                     <button onClick={onSwap} className="flex items-center gap-1 rounded-md bg-[#F97316]/10 px-3 py-1.5 text-xs font-medium text-[#F97316] hover:bg-[#F97316]/20 transition-colors">
                         <Repeat className="h-3 w-3" /> Intercambiar
                     </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,8 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { updateMotherAccount, deleteMotherAccount, syncSlots } from '@/lib/actions/inventory';
+import { createClient } from '@/lib/supabase/client';
 
-const platforms = ['Netflix', 'Spotify', 'HBO Max', 'Disney+', 'Amazon Prime', 'YouTube Premium', 'Apple TV+', 'Crunchyroll', 'Paramount+', 'Star+'];
+const fallbackPlatforms = ['Netflix', 'Spotify', 'HBO Max', 'Disney+', 'Amazon Prime', 'YouTube Premium', 'Apple TV+', 'Crunchyroll', 'Paramount+', 'Star+'];
+
+interface Platform {
+    id: string;
+    name: string;
+}
 
 interface Account {
     id: string;
@@ -33,6 +39,28 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [platforms, setPlatforms] = useState<Platform[]>([]);
+
+    useEffect(() => {
+        if (open) {
+            fetchPlatforms();
+        }
+    }, [open]);
+
+    async function fetchPlatforms() {
+        const supabase = createClient();
+        const { data, error } = await supabase
+            .from('platforms')
+            .select('id, name')
+            .eq('is_active', true)
+            .order('name');
+
+        if (error || !data || data.length === 0) {
+            setPlatforms(fallbackPlatforms.map((name, i) => ({ id: `fallback-${i}`, name })));
+        } else {
+            setPlatforms(data);
+        }
+    }
 
     const currentSlots = account.sale_slots?.length || 0;
     const needsSync = currentSlots < account.max_slots;
@@ -213,7 +241,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {platforms.map((p) => (
-                                                <SelectItem key={p} value={p}>{p}</SelectItem>
+                                                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
