@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, User, Lock, Key, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Loader2, User, Lock, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar } from 'lucide-react';
 import { updateSlot } from '@/lib/actions/inventory';
 
 interface SlotDetailsModalProps {
@@ -22,6 +23,12 @@ interface SlotDetailsModalProps {
         email: string;
         password: string;
     };
+    customer?: {
+        id: string;
+        full_name: string | null;
+        phone: string | null;
+        end_date?: string | null;
+    } | null;
 }
 
 const statusOptions = [
@@ -31,7 +38,8 @@ const statusOptions = [
     { value: 'warranty_claim', label: 'En Garantía', color: 'bg-red-500 text-white' },
 ];
 
-export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
+export function SlotDetailsModal({ slot, account, customer }: SlotDetailsModalProps) {
+    const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -148,6 +156,49 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
                             </div>
                         </div>
                     </div>
+
+                    {/* Cliente del slot */}
+                    {customer ? (
+                        <div className="rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5 p-3 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <User className="h-4 w-4 text-[#86EFAC] flex-shrink-0" />
+                                <div className="min-w-0">
+                                    <p className="text-sm font-medium text-foreground truncate">
+                                        {customer.full_name || customer.phone || 'Sin nombre'}
+                                    </p>
+                                    {customer.phone && customer.full_name !== customer.phone && (
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Phone className="h-3 w-3" />
+                                            {customer.phone}
+                                        </p>
+                                    )}
+                                    {customer.end_date && (
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Calendar className="h-3 w-3" />
+                                            Vence: {new Date(customer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="flex-shrink-0 border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10 gap-1 text-xs h-8"
+                                onClick={() => {
+                                    setOpen(false);
+                                    router.push(`/?q=${encodeURIComponent(customer.phone || customer.full_name || '')}`);
+                                }}
+                            >
+                                <Search className="h-3 w-3" />
+                                Buscar
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="rounded-lg border border-border/40 bg-muted/20 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">Slot sin cliente asignado</p>
+                        </div>
+                    )}
 
                     {/* Slot Editable Fields */}
                     <div className="space-y-4">

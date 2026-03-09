@@ -15,6 +15,12 @@ interface Slot {
     status: string;
     slot_identifier: string;
     pin_code: string | null;
+    sales?: Array<{
+        id: string;
+        end_date: string | null;
+        is_active: boolean;
+        customers: { id: string; full_name: string | null; phone: string | null } | null;
+    }>;
 }
 
 interface Account {
@@ -248,6 +254,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                         email: account.email,
                                                         password: account.password,
                                                     }}
+                                                    customer={(() => {
+                                                        const activeSale = slot.sales?.find(s => s.is_active);
+                                                        if (!activeSale?.customers) return null;
+                                                        return { ...activeSale.customers, end_date: activeSale.end_date };
+                                                    })()}
                                                 />
                                             ))}
                                         </div>
@@ -353,6 +364,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                                 email: account.email,
                                                                 password: account.password,
                                                             }}
+                                                            customer={(() => {
+                                                                const activeSale = slot.sales?.find(s => s.is_active);
+                                                                if (!activeSale?.customers) return null;
+                                                                return { ...activeSale.customers, end_date: activeSale.end_date };
+                                                            })()}
                                                         />
                                                     ))}
                                                 </div>

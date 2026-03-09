@@ -44,7 +44,13 @@ export default async function InventoryPage() {
         .from('mother_accounts')
         .select(`
       *,
-      sale_slots (*)
+      sale_slots (
+        *,
+        sales!sales_slot_id_fkey (
+          id, end_date, is_active,
+          customers ( id, full_name, phone )
+        )
+      )
     `)
         .order('platform');
 
