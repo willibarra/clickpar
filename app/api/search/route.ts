@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         let customerServices: Record<string, any[]> = {};
         if (customerIds.length > 0) {
             const { data: sales } = await (supabase.from('sales') as any)
-                .select('id, customer_id, amount_gs, slot_id, is_active, start_date')
+                .select('id, customer_id, amount_gs, slot_id, is_active, start_date, end_date')
                 .in('customer_id', customerIds)
                 .eq('is_active', true);
 
@@ -87,13 +87,8 @@ export async function GET(request: NextRequest) {
                 if (!customerServices[cid]) customerServices[cid] = [];
                 const slotInfo = slotMap.get(sale.slot_id) || {};
 
-                // Calculate customer's service end date (start_date + 30 days)
-                let saleEndDate = '';
-                if (sale.start_date) {
-                    const d = new Date(sale.start_date);
-                    d.setDate(d.getDate() + 30);
-                    saleEndDate = d.toISOString().split('T')[0];
-                }
+                // Usar end_date real de la venta
+                const saleEndDate = sale.end_date || '';
 
                 customerServices[cid].push({
                     sale_id: sale.id,

@@ -19,15 +19,7 @@ export function SalesTable({ sales }: SalesTableProps) {
     // Format date helper
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '-';
-        return new Date(dateStr).toLocaleDateString('es-PY');
-    };
-
-    // Calculate end date (30 days from start)
-    const getEndDate = (startDate: string) => {
-        if (!startDate) return '-';
-        const start = new Date(startDate);
-        start.setDate(start.getDate() + 30);
-        return start.toLocaleDateString('es-PY');
+        return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-PY');
     };
 
     // Paginate sales
@@ -106,7 +98,7 @@ export function SalesTable({ sales }: SalesTableProps) {
                                                 {formatDate(sale.start_date)}
                                             </td>
                                             <td className="py-3 text-muted-foreground">
-                                                {getEndDate(sale.start_date)}
+                                                {formatDate(sale.end_date || sale.start_date)}
                                             </td>
                                             <td className="py-3">
                                                 <span className={`rounded-full px-2 py-1 text-xs font-medium ${sale.is_active

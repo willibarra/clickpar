@@ -240,6 +240,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
     // Editable state
     const [status, setStatus] = useState(svc.slot_status);
     const [renewalDate, setRenewalDate] = useState(svc.renewal_date);
+    const [saleEndDate, setSaleEndDate] = useState(svc.sale_end_date || svc.renewal_date); // vencimiento del CLIENTE
     const [email, setEmail] = useState(svc.account_email);
     const [password, setPassword] = useState(svc.account_password);
     const [slotName, setSlotName] = useState(svc.slot_identifier);
@@ -252,8 +253,8 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
         setSaving(true); setError(''); setSaved(false);
         try {
             await saveField('slot', svc.slot_id, { slot_identifier: slotName, pin_code: pin, status });
-            await saveField('account', svc.mother_account_id, { email, password, renewal_date: renewalDate });
-            await saveField('sale', svc.sale_id, { amount_gs: parseInt(amount) || 0 });
+            await saveField('account', svc.mother_account_id, { email, password });
+            await saveField('sale', svc.sale_id, { amount_gs: parseInt(amount) || 0, end_date: saleEndDate || null });
             setSaved(true);
             setTimeout(() => { setSaved(false); setEditing(false); }, 1200);
             onSaved();
@@ -270,7 +271,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
         } catch (err: any) { setError(err.message || 'Error'); setDeleting(false); setConfirmDelete(false); }
     };
 
-    // Use customer's service end date for vencimiento (not platform renewal)
+    // Usar el end_date del cliente (su slot), no el renewal_date de la madre
     const customerExpiry = svc.sale_end_date || svc.renewal_date;
 
     const copyText = () =>
@@ -396,12 +397,12 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                     </select>
                 </div>
                 <div>
-                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Vencimiento</label>
-                    <EditInput type="date" value={renewalDate} onChange={setRenewalDate} />
+                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Vencimiento Cliente</label>
+                    <EditInput type="date" value={saleEndDate} onChange={setSaleEndDate} />
                 </div>
                 <div>
                     <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Días Restantes</label>
-                    <div className="flex items-center h-[30px]">{daysBadge(renewalDate)}</div>
+                    <div className="flex items-center h-[30px]">{daysBadge(saleEndDate)}</div>
                 </div>
                 <div>
                     <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Usuario</label>
