@@ -16,13 +16,22 @@ export default async function CustomersPage() {
     const customerList = (rawCustomers || []) as any[];
     const customerIds = customerList.map((c: any) => c.id);
 
-    // 2. Fetch ALL sales for these customers (both active and inactive, for LTV)
+    // 2. Fetch ALL active sales (no .in() filter to avoid URL length limits with many customer IDs)
     let allSales: any[] = [];
-    if (customerIds.length > 0) {
-        const { data: salesData } = await (supabase.from('sales') as any)
-            .select('id, customer_id, amount_gs, start_date, end_date, is_active, slot_id')
-            .in('customer_id', customerIds);
-        allSales = salesData || [];
+    {
+        const customerIdSet = new Set(customerIds);
+        let offset = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data: salesChunk } = await (supabase.from('sales') as any)
+                .select('id, customer_id, amount_gs, start_date, end_date, is_active, slot_id')
+                .range(offset, offset + pageSize - 1);
+            if (!salesChunk || salesChunk.length === 0) break;
+            // Only keep sales for customers we have
+            allSales.push(...salesChunk.filter((s: any) => customerIdSet.has(s.customer_id)));
+            if (salesChunk.length < pageSize) break;
+            offset += pageSize;
+        }
     }
 
     // 3. Fetch slot→platform+account mapping for ALL sales (for history)
