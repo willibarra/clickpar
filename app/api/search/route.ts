@@ -199,16 +199,21 @@ export async function GET(request: NextRequest) {
             const availableSlots = slots.filter((s: any) => s.status === 'available').length;
             const soldSlots = slots.filter((s: any) => s.status === 'sold').length;
 
-            const slotDetails = slots.map((s: any) => {
-                const custInfo = accountSlotCustomers[s.id];
-                return {
-                    id: s.id,
-                    identifier: s.slot_identifier,
-                    status: s.status,
-                    pin_code: s.pin_code || '',
-                    customer: custInfo || null,
-                };
-            });
+            const slotDetails = slots
+                .sort((a: any, b: any) => {
+                    // Natural sort: "Perfil 1" < "Perfil 2" < "Perfil 10"
+                    return (a.slot_identifier || '').localeCompare(b.slot_identifier || '', undefined, { numeric: true });
+                })
+                .map((s: any) => {
+                    const custInfo = accountSlotCustomers[s.id];
+                    return {
+                        id: s.id,
+                        identifier: s.slot_identifier,
+                        status: s.status,
+                        pin_code: s.pin_code || '',
+                        customer: custInfo || null,
+                    };
+                });
 
             results.push({
                 id: a.id,
