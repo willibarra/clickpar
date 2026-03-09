@@ -41,6 +41,37 @@ export async function GET(request: NextRequest) {
             .or(`name.ilike.${pattern},phone.ilike.${phonePattern}`)
             .limit(limit);
 
+        // 3b. Search by slot_identifier (for family accounts: YouTube, Spotify, etc.)
+        // where slot_identifier IS the customer email/name
+        const { data: slotMatches } = await (supabase.from('sale_slots') as any)
+            .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date)')
+            .ilike('slot_identifier', pattern)
+            .eq('status', 'sold')
+            .limit(20);
+
+        // For matched slots, get the active sale + customer
+        const slotMatchIds = (slotMatches || []).map((s: any) => s.id);
+        let slotSaleMap: Record<string, any> = {};
+        if (slotMatchIds.length > 0) {
+            const { data: slotSales } = await (supabase.from('sales') as any)
+                .select('id, customer_id, slot_id, amount_gs, start_date, end_date')
+                .in('slot_id', slotMatchIds)
+                .eq('is_active', true);
+
+            const slotCustIds = [...new Set((slotSales || []).map((s: any) => s.customer_id))];
+            let slotCustMap = new Map<string, any>();
+            if (slotCustIds.length > 0) {
+                const { data: slotCusts } = await (supabase.from('customers') as any)
+                    .select('id, full_name, phone')
+                    .in('id', slotCustIds);
+                (slotCusts || []).forEach((c: any) => slotCustMap.set(c.id, c));
+            }
+
+            (slotSales || []).forEach((sale: any) => {
+                slotSaleMap[sale.slot_id] = { ...sale, customer: slotCustMap.get(sale.customer_id) || null };
+            });
+        }
+
         // 4. For found customers, get their active services with FULL details
         const customerIds = (customers || []).map((c: any) => c.id);
         let customerServices: Record<string, any[]> = {};
@@ -208,6 +239,51 @@ export async function GET(request: NextRequest) {
                 title: s.name || 'Sin nombre',
                 subtitle: s.phone || '',
             });
+        });
+
+        // Add slot-identifier matches (family accounts: YouTube, Spotify)
+        // Group by customer to avoid duplicates
+        const addedCustomerIds = new Set(results.filter(r => r.type === 'customer').map((r: any) => r.id));
+        (slotMatches || []).forEach((slot: any) => {
+            const saleInfo = slotSaleMap[slot.id];
+            const cust = saleInfo?.customer;
+            const ma = slot.mother_accounts;
+
+            if (cust && !addedCustomerIds.has(cust.id)) {
+                // Show as customer result with service info
+                addedCustomerIds.add(cust.id);
+                results.unshift({
+                    id: cust.id,
+                    type: 'customer',
+                    title: cust.full_name || cust.phone || slot.slot_identifier,
+                    subtitle: cust.phone || slot.slot_identifier,
+                    services: [{
+                        sale_id: saleInfo.id,
+                        slot_id: slot.id,
+                        platform: ma?.platform || 'Servicio',
+                        slot_identifier: slot.slot_identifier,
+                        pin_code: slot.pin_code || '',
+                        slot_status: slot.status,
+                        account_email: ma?.email || '',
+                        account_password: ma?.password || '',
+                        mother_account_id: ma?.id || '',
+                        renewal_date: ma?.renewal_date || '',
+                        sale_end_date: saleInfo.end_date || '',
+                        amount: saleInfo.amount_gs,
+                        start_date: saleInfo.start_date,
+                        is_combo: false,
+                    }],
+                });
+            } else if (!cust && !results.some((r: any) => r.id === slot.id)) {
+                // No customer found, show the slot itself
+                results.push({
+                    id: slot.id,
+                    type: 'customer',
+                    title: slot.slot_identifier,
+                    subtitle: ma?.platform || 'Slot sin cliente',
+                    services: [],
+                });
+            }
         });
 
         return NextResponse.json({ results });
