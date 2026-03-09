@@ -74,7 +74,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Enrich subscriptions with expiry info
     const enrichedSubs = useMemo(() => {
         return subscriptions.map((sub: any) => {
-            const expiryDate = getExpiryDate(sub.start_date);
+            // Usar end_date real de la venta; calcular start+30d solo como respaldo
+            const expiryDate = sub.end_date || getExpiryDate(sub.start_date);
             const daysUntilExpiry = getDaysUntil(expiryDate);
             return { ...sub, expiryDate, daysUntilExpiry };
         }).sort((a: any, b: any) => a.daysUntilExpiry - b.daysUntilExpiry);

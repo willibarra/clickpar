@@ -174,8 +174,8 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                 <button
                     onClick={() => { setPlatformFilter('all'); setCurrentPage(1); }}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${platformFilter === 'all'
-                            ? 'bg-[#86EFAC] text-black'
-                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        ? 'bg-[#86EFAC] text-black'
+                        : 'bg-secondary text-muted-foreground hover:text-foreground'
                         }`}
                 >
                     Todas
@@ -188,8 +188,8 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                             key={p}
                             onClick={() => { setPlatformFilter(p); setCurrentPage(1); }}
                             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${platformFilter === p
-                                    ? `${pColors.bg} ${pColors.text}`
-                                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                ? `${pColors.bg} ${pColors.text}`
+                                : 'bg-secondary text-muted-foreground hover:text-foreground'
                                 }`}
                         >
                             {p} ({count})
@@ -235,7 +235,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                     </CardHeader>
                                     <CardContent>
                                         <div className="mb-3 flex flex-wrap gap-1">
-                                            {slots.map((slot) => (
+                                            {[...slots].sort((a, b) => {
+                                                const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                                const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                                return numA - numB;
+                                            }).map((slot) => (
                                                 <SlotDetailsModal
                                                     key={slot.id}
                                                     slot={slot}
@@ -336,7 +340,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                                    {slots.map((slot) => (
+                                                    {[...slots].sort((a, b) => {
+                                                        const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                                        const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                                        return numA - numB;
+                                                    }).map((slot) => (
                                                         <SlotDetailsModal
                                                             key={slot.id}
                                                             slot={slot}

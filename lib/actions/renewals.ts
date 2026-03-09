@@ -102,9 +102,9 @@ export async function getClientSubscriptions() {
 
     // 1. Get all active sales (flat, no joins)
     const { data: salesData, error } = await (supabase.from('sales') as any)
-        .select('id, amount_gs, start_date, is_active, slot_id, customer_id')
+        .select('id, amount_gs, start_date, end_date, is_active, slot_id, customer_id')
         .eq('is_active', true)
-        .order('start_date', { ascending: true });
+        .order('end_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
     const sales = salesData || [];
@@ -238,12 +238,13 @@ export async function bulkRenewSubscriptions(saleIds: string[], amountGs: number
             continue;
         }
 
-        // Update the start_date forward (renew the subscription period)
-        const newStartDate = new Date();
-        const newStartStr = newStartDate.toISOString().split('T')[0];
+        // Calcular nuevo end_date desde hoy + días
+        const newEndDate = new Date();
+        newEndDate.setDate(newEndDate.getDate() + daysToExtend);
+        const newEndStr = newEndDate.toISOString().split('T')[0];
 
         const { error: updateError } = await (supabase.from('sales') as any)
-            .update({ start_date: newStartStr, amount_gs: amountGs || sale.amount_gs })
+            .update({ end_date: newEndStr, amount_gs: amountGs || sale.amount_gs, is_active: true })
             .eq('id', saleId);
 
         if (updateError) {
