@@ -20,7 +20,7 @@ export default async function CustomersPage() {
     let allSales: any[] = [];
     if (customerIds.length > 0) {
         const { data: salesData } = await (supabase.from('sales') as any)
-            .select('id, customer_id, amount_gs, start_date, is_active, slot_id')
+            .select('id, customer_id, amount_gs, start_date, end_date, is_active, slot_id')
             .in('customer_id', customerIds);
         allSales = salesData || [];
     }
@@ -56,12 +56,14 @@ export default async function CustomersPage() {
         const services = activeSales
             .filter((s: any) => s.slot_id)
             .map((s: any) => {
-                const endDate = new Date(s.start_date);
-                endDate.setDate(endDate.getDate() + 30);
+                // Usar end_date real de la BD; si no existe, calcular start + 30
+                const rawEnd = s.end_date || (() => {
+                    const d = new Date(s.start_date); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0];
+                })();
                 const info = slotInfoMap.get(s.slot_id);
                 return {
                     platform: info?.platform || 'Servicio',
-                    sale_end_date: endDate.toISOString().split('T')[0],
+                    sale_end_date: rawEnd,
                     amount: s.amount_gs || 0,
                 };
             });
@@ -71,15 +73,16 @@ export default async function CustomersPage() {
             .filter((s: any) => s.slot_id)
             .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
             .map((s: any) => {
-                const endDate = new Date(s.start_date);
-                endDate.setDate(endDate.getDate() + 30);
+                const rawEnd = s.end_date || (() => {
+                    const d = new Date(s.start_date); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0];
+                })();
                 const info = slotInfoMap.get(s.slot_id);
                 return {
                     sale_id: s.id,
                     platform: info?.platform || 'Servicio',
                     account_email: info?.account_email || '',
                     start_date: s.start_date,
-                    end_date: endDate.toISOString().split('T')[0],
+                    end_date: rawEnd,
                     amount: s.amount_gs || 0,
                     is_active: s.is_active,
                 };
