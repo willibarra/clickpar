@@ -169,16 +169,20 @@ async function importCSV(csvPath) {
 
     function findPlatform(csvName) {
         const lower = csvName.toLowerCase();
+        const lowerNoSpace = lower.replace(/\s+/g, '');
         // 1. Exact match
         const exact = platformList.find(p => p.name.toLowerCase() === lower);
         if (exact) return exact;
-        // 2. System name contains CSV name
+        // 2. Exact match sin espacios (HBOMAX ↔ HBO Max)
+        const exactNS = platformList.find(p => p.name.toLowerCase().replace(/\s+/g, '') === lowerNoSpace);
+        if (exactNS) return exactNS;
+        // 3. System name contains CSV name
         const contains1 = platformList.find(p => p.name.toLowerCase().includes(lower));
         if (contains1) return contains1;
-        // 3. CSV name contains system name
+        // 4. CSV name contains system name
         const contains2 = platformList.find(p => lower.includes(p.name.toLowerCase()));
         if (contains2) return contains2;
-        // 4. Word-based: any significant word in CSV name matches part of system name
+        // 5. Word-based: any significant word in CSV name matches part of system name
         const words = lower.split(/\s+/).filter(w => w.length > 3);
         return platformList.find(p => words.some(w => p.name.toLowerCase().includes(w))) || null;
     }
@@ -195,11 +199,14 @@ async function importCSV(csvPath) {
         const renewalDate = parseDate(row['Fecha Vencimiento']);
         const supplier = cleanSupplier(row['Nombre Proveedor']);
         const supplierPhone = storePhone(row['Celular Proveedor']);
-        const instructions = (row['Instrucciones'] && row['Instrucciones'] !== '0') ? row['Instrucciones'] : null;
+        const rawInstructions = row['Instrucciones'] || (row['PIN']?.trim() || '');
+        const instructions = (rawInstructions && rawInstructions !== '0' && rawInstructions !== '-') ? rawInstructions : null;
         const maxSlotsFromCSV = parseInt(row['Número de Pantallas']);
-        // Si Número de Pantallas = 0 → cuenta familia (YouTube), 5 slots al vuelo
-        const maxSlots = maxSlotsFromCSV > 0 ? maxSlotsFromCSV : 5;
-        const isFamilyAccount = maxSlotsFromCSV === 0;
+        // Plataformas familia: slots son emails del cliente, no pre-crear "Perfil X"
+        const familyPlatforms = ['spotify', 'youtube'];
+        const isFamilyAccount = maxSlotsFromCSV === 0 || familyPlatforms.some(fp => platName.toLowerCase().includes(fp));
+        // Si familia → no pre-crear slots, se crean al vuelo
+        const maxSlots = isFamilyAccount ? 5 : (maxSlotsFromCSV > 0 ? maxSlotsFromCSV : 5);
 
         if (!email || !platName) {
             console.log(`   ⚠️ Fila madre sin email o plataforma — se omite`);
@@ -212,7 +219,7 @@ async function importCSV(csvPath) {
             console.log(`   ⚠️ Plataforma "${platName}" no encontrada. Creándola...`);
             const { data: newPlat, error: platError } = await supabase
                 .from('platforms')
-                .insert({ name: platName, price: 0, is_active: true })
+                .insert({ name: platName, sale_price_gs: 0, is_active: true })
                 .select('id, name')
                 .single();
             if (platError) {
@@ -283,9 +290,9 @@ async function importCSV(csvPath) {
         const p = r['Pantalla']?.trim();
         const e = r['Estado']?.trim();
         const hasClient = !!normalizePhone(r['Celular Cliente']);
-        // Incluir Activo, Congelado, y A la Venta con cliente (cuenta familia)
+        // Incluir Activo, Congelado, Caducado, y A la Venta con cliente (cuenta familia)
         return p !== 'PAGO CUENTA COMPLETA' &&
-            (e === 'Activo' || e === 'Congelado' || (e?.includes('Venta') && hasClient));
+            (e === 'Activo' || e === 'Congelado' || e === 'Caducado' || (e?.includes('Venta') && hasClient));
     });
 
     let clientsOk = 0, salesOk = 0, errors = 0;
@@ -355,8 +362,9 @@ async function importCSV(csvPath) {
         const diasRestantesSlot = parseInt(row['Dias Restantes']) || 0;
         const estado = row['Estado']?.trim();
         const isCongelado = estado === 'Congelado';
-        // Congelado siempre inactivo; Activo depende de dias
-        const isActive = !isCongelado && diasRestantesSlot > 0;
+        const isCaducado = estado === 'Caducado';
+        // Congelado/Caducado siempre inactivo; Activo depende de dias
+        const isActive = !isCongelado && !isCaducado && diasRestantesSlot > 0;
 
         // Si congelado sin cliente → skip (slot queda available), pero registrar madre para quarantine
         if (isCongelado && !clientPhone) {
