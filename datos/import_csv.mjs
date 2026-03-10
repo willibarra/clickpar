@@ -409,18 +409,28 @@ async function importCSV(csvPath) {
 
         motherAccountMap[email.toLowerCase()] = ma.id;
 
-        // Crear slots Perfil 1..maxSlots
-        const slots = Array.from({ length: maxSlots }, (_, i) => ({
-            mother_account_id: ma.id,
-            slot_identifier: `Perfil ${i + 1}`,
-            pin_code: null,
-            status: 'available',
-        }));
-        const { error: slotsErr } = await supabase.from('sale_slots').insert(slots);
-        if (slotsErr) {
-            console.error(`   ⚠️ Error creando slots para ${email}: ${slotsErr.message}`);
+        // Detectar si es cuenta familia: sus slots son emails del cliente, NO "Perfil X"
+        // Ejemplos: Spotify, YouTube
+        const FAMILY_PLATFORMS = ['spotify', 'youtube'];
+        const isFamilyAccount = FAMILY_PLATFORMS.some(fp => platName.toLowerCase().includes(fp));
+
+        if (isFamilyAccount) {
+            // NO pre-crear slots — se crean al vuelo con el email del cliente
+            console.log(`   ✅ Madre: ${email} (${platName}) — familia (slots al vuelo) | ${maStatus} | Proveedor: ${supplierInfo.name}${autopayTag}${instructTag}`);
         } else {
-            console.log(`   ✅ Madre: ${email} (${platName}) — ${maxSlots} slots | ${maStatus} | Proveedor: ${supplierInfo.name}${autopayTag}${instructTag}`);
+            // Crear slots Perfil 1..maxSlots
+            const slots = Array.from({ length: maxSlots }, (_, i) => ({
+                mother_account_id: ma.id,
+                slot_identifier: `Perfil ${i + 1}`,
+                pin_code: null,
+                status: 'available',
+            }));
+            const { error: slotsErr } = await supabase.from('sale_slots').insert(slots);
+            if (slotsErr) {
+                console.error(`   ⚠️ Error creando slots para ${email}: ${slotsErr.message}`);
+            } else {
+                console.log(`   ✅ Madre: ${email} (${platName}) — ${maxSlots} slots | ${maStatus} | Proveedor: ${supplierInfo.name}${autopayTag}${instructTag}`);
+            }
         }
     }
 
@@ -537,10 +547,34 @@ async function importCSV(csvPath) {
         if (slotExact) {
             slot = slotExact;
         } else {
-            // No encontrado → posible error en CSV data
-            console.log(`   ⚠️ Slot "${slotIdentifier}" no encontrado en madre ${email}`);
-            errors++;
-            continue;
+            // ¿Es un slot tipo email (cuenta familia: Spotify, YouTube)?
+            // Si el identifier contiene '@' o no es "Perfil X" → crear al vuelo
+            const isEmailSlot = slotIdentifier.includes('@');
+            const isProfileSlot = /^Perfil \d+$/i.test(slotIdentifier);
+            if (isEmailSlot || !isProfileSlot) {
+                // Crear slot al vuelo
+                const { data: newSlot, error: newSlotErr } = await supabase
+                    .from('sale_slots')
+                    .insert({
+                        mother_account_id: maId,
+                        slot_identifier: slotIdentifier,
+                        pin_code: null,
+                        status: 'available',
+                    })
+                    .select('id, status')
+                    .single();
+                if (newSlotErr || !newSlot) {
+                    console.error(`   ❌ No se pudo crear slot "${slotIdentifier}" para ${email}: ${newSlotErr?.message}`);
+                    errors++;
+                    continue;
+                }
+                slot = newSlot;
+            } else {
+                // Slot de tipo Perfil X que no existe → error real
+                console.log(`   ⚠️ Slot "${slotIdentifier}" no encontrado en madre ${email}`);
+                errors++;
+                continue;
+            }
         }
 
         // Actualizar PIN en el slot si tenemos uno

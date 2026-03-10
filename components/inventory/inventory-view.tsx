@@ -37,6 +37,7 @@ interface Account {
     target_billing_day?: number;
     status?: string;
     is_autopay?: boolean;
+    notes?: string | null;
 }
 
 interface InventoryViewProps {
@@ -239,6 +240,16 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             </div>
                                             <EditAccountModal account={account} />
                                         </div>
+                                        {account.status === 'frozen' && (
+                                            <div className="mx-4 mb-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-300">❄️ Cuenta Congelada</span>
+                                            </div>
+                                        )}
+                                        {account.notes && (
+                                            <div className="mx-4 mb-2">
+                                                <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">📝 {account.notes}</p>
+                                            </div>
+                                        )}
                                     </CardHeader>
                                     <CardContent>
                                         <div className="mb-3 flex flex-wrap gap-1">
@@ -342,6 +353,9 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                         </span>
                                                     </div>
                                                     <span className="font-medium text-foreground">{account.platform}</span>
+                                                    {account.status === 'frozen' && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-1.5 py-0.5 text-xs font-medium text-blue-300">❄️</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-muted-foreground">

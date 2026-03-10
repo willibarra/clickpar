@@ -128,6 +128,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         supplier_name: formData.get('supplier_name') as string || null,
         supplier_phone: formData.get('supplier_phone') as string || null,
         sale_price_gs: parseFloat(formData.get('sale_price_gs') as string) || null,
+        notes: (formData.get('notes') as string) || null,
     };
 
     if (billingDay !== undefined) {

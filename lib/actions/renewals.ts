@@ -124,8 +124,9 @@ export async function getClientSubscriptions() {
     let slotMap = new Map<string, any>();
     if (slotIds.length > 0) {
         const { data: slots } = await (supabase.from('sale_slots') as any)
-            .select('id, slot_identifier, status, mother_account_id');
-        const slotsFiltered = (slots || []).filter((s: any) => slotIds.includes(s.id));
+            .select('id, slot_identifier, status, mother_account_id')
+            .in('id', slotIds);
+        const slotsFiltered = slots || [];
 
         // Fetch mother accounts for these slots
         const maIds = [...new Set(slotsFiltered.map((s: any) => s.mother_account_id).filter(Boolean))];

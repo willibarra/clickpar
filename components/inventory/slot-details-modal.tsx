@@ -170,43 +170,57 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                             <span className="text-xs text-muted-foreground">Cargando cliente...</span>
                         </div>
-                    ) : slotCustomer ? (
-                        <div className="rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5 p-3 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <User className="h-4 w-4 text-[#86EFAC] flex-shrink-0" />
-                                <div className="min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate">
-                                        {slotCustomer.full_name || slotCustomer.phone || 'Sin nombre'}
-                                    </p>
-                                    {slotCustomer.phone && slotCustomer.full_name !== slotCustomer.phone && (
-                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Phone className="h-3 w-3" />
-                                            {slotCustomer.phone}
+                    ) : slotCustomer ? (() => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const endDate = slotCustomer.end_date ? new Date(slotCustomer.end_date + 'T00:00:00') : null;
+                        const daysLeft = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                        const isExpired = daysLeft !== null && daysLeft < 0;
+                        const isExpiringSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+                        const borderColor = isExpired ? 'border-red-500/40 bg-red-500/5' : isExpiringSoon ? 'border-yellow-500/40 bg-yellow-500/5' : 'border-[#86EFAC]/30 bg-[#86EFAC]/5';
+                        return (
+                            <div className={`rounded-lg border ${borderColor} p-3 flex items-center justify-between gap-2`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <User className={`h-4 w-4 flex-shrink-0 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-[#86EFAC]'}`} />
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-foreground truncate">
+                                            {slotCustomer.full_name || slotCustomer.phone || 'Sin nombre'}
                                         </p>
-                                    )}
-                                    {slotCustomer.end_date && (
-                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Calendar className="h-3 w-3" />
-                                            Vence: {new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                        </p>
-                                    )}
+                                        {slotCustomer.phone && slotCustomer.full_name !== slotCustomer.phone && (
+                                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                <Phone className="h-3 w-3" />
+                                                {slotCustomer.phone}
+                                            </p>
+                                        )}
+                                        {slotCustomer.end_date && (
+                                            <p className={`text-xs flex items-center gap-1 font-medium ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                                                <Calendar className="h-3 w-3" />
+                                                {isExpired
+                                                    ? `⚠️ Vencido hace ${Math.abs(daysLeft!)}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
+                                                    : isExpiringSoon
+                                                        ? `⏰ Vence en ${daysLeft}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
+                                                        : `Vence: ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                }
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className={`flex-shrink-0 gap-1 text-xs h-8 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
+                                    onClick={() => {
+                                        setOpen(false);
+                                        router.push(`/?q=${encodeURIComponent(slotCustomer.phone || slotCustomer.full_name || '')}`);
+                                    }}
+                                >
+                                    <Search className="h-3 w-3" />
+                                    Buscar
+                                </Button>
                             </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="flex-shrink-0 border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10 gap-1 text-xs h-8"
-                                onClick={() => {
-                                    setOpen(false);
-                                    router.push(`/?q=${encodeURIComponent(slotCustomer.phone || slotCustomer.full_name || '')}`);
-                                }}
-                            >
-                                <Search className="h-3 w-3" />
-                                Buscar
-                            </Button>
-                        </div>
-                    ) : (
+                        );
+                    })() : (
                         <div className="rounded-lg border border-border/40 bg-muted/20 p-3 text-center">
                             <p className="text-xs text-muted-foreground">Slot sin cliente asignado</p>
                         </div>

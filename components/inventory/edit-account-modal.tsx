@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
@@ -28,6 +29,7 @@ interface Account {
     target_billing_day?: number;
     max_slots: number;
     status?: string;
+    notes?: string | null;
     sale_slots?: { id: string }[];
 }
 
@@ -254,6 +256,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="active">Activa</SelectItem>
+                                            <SelectItem value="frozen">❄️ Congelada</SelectItem>
                                             <SelectItem value="suspended">Suspendida</SelectItem>
                                             <SelectItem value="cancelled">Cancelada</SelectItem>
                                         </SelectContent>
@@ -338,6 +341,18 @@ export function EditAccountModal({ account }: { account: Account }) {
                                         defaultValue={account.max_slots}
                                     />
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="notes">Observación</Label>
+                                <Textarea
+                                    id="notes"
+                                    name="notes"
+                                    defaultValue={account.notes || ''}
+                                    placeholder="Ej: Cuenta con problema momentáneo, revisar..."
+                                    className="resize-none"
+                                    rows={3}
+                                />
                             </div>
                         </div>
 

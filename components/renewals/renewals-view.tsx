@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
-    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy
+    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions } from '@/lib/actions/renewals';
@@ -54,6 +54,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
 
     // Provider tab state
     const [provFilter, setProvFilter] = useState<FilterType>('all');
+    const [provSearch, setProvSearch] = useState('');
     const [provSelected, setProvSelected] = useState<Set<string>>(new Set());
     const [showProvModal, setShowProvModal] = useState(false);
     const [provCost, setProvCost] = useState('');
@@ -63,6 +64,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
 
     // Client tab state
     const [clientFilter, setClientFilter] = useState<ClientFilterType>('all');
+    const [clientSearch, setClientSearch] = useState('');
     const [clientSelected, setClientSelected] = useState<Set<string>>(new Set());
     const [showClientModal, setShowClientModal] = useState(false);
     const [clientAmount, setClientAmount] = useState('');
@@ -84,12 +86,17 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Filter client subscriptions
     const filteredSubs = useMemo(() => {
         return enrichedSubs.filter((sub: any) => {
-            if (clientFilter === 'expired') return sub.daysUntilExpiry < 0;
-            if (clientFilter === 'today') return sub.daysUntilExpiry === 0;
-            if (clientFilter === 'week') return sub.daysUntilExpiry >= 0 && sub.daysUntilExpiry <= 7;
+            if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= 0) return false; }
+            else if (clientFilter === 'today') { if (sub.daysUntilExpiry !== 0) return false; }
+            else if (clientFilter === 'week') { if (sub.daysUntilExpiry < 0 || sub.daysUntilExpiry > 7) return false; }
+            if (clientSearch.trim()) {
+                const q = clientSearch.toLowerCase();
+                const c = sub.customer;
+                return c?.full_name?.toLowerCase().includes(q) || c?.phone?.toLowerCase().includes(q);
+            }
             return true;
         });
-    }, [enrichedSubs, clientFilter]);
+    }, [enrichedSubs, clientFilter, clientSearch]);
 
     // Client stats
     const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < 0).length;
@@ -100,12 +107,16 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const filteredAccounts = useMemo(() => {
         return accounts.filter(a => {
             const days = getDaysUntil(a.renewal_date);
-            if (provFilter === 'expired') return days < 0;
-            if (provFilter === 'today') return days === 0;
-            if (provFilter === 'week') return days >= 0 && days <= 7;
+            if (provFilter === 'expired') { if (days >= 0) return false; }
+            else if (provFilter === 'today') { if (days !== 0) return false; }
+            else if (provFilter === 'week') { if (days < 0 || days > 7) return false; }
+            if (provSearch.trim()) {
+                const q = provSearch.toLowerCase();
+                return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
+            }
             return true;
         });
-    }, [accounts, provFilter]);
+    }, [accounts, provFilter, provSearch]);
 
     // Paginate providers
     const paginatedAccounts = useMemo(() => {
@@ -271,142 +282,153 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         </div>
                     </div>
 
-                    {/* Filters + Bulk Action */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Filter className="h-4 w-4 text-muted-foreground" />
-                            {filterButtons.map(f => (
-                                <button
-                                    key={f.key}
-                                    onClick={() => { setProvFilter(f.key); setProvSelected(new Set()); setProvCurrentPage(1); }}
-                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${provFilter === f.key
-                                        ? 'bg-[#86EFAC] text-black'
-                                        : 'bg-secondary text-muted-foreground hover:text-foreground'
-                                        }`}
-                                >
-                                    {f.label}{f.count !== undefined ? ` (${f.count})` : ''}
-                                </button>
-                            ))}
+                    {/* Search + Filters + Bulk Action */}
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar por plataforma o email..."
+                                value={provSearch}
+                                onChange={(e) => { setProvSearch(e.target.value); setProvCurrentPage(1); }}
+                                className="pl-9 bg-[#1a1a1a] border-border"
+                            />
                         </div>
-                        {provSelected.size > 0 && (
+                        <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={handleCopyProviders}
-                                    className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 gap-2 h-9 px-3 text-xs"
-                                >
-                                    <Copy className="h-3.5 w-3.5" />
-                                    COPIAR seleccionados
-                                </Button>
-                                <Button
-                                    onClick={() => setShowProvModal(true)}
-                                    className="bg-[#F97316] hover:bg-[#F97316]/90 text-white gap-2 h-9"
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Renovar a Proveedor ({provSelected.size})
-                                </Button>
+                                <Filter className="h-4 w-4 text-muted-foreground" />
+                                {filterButtons.map(f => (
+                                    <button
+                                        key={f.key}
+                                        onClick={() => { setProvFilter(f.key); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${provFilter === f.key
+                                            ? 'bg-[#86EFAC] text-black'
+                                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                    >
+                                        {f.label}{f.count !== undefined ? ` (${f.count})` : ''}
+                                    </button>
+                                ))}
                             </div>
-                        )}
-                    </div>
-
-                    {/* Table */}
-                    <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
-                        {/* Header */}
-                        <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
-                            <div className="flex items-center">
-                                <Checkbox
-                                    checked={provSelected.size === filteredAccounts.length && filteredAccounts.length > 0}
-                                    onCheckedChange={toggleAllProv}
-                                />
-                            </div>
-                            <div>Plataforma / Email</div>
-                            <div>Slots</div>
-                            <div>Vencimiento</div>
-                            <div>Estado</div>
-                            <div>Costo</div>
-                        </div>
-                        {/* Rows */}
-                        {paginatedAccounts.length === 0 && (
-                            <div className="py-12 text-center text-muted-foreground">
-                                No hay cuentas en este filtro
-                            </div>
-                        )}
-                        {paginatedAccounts.map((account: any) => {
-                            const days = getDaysUntil(account.renewal_date);
-                            const badge = getStatusBadge(days);
-                            const slots = account.sale_slots || [];
-                            const soldCount = slots.filter((s: any) => s.status === 'sold').length;
-
-                            return (
-                                <div
-                                    key={account.id}
-                                    className={`grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
-                                        }`}
-                                >
-                                    <div>
-                                        <Checkbox
-                                            checked={provSelected.has(account.id)}
-                                            onCheckedChange={() => toggleProv(account.id)}
-                                        />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-foreground">{account.platform}</p>
-                                        <p className="text-xs text-muted-foreground truncate">{account.email}</p>
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                        {soldCount}/{slots.length} vendidos
-                                    </div>
-                                    <div className="text-sm">
-                                        {account.renewal_date ? new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
-                                    </div>
-                                    <div>
-                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
-                                            <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
-                                            {badge.label}
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {account.purchase_cost_gs ? `${(account.purchase_cost_gs / 1000).toFixed(0)}k` : '—'}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Pagination */}
-                    {filteredAccounts.length > 0 && (
-                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Mostrar:</span>
-                                <Select
-                                    value={provPageSize.toString()}
-                                    onValueChange={(v) => { setProvPageSize(parseInt(v)); setProvCurrentPage(1); }}
-                                >
-                                    <SelectTrigger className="w-24 bg-card border-border">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="30">30</SelectItem>
-                                        <SelectItem value="90">90</SelectItem>
-                                        <SelectItem value="100">100</SelectItem>
-                                        <SelectItem value="0">Todos</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {provPageSize !== 0 && provTotalPages > 1 && (
+                            {provSelected.size > 0 && (
                                 <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => setProvCurrentPage(p => Math.max(1, p - 1))} disabled={provCurrentPage === 1} className="border-border">
-                                        <ChevronLeft className="h-4 w-4" />
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleCopyProviders}
+                                        className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 gap-2 h-9 px-3 text-xs"
+                                    >
+                                        <Copy className="h-3.5 w-3.5" />
+                                        COPIAR seleccionados
                                     </Button>
-                                    <span className="text-sm text-muted-foreground px-2">{provCurrentPage} / {provTotalPages}</span>
-                                    <Button variant="outline" size="sm" onClick={() => setProvCurrentPage(p => Math.min(provTotalPages, p + 1))} disabled={provCurrentPage === provTotalPages} className="border-border">
-                                        <ChevronRight className="h-4 w-4" />
+                                    <Button
+                                        onClick={() => setShowProvModal(true)}
+                                        className="bg-[#F97316] hover:bg-[#F97316]/90 text-white gap-2 h-9"
+                                    >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Renovar a Proveedor ({provSelected.size})
                                     </Button>
                                 </div>
                             )}
-                            <span className="text-sm text-muted-foreground">{filteredAccounts.length} cuenta(s) en total</span>
                         </div>
-                    )}
+
+                        {/* Table */}
+                        <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
+                            {/* Header */}
+                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                                <div className="flex items-center">
+                                    <Checkbox
+                                        checked={provSelected.size === filteredAccounts.length && filteredAccounts.length > 0}
+                                        onCheckedChange={toggleAllProv}
+                                    />
+                                </div>
+                                <div>Plataforma / Email</div>
+                                <div>Slots</div>
+                                <div>Vencimiento</div>
+                                <div>Estado</div>
+                                <div>Costo</div>
+                            </div>
+                            {/* Rows */}
+                            {paginatedAccounts.length === 0 && (
+                                <div className="py-12 text-center text-muted-foreground">
+                                    No hay cuentas en este filtro
+                                </div>
+                            )}
+                            {paginatedAccounts.map((account: any) => {
+                                const days = getDaysUntil(account.renewal_date);
+                                const badge = getStatusBadge(days);
+                                const slots = account.sale_slots || [];
+                                const soldCount = slots.filter((s: any) => s.status === 'sold').length;
+
+                                return (
+                                    <div
+                                        key={account.id}
+                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                            }`}
+                                    >
+                                        <div>
+                                            <Checkbox
+                                                checked={provSelected.has(account.id)}
+                                                onCheckedChange={() => toggleProv(account.id)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-foreground">{account.platform}</p>
+                                            <p className="text-xs text-muted-foreground truncate">{account.email}</p>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground">
+                                            {soldCount}/{slots.length} vendidos
+                                        </div>
+                                        <div className="text-sm">
+                                            {account.renewal_date ? new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
+                                        </div>
+                                        <div>
+                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
+                                                <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
+                                                {badge.label}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {account.purchase_cost_gs ? `${(account.purchase_cost_gs / 1000).toFixed(0)}k` : '—'}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Pagination */}
+                        {filteredAccounts.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">Mostrar:</span>
+                                    <Select
+                                        value={provPageSize.toString()}
+                                        onValueChange={(v) => { setProvPageSize(parseInt(v)); setProvCurrentPage(1); }}
+                                    >
+                                        <SelectTrigger className="w-24 bg-card border-border">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="30">30</SelectItem>
+                                            <SelectItem value="90">90</SelectItem>
+                                            <SelectItem value="100">100</SelectItem>
+                                            <SelectItem value="0">Todos</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {provPageSize !== 0 && provTotalPages > 1 && (
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => setProvCurrentPage(p => Math.max(1, p - 1))} disabled={provCurrentPage === 1} className="border-border">
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <span className="text-sm text-muted-foreground px-2">{provCurrentPage} / {provTotalPages}</span>
+                                        <Button variant="outline" size="sm" onClick={() => setProvCurrentPage(p => Math.min(provTotalPages, p + 1))} disabled={provCurrentPage === provTotalPages} className="border-border">
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                )}
+                                <span className="text-sm text-muted-foreground">{filteredAccounts.length} cuenta(s) en total</span>
+                            </div>
+                        )}
+                    </div>
                 </TabsContent>
 
                 {/* ─── CLIENTS TAB ─── */}
@@ -431,141 +453,152 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         </div>
                     </div>
 
-                    {/* Filters + Bulk Action */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Filter className="h-4 w-4 text-muted-foreground" />
-                            {clientFilterButtons.map(f => (
-                                <button
-                                    key={f.key}
-                                    onClick={() => { setClientFilter(f.key); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${clientFilter === f.key
-                                        ? 'bg-[#86EFAC] text-black'
-                                        : 'bg-secondary text-muted-foreground hover:text-foreground'
-                                        }`}
-                                >
-                                    {f.label}{f.count !== undefined ? ` (${f.count})` : ''}
-                                </button>
-                            ))}
+                    {/* Search + Filters + Bulk Action */}
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar por nombre o teléfono..."
+                                value={clientSearch}
+                                onChange={(e) => { setClientSearch(e.target.value); setClientCurrentPage(1); }}
+                                className="pl-9 bg-[#1a1a1a] border-border"
+                            />
                         </div>
-                        {clientSelected.size > 0 && (
+                        <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <Button
-                                    onClick={() => setShowClientModal(true)}
-                                    className="bg-[#86EFAC] hover:bg-[#86EFAC]/90 text-black gap-2"
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Renovar ({clientSelected.size})
-                                </Button>
-                                <Button
-                                    onClick={() => setShowReleaseModal(true)}
-                                    variant="outline"
-                                    className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
-                                >
-                                    <Unlock className="h-4 w-4" />
-                                    Liberar ({clientSelected.size})
-                                </Button>
+                                <Filter className="h-4 w-4 text-muted-foreground" />
+                                {clientFilterButtons.map(f => (
+                                    <button
+                                        key={f.key}
+                                        onClick={() => { setClientFilter(f.key); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${clientFilter === f.key
+                                            ? 'bg-[#86EFAC] text-black'
+                                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                    >
+                                        {f.label}{f.count !== undefined ? ` (${f.count})` : ''}
+                                    </button>
+                                ))}
                             </div>
-                        )}
-                    </div>
-
-                    {/* Table */}
-                    <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
-                        <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
-                            <div className="flex items-center">
-                                <Checkbox
-                                    checked={clientSelected.size === paginatedSubs.length && paginatedSubs.length > 0}
-                                    onCheckedChange={toggleAllClients}
-                                />
-                            </div>
-                            <div>Cliente</div>
-                            <div>Plataforma / Cuenta</div>
-                            <div>Vencimiento</div>
-                            <div>Estado</div>
-                            <div>Monto</div>
-                        </div>
-                        {paginatedSubs.length === 0 && (
-                            <div className="py-12 text-center text-muted-foreground">
-                                No hay suscripciones en este filtro
-                            </div>
-                        )}
-                        {paginatedSubs.map((sub: any) => {
-                            const customer = sub.customer;
-                            const slot = sub.slot;
-                            const account = slot?.mother_account;
-                            const badge = getStatusBadge(sub.daysUntilExpiry);
-
-                            return (
-                                <div
-                                    key={sub.id}
-                                    className={`grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
-                                        }`}
-                                >
-                                    <div>
-                                        <Checkbox
-                                            checked={clientSelected.has(sub.id)}
-                                            onCheckedChange={() => toggleClient(sub.id)}
-                                        />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-foreground">{customer?.full_name || 'N/A'}</p>
-                                        <p className="text-xs text-muted-foreground">{customer?.phone || ''}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium">{account?.platform || 'N/A'}</p>
-                                        <p className="text-xs text-muted-foreground truncate">{account?.email || ''}</p>
-                                    </div>
-                                    <div className="text-sm">
-                                        {sub.expiryDate ? new Date(sub.expiryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
-                                    </div>
-                                    <div>
-                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
-                                            <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
-                                            {badge.label}
-                                        </span>
-                                    </div>
-                                    <div className="text-sm font-medium text-[#86EFAC]">
-                                        {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Pagination */}
-                    {filteredSubs.length > 0 && (
-                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Mostrar:</span>
-                                <Select
-                                    value={clientPageSize.toString()}
-                                    onValueChange={(v) => { setClientPageSize(parseInt(v)); setClientCurrentPage(1); }}
-                                >
-                                    <SelectTrigger className="w-24 bg-card border-border">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="30">30</SelectItem>
-                                        <SelectItem value="90">90</SelectItem>
-                                        <SelectItem value="100">100</SelectItem>
-                                        <SelectItem value="0">Todos</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {clientPageSize !== 0 && clientTotalPages > 1 && (
+                            {clientSelected.size > 0 && (
                                 <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => setClientCurrentPage(p => Math.max(1, p - 1))} disabled={clientCurrentPage === 1} className="border-border">
-                                        <ChevronLeft className="h-4 w-4" />
+                                    <Button
+                                        onClick={() => setShowClientModal(true)}
+                                        className="bg-[#86EFAC] hover:bg-[#86EFAC]/90 text-black gap-2"
+                                    >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Renovar ({clientSelected.size})
                                     </Button>
-                                    <span className="text-sm text-muted-foreground px-2">{clientCurrentPage} / {clientTotalPages}</span>
-                                    <Button variant="outline" size="sm" onClick={() => setClientCurrentPage(p => Math.min(clientTotalPages, p + 1))} disabled={clientCurrentPage === clientTotalPages} className="border-border">
-                                        <ChevronRight className="h-4 w-4" />
+                                    <Button
+                                        onClick={() => setShowReleaseModal(true)}
+                                        variant="outline"
+                                        className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
+                                    >
+                                        <Unlock className="h-4 w-4" />
+                                        Liberar ({clientSelected.size})
                                     </Button>
                                 </div>
                             )}
-                            <span className="text-sm text-muted-foreground">{filteredSubs.length} suscripción(es) en total</span>
                         </div>
-                    )}
+
+                        {/* Table */}
+                        <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
+                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                                <div className="flex items-center">
+                                    <Checkbox
+                                        checked={clientSelected.size === paginatedSubs.length && paginatedSubs.length > 0}
+                                        onCheckedChange={toggleAllClients}
+                                    />
+                                </div>
+                                <div>Cliente</div>
+                                <div>Plataforma / Cuenta</div>
+                                <div>Vencimiento</div>
+                                <div>Estado</div>
+                                <div>Monto</div>
+                            </div>
+                            {paginatedSubs.length === 0 && (
+                                <div className="py-12 text-center text-muted-foreground">
+                                    No hay suscripciones en este filtro
+                                </div>
+                            )}
+                            {paginatedSubs.map((sub: any) => {
+                                const customer = sub.customer;
+                                const slot = sub.slot;
+                                const account = slot?.mother_account;
+                                const badge = getStatusBadge(sub.daysUntilExpiry);
+
+                                return (
+                                    <div
+                                        key={sub.id}
+                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                            }`}
+                                    >
+                                        <div>
+                                            <Checkbox
+                                                checked={clientSelected.has(sub.id)}
+                                                onCheckedChange={() => toggleClient(sub.id)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-foreground">{customer?.full_name || 'N/A'}</p>
+                                            <p className="text-xs text-muted-foreground">{customer?.phone || ''}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium">{account?.platform || 'N/A'}</p>
+                                            <p className="text-xs text-muted-foreground truncate">{account?.email || ''}</p>
+                                        </div>
+                                        <div className="text-sm">
+                                            {sub.expiryDate ? new Date(sub.expiryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
+                                        </div>
+                                        <div>
+                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
+                                                <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
+                                                {badge.label}
+                                            </span>
+                                        </div>
+                                        <div className="text-sm font-medium text-[#86EFAC]">
+                                            {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Pagination */}
+                        {filteredSubs.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground">Mostrar:</span>
+                                    <Select
+                                        value={clientPageSize.toString()}
+                                        onValueChange={(v) => { setClientPageSize(parseInt(v)); setClientCurrentPage(1); }}
+                                    >
+                                        <SelectTrigger className="w-24 bg-card border-border">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="30">30</SelectItem>
+                                            <SelectItem value="90">90</SelectItem>
+                                            <SelectItem value="100">100</SelectItem>
+                                            <SelectItem value="0">Todos</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {clientPageSize !== 0 && clientTotalPages > 1 && (
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => setClientCurrentPage(p => Math.max(1, p - 1))} disabled={clientCurrentPage === 1} className="border-border">
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <span className="text-sm text-muted-foreground px-2">{clientCurrentPage} / {clientTotalPages}</span>
+                                        <Button variant="outline" size="sm" onClick={() => setClientCurrentPage(p => Math.min(clientTotalPages, p + 1))} disabled={clientCurrentPage === clientTotalPages} className="border-border">
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                )}
+                                <span className="text-sm text-muted-foreground">{filteredSubs.length} suscripción(es) en total</span>
+                            </div>
+                        )}
+                    </div>
                 </TabsContent>
             </Tabs>
 

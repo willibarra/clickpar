@@ -113,12 +113,16 @@ export async function createQuickSale(data: QuickSaleData) {
         }
 
         // 3. Crear venta
-        const startDate = new Date();
+        let startDate: Date;
         let endDate: Date;
         if (data.deliveryDate) {
-            // Fecha de entrega personalizada — usarla directamente como end_date
-            endDate = new Date(data.deliveryDate + 'T12:00:00');
+            // Fecha de entrega = start_date. end_date = start + 30 días automáticamente
+            startDate = new Date(data.deliveryDate + 'T12:00:00');
+            const durationDays = data.durationDays || 30;
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + durationDays);
         } else {
+            startDate = new Date();
             const durationDays = data.durationDays || 30;
             endDate = new Date(startDate);
             endDate.setDate(endDate.getDate() + durationDays);
@@ -324,6 +328,7 @@ interface SwapServiceData {
     newSlotId?: string; // If specified, use this exact slot; otherwise auto-assign
     targetPlatform?: string; // For auto-assignment: which platform to find a new slot in
     keepPrice?: boolean; // Whether to keep the same price from old sale
+    whatsappInstance?: string; // WhatsApp instance to use for notification
 }
 
 export async function swapService(data: SwapServiceData) {
@@ -422,6 +427,62 @@ export async function swapService(data: SwapServiceData) {
         await logAction('swap_service', 'sale', data.oldSaleId, {
             message: `realizó un cambio de perfil/cuenta a ${newPlatform || 'nuevo slot'}`
         });
+
+        // 7. Enviar credenciales por WhatsApp (sin bloquear si falla)
+        try {
+            const waSettings = await getWhatsAppSettings();
+            if (waSettings.auto_send_credentials) {
+                // Obtener datos del cliente
+                const { data: customer } = await (supabase.from('customers') as any)
+                    .select('full_name, phone')
+                    .eq('id', data.customerId)
+                    .single();
+
+                // Obtener credenciales del nuevo slot
+                const { data: newSlotInfo } = await (supabase.from('sale_slots') as any)
+                    .select(`
+                        slot_identifier,
+                        pin_code,
+                        mother_accounts:mother_account_id (
+                            email, password, platform, instructions, send_instructions
+                        )
+                    `)
+                    .eq('id', newSlotId)
+                    .single();
+
+                if (customer && newSlotInfo?.mother_accounts) {
+                    const acct = newSlotInfo.mother_accounts;
+                    // Calcular nueva fecha de vencimiento (30 días desde hoy)
+                    const expDate = new Date();
+                    expDate.setDate(expDate.getDate() + 30);
+                    const expDateStr = expDate.toLocaleDateString('es-PY');
+
+                    await sendSaleCredentials({
+                        customerPhone: customer.phone || data.customerId,
+                        customerName: customer.full_name || customer.phone,
+                        platform: acct.platform || newPlatform,
+                        email: acct.email || '',
+                        password: acct.password || '',
+                        profile: newSlotInfo.slot_identifier || 'Perfil asignado',
+                        expirationDate: expDateStr,
+                        customerId: data.customerId,
+                        instanceName: data.whatsappInstance,
+                    });
+
+                    if (acct.send_instructions && acct.instructions) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        const { sendText } = await import('@/lib/whatsapp');
+                        await sendText(
+                            customer.phone,
+                            `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
+                            { instanceName: (data as any).whatsappInstance, customerId: data.customerId }
+                        );
+                    }
+                }
+            }
+        } catch (waError) {
+            console.error('[WhatsApp/Swap] Error (non-blocking):', waError);
+        }
 
         revalidatePath('/');
         return {
