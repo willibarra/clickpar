@@ -288,6 +288,41 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        // ================================================
+        // 5. Autopay accounts — review every 15 days
+        // ================================================
+        const autopayReviews: string[] = [];
+        const { data: autopayAccounts } = await supabase
+            .from('mother_accounts' as any)
+            .select('id, email, platform, autopay_last_checked')
+            .eq('is_autopay', true)
+            .eq('status', 'active');
+
+        for (const acct of (autopayAccounts || []) as any[]) {
+            const lastChecked = acct.autopay_last_checked
+                ? new Date(acct.autopay_last_checked)
+                : new Date(0);
+            const daysSince = Math.floor((today.getTime() - lastChecked.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (daysSince >= 15) {
+                // Update last checked date
+                await supabase
+                    .from('mother_accounts' as any)
+                    .update({ autopay_last_checked: todayStr })
+                    .eq('id', acct.id);
+
+                autopayReviews.push(`${acct.platform} - ${acct.email}`);
+            }
+        }
+
+        if (autopayReviews.length > 0) {
+            await supabase.from('notifications' as any).insert({
+                type: 'autopay_review',
+                message: `🔄 Revisión de cuentas autopagables (${autopayReviews.length}): ${autopayReviews.join(', ')}. Verificar que siguen activas.`,
+                is_read: false,
+            });
+        }
+
         // Log results as notification
         const totalSent = results.reminder_1day.length + results.reminder_today.length +
             results.reminder_1day_after.length + results.cancelled_2days_after.length;

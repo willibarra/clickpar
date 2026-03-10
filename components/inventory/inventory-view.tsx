@@ -36,6 +36,7 @@ interface Account {
     purchase_cost_gs?: number;
     target_billing_day?: number;
     status?: string;
+    is_autopay?: boolean;
 }
 
 interface InventoryViewProps {
@@ -263,7 +264,9 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                 <span className="text-muted-foreground"> / {slots.length} disponibles</span>
                                             </div>
                                             <div className="text-xs text-muted-foreground">
-                                                Vence: {new Date(account.renewal_date).toLocaleDateString('es-PY')}
+                                                {account.is_autopay
+                                                    ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
+                                                    : <>Vence: {new Date(account.renewal_date).toLocaleDateString('es-PY')}</>}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -370,7 +373,9 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-muted-foreground">
-                                                {new Date(account.renewal_date).toLocaleDateString('es-PY')}
+                                                {account.is_autopay
+                                                    ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
+                                                    : new Date(account.renewal_date).toLocaleDateString('es-PY')}
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <EditAccountModal account={account} />

@@ -18,6 +18,8 @@ export async function createMotherAccount(formData: FormData) {
     // Auto-derive billing day from purchase date
     const billingDay = renewalDate ? new Date(renewalDate + 'T12:00:00').getDate() : new Date().getDate();
 
+    const isAutopay = formData.get('is_autopay') === 'true';
+
     const data = {
         supplier_id: formData.get('supplier_id') as string || null,
         platform: formData.get('platform') as string,
@@ -25,7 +27,9 @@ export async function createMotherAccount(formData: FormData) {
         password: formData.get('password') as string,
         purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,
         purchase_cost_gs: parseFloat(formData.get('purchase_cost_gs') as string) || 0,
-        renewal_date: renewalDate,
+        renewal_date: isAutopay && !renewalDate
+            ? new Date(new Date().getFullYear() + 1, new Date().getMonth(), new Date().getDate()).toISOString().split('T')[0]
+            : renewalDate,
         target_billing_day: billingDay,
         max_slots: maxSlots,
         status: 'active',
@@ -35,6 +39,8 @@ export async function createMotherAccount(formData: FormData) {
         sale_type: saleType,
         instructions: (formData.get('instructions') as string) || null,
         send_instructions: formData.get('send_instructions') === 'true',
+        is_autopay: isAutopay,
+        autopay_last_checked: isAutopay ? new Date().toISOString().split('T')[0] : null,
     };
 
     // Upsert owned email if checkbox was checked

@@ -57,6 +57,7 @@ export function AddAccountModal() {
     const [showEmailPass, setShowEmailPass] = useState(false);
     const [instructions, setInstructions] = useState('');
     const [sendInstructions, setSendInstructions] = useState(false);
+    const [isAutopay, setIsAutopay] = useState(false);
 
 
     useEffect(() => {
@@ -70,6 +71,7 @@ export function AddAccountModal() {
             setShowEmailPass(false);
             setInstructions('');
             setSendInstructions(false);
+            setIsAutopay(false);
             setServiceDays(getDaysInCurrentMonth());
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
@@ -165,6 +167,7 @@ export function AddAccountModal() {
             formData.set('instructions', instructions.trim());
         }
         formData.set('send_instructions', sendInstructions ? 'true' : 'false');
+        formData.set('is_autopay', isAutopay ? 'true' : 'false');
 
         const result = await createMotherAccount(formData);
 
@@ -359,6 +362,20 @@ export function AddAccountModal() {
                                     placeholder="0"
                                 />
                             </div>
+                        </div>
+
+                        {/* Autopay checkbox */}
+                        <div className="flex items-center gap-2 px-1">
+                            <input
+                                type="checkbox"
+                                id="is_autopay"
+                                checked={isAutopay}
+                                onChange={(e) => setIsAutopay(e.target.checked)}
+                                className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                            />
+                            <Label htmlFor="is_autopay" className="cursor-pointer text-sm font-normal">
+                                🔄 Cuenta autopagable <span className="text-muted-foreground">(sin fecha de vencimiento fija, revisión cada 15 días)</span>
+                            </Label>
                         </div>
 
                         {/* Row 5: Supplier Name + Supplier Phone */}
