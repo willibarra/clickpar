@@ -87,7 +87,7 @@ export async function getAccountsForRenewal() {
             id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status,
             sale_slots (id, status, slot_identifier)
         `)
-        .eq('status', 'active')
+        .in('status', ['active', 'expired', 'suspended', 'frozen'])
         .order('renewal_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
