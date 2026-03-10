@@ -79,7 +79,8 @@ export async function GET(request: NextRequest) {
             const { data: sales } = await (supabase.from('sales') as any)
                 .select('id, customer_id, amount_gs, slot_id, is_active, start_date, end_date')
                 .in('customer_id', customerIds)
-                .eq('is_active', true);
+                .eq('is_active', true)
+                .not('slot_id', 'is', null);
 
             const slotIds = (sales || []).map((s: any) => s.slot_id).filter(Boolean);
             let slotMap = new Map<string, any>();

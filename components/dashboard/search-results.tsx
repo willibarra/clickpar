@@ -277,6 +277,9 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
     const copyText = () =>
         `${svc.platform}\nUsuario: ${email}\nClave: ${password}\nPantalla: ${slotName}${pin ? `\nPIN: ${pin}` : ''}\nVence: ${formatDate(customerExpiry)}\nPrecio: ${formatGs(Number(amount))}`;
 
+    // Detectar si es cuenta familia (slot_identifier es un email)
+    const isFamilyAccount = (slotName || '').includes('@');
+
     /* ── COMPACT VIEW ──────────────────────────────────────── */
     if (!editing) {
         return (
@@ -284,7 +287,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                 <div className="flex items-center gap-3 px-4 py-2.5">
                     <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
 
-                    <div className="flex-1 grid grid-cols-2 md:grid-cols-8 gap-x-3 gap-y-1 items-center min-w-0">
+                    <div className={`flex-1 grid grid-cols-2 ${isFamilyAccount ? 'md:grid-cols-7' : 'md:grid-cols-6'} gap-x-3 gap-y-1 items-center min-w-0`}>
                         <div>
                             <span className="text-xs text-muted-foreground block">Plataforma</span>
                             <div className="flex items-center gap-1.5">
@@ -296,25 +299,25 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                                 )}
                             </div>
                         </div>
-                        {/* Cuenta del cliente: su perfil/slot */}
-                        <div className="truncate">
-                            <span className="text-xs text-muted-foreground block">Cuenta</span>
-                            <span className="text-sm text-foreground truncate block font-medium">{slotName || '—'}</span>
-                        </div>
-                        {/* PIN del cliente (si tiene) */}
-                        <div>
-                            <span className="text-xs text-muted-foreground block">PIN</span>
-                            <span className="text-sm text-foreground">{pin || '—'}</span>
-                        </div>
                         {/* Acceso cuenta madre (email + clave) */}
                         <div className="truncate">
-                            <span className="text-xs text-muted-foreground block">Acceso (madre)</span>
+                            <span className="text-xs text-muted-foreground block">Acceso</span>
                             <span className="text-sm text-muted-foreground truncate block">{email || '—'}</span>
                         </div>
                         <div>
                             <span className="text-xs text-muted-foreground block">Clave</span>
                             <VisiblePassword value={password} />
                         </div>
+                        {/* Solo cuentas familia: mostrar perfil del cliente */}
+                        {isFamilyAccount && (
+                            <div className="truncate">
+                                <span className="text-xs text-muted-foreground block">Perfil</span>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-sm text-foreground truncate block font-medium">{slotName}</span>
+                                    {pin && <span className="text-[10px] text-muted-foreground">(PIN: {pin})</span>}
+                                </div>
+                            </div>
+                        )}
                         <div>
                             <span className="text-xs text-muted-foreground block">Vencimiento</span>
                             <span className="text-sm text-foreground">{formatDate(customerExpiry)}</span>
