@@ -6,22 +6,41 @@
  * Estado, Fecha Vencimiento, Dias Restantes, Plataforma, Usuario, Clave,
  * Pantalla, PIN, Instrucciones, Enviar Instrucciones, Fecha de Entrega,
  * Días de Servicio, Celular Proveedor, Nombre Proveedor, Celular Cliente,
- * Vendido, Número de Pantallas
+ * Vendido, Número de Pantallas, Precio de Venta, Precio Comprada
  *
- * Reglas de importación aprendidas:
+ * Reglas de importación (Netflix):
  * - Pantalla = "PAGO CUENTA COMPLETA" → es la fila de la madre (no crea slot)
  * - Estado = "Activo" + Celular Cliente real → slot vendido con venta
  * - Estado = "A la Venta / Disponible" → slot libre (available)
  * - -0001-12-30 y -740050 → null / vacío
- * - PIN = "NO REQUIERE" → null
- * - Plataforma: tomar solo el nombre antes del " - " para matchear (ej: "VIX - 1 PERFIL" → "VIX")
- * - Precios: todos 0
- * - Número de Pantallas en fila PAGO CUENTA COMPLETA = max_slots de la madre
+ * - PIN = "NO REQUIERE", "NO REQUIERE PIN", "R$ 0.00", "$0.00", "CONTRASEÑA INCORRECTA" → null
+ * - Plataforma: tomar solo el nombre antes del " - " para matchear (ej: "NETFLIX - 1 ᴘᴇʀꜰɪʟ" → "Netflix")
+ * - Precio de Venta → amount_gs de la venta
+ * - Precio Comprada → purchase_cost_gs de la madre
+ *
+ * Reglas Proveedor Netflix:
+ * - Normalizar TODO a "POP PREMIUM" EXCEPTO: CLICKPAR, Vivas Play, Ommi,
+ *   Majozka, Blackmerry, Servicios Digitales NVR (estos se guardan tal cual)
+ * - "CLICKPAR - AUTOPAY" → proveedor = "CLICKPAR" + is_autopay = true en madre
+ * - "CLICKPAR - COCOS" → proveedor = "CLICKPAR" + instructions = "COCOS" en madre
+ * - CLICKPAR con instrucciones largas en PIN → guardar en instructions de madre
+ *
+ * Huérfanas: sin fila PAGO, Congelado, sin teléfono → NO importar
+ * Perfil 4 Niños / perfil 3 minúscula → tratar como Perfil normal
+ * Dias Restantes no numérico → ignorar (parsear como int, null si falla)
+ *
+ * Casos especiales ya resueltos en CSVs limpios (NCLEAN_*):
+ * - net60@clickpar.net le falta Perfil 3 → ya agregado
+ * - casareposa25+nn y maxime-3fr con 2 clientes en mismo slot → solo el más reciente
+ * - design.audits.2v 2do cliente Perfil 5 → movido a Perfil 4
+ * - mtalaf.64us 2do cliente Perfil 5 → movido a Perfil 3
+ * - nivel.madera.01 2do cliente Perfil 2 → movido a Perfil 4
  *
  * Uso:
- *   node datos/import_csv.mjs --file="datos/VIX - VIX.csv" --clean
- *   node datos/import_csv.mjs --file="datos/NETFLIX - NETFLIX.csv"
+ *   node datos/import_csv.mjs --file="datos/NCLEAN_NETT1.csv"
+ *   node datos/import_csv.mjs --file="datos/NCLEAN_NETT1.csv" --clean
  *   --clean  →  limpia mother_accounts, sale_slots, sales, customers antes de importar
+ *   --dry-run → simula sin escribir en BD
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -58,18 +77,77 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 const args = process.argv.slice(2);
 const fileArg = args.find(a => a.startsWith('--file='))?.replace('--file=', '');
 const doClean = args.includes('--clean');
+const dryRun = args.includes('--dry-run');
 
 if (!fileArg) {
-    console.error('❌ Especificá el archivo: --file="datos/VIX - VIX.csv"');
+    console.error('❌ Especificá el archivo: --file="datos/NCLEAN_NETT1.csv"');
     process.exit(1);
 }
 
 const csvPath = resolve(ROOT, fileArg);
+if (dryRun) console.log('⚠️  MODO DRY-RUN: no se escribirá en la BD');
+
+// ── Proveedores que NO se normalizan a POP PREMIUM ─────────────────────────
+// Estos se guardan tal cual (o con transformación especial como AUTOPAY/COCOS)
+const KEEP_AS_IS_PROVIDERS = [
+    'clickpar',
+    'vivas play',
+    'ommi',
+    'majozka',
+    'blackmerry',
+    'servicios digitales nvr',
+];
+
+/**
+ * Normaliza el nombre de proveedor según las reglas acordadas.
+ * Retorna: { name: string, isAutopay: bool, extraInstructions: string|null }
+ */
+function normalizeSupplier(raw) {
+    if (!raw || raw.trim() === '') {
+        return { name: 'POP PREMIUM', isAutopay: false, extraInstructions: null };
+    }
+    const trimmed = raw.trim();
+    const lower = trimmed.toLowerCase();
+
+    // CLICKPAR - AUTOPAY → is_autopay = true
+    if (lower === 'clickpar - autopay' || lower === 'clickpar - posible autopay') {
+        return { name: 'CLICKPAR', isAutopay: true, extraInstructions: null };
+    }
+
+    // CLICKPAR - COCOS → instructions = "COCOS"
+    if (lower === 'clickpar - cocos') {
+        return { name: 'CLICKPAR', isAutopay: false, extraInstructions: 'COCOS' };
+    }
+
+    // Otros CLICKPAR - XXX → normalizar a CLICKPAR
+    if (lower.startsWith('clickpar')) {
+        return { name: 'CLICKPAR', isAutopay: false, extraInstructions: null };
+    }
+
+    // Ver si es uno de los que se conservan
+    const keep = KEEP_AS_IS_PROVIDERS.some(p => lower.includes(p));
+    if (keep) {
+        // Canonicalizar capitalización
+        const canonical = KEEP_AS_IS_PROVIDERS.find(p => lower.includes(p));
+        const names = {
+            'clickpar': 'CLICKPAR',
+            'vivas play': 'Vivas Play',
+            'ommi': 'Ommi',
+            'majozka': 'Majozka',
+            'blackmerry': 'Blackmerry',
+            'servicios digitales nvr': 'Servicios Digitales NVR',
+        };
+        return { name: names[canonical] || trimmed, isAutopay: false, extraInstructions: null };
+    }
+
+    // Todo lo demás → POP PREMIUM
+    return { name: 'POP PREMIUM', isAutopay: false, extraInstructions: null };
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function parseDate(raw) {
     if (!raw || raw.trim() === '' || raw.includes('-0001') || raw.includes('-740050')) return null;
-    // Intentar formato dd/MM/yyyy
+    // Formato dd/MM/yyyy
     const ddmm = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (ddmm) {
         return `${ddmm[3]}-${String(ddmm[2]).padStart(2, '0')}-${String(ddmm[1]).padStart(2, '0')}`;
@@ -83,55 +161,99 @@ function normalizePhone(raw) {
     if (!raw || raw.trim() === '') return null;
     let p = String(raw).replace(/\D/g, '');
     if (!p) return null;
-    // Solo normalizar si empieza con 0 (formato local paraguayo: 09XXXXXXXX)
     if (p.startsWith('0')) return '595' + p.slice(1);
-    // Si ya tiene 10+ dígitos, es probablemente internacional — guardar tal cual
     if (p.length >= 10) return p;
-    // Si tiene menos de 10 dígitos, asumir Paraguay
     return '595' + p;
 }
 
-// Para teléfonos de PROVEEDOR: almacenar tal cual (pueden ser internacionales)
 function storePhone(raw) {
     if (!raw || raw.trim() === '') return null;
     return String(raw).trim();
 }
 
+/**
+ * Parsea PIN. Retorna null si es un PIN "vacío" o texto especial.
+ * PINs especiales: NO REQUIERE, NO REQUIERE PIN, R$ 0.00, $0.00, CONTRASEÑA INCORRECTA, etc.
+ */
 function parsePin(raw) {
     if (!raw || raw.trim() === '') return null;
     const u = raw.trim().toUpperCase();
-    // Instrucciones internas o sin pin → null
     const nullPins = [
         'NO REQUIERE', 'NO REQUIERE PIN', 'NA', '0', '-',
         'AGREGAR PERFIL', 'PIDE COD DE INICIO', 'CONTRASEÑA INCORRECTA',
         'NO EXISTE CUENTA', 'BLOQUEADO', 'NO ESTA PREMIUM', 'CANJE',
+        'AUTOPAY', 'R$ 0.00', '$0.00', 'R$0.00',
     ];
     if (nullPins.includes(u)) return null;
-    // "crear perfil X" y similares
     if (u.startsWith('CREAR PERFIL')) return null;
     if (u.startsWith('AGREGAR')) return null;
     if (u.startsWith('PIDE')) return null;
+    if (u.startsWith('R$')) return null;   // cualquier valor en reales
+    if (u.startsWith('$0')) return null;   // cualquier $0.xx
     return raw.trim();
 }
 
-// Limpiar nombre de proveedor (quitar prefijo "Proveedor: ")
-function cleanSupplier(raw) {
-    if (!raw || raw.trim() === '') return null;
-    return raw.trim().replace(/^Proveedor:\s*/i, '');
+/**
+ * Detecta si el valor del campo PIN de PAGO CUENTA COMPLETA es una
+ * "instrucción larga" (texto descriptivo para guardar en mother_account).
+ */
+function isLongInstruction(raw) {
+    if (!raw || raw.trim() === '') return false;
+    const u = raw.trim().toUpperCase();
+    // Si es un PIN numérico corto o un PIN especial ya manejado → no es instrucción
+    if (parsePin(raw) === null) return false;
+    // Si tiene más de 20 caracteres y no es numérico → instrucción
+    if (raw.trim().length > 20 && /\D/.test(raw.trim())) return true;
+    return false;
 }
 
 function parsePlatformName(raw) {
-    // "VIX - 1 ᴘᴇʀꜰɪʟ" → "VIX"
-    // "Netflix" → "Netflix"
     if (!raw) return null;
     const idx = raw.indexOf(' - ');
     return idx > 0 ? raw.slice(0, idx).trim() : raw.trim();
+}
+
+/**
+ * Parsea Dias Restantes. Retorna número entero o null si no es número.
+ * Maneja basura como "₲ 2" → ignorar.
+ */
+function parseDias(raw) {
+    if (!raw || raw.trim() === '') return null;
+    // Extraer solo dígitos y signo
+    const match = raw.trim().match(/^(-?\d+)/);
+    if (!match) return null;
+    return parseInt(match[1], 10);
+}
+
+/**
+ * Parsea precio. Retorna número entero o 0 si vacío/inválido.
+ */
+function parsePrice(raw) {
+    if (!raw || raw.trim() === '') return 0;
+    const cleaned = String(raw).replace(/[^\d.-]/g, '');
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Normaliza slot_identifier: 
+ * - "Perfil 4 - Niños" → "Perfil 4"
+ * - "perfil 3" → "Perfil 3"
+ * - "Perfil 3 - ..." → "Perfil 3"
+ */
+function normalizeSlotIdentifier(raw) {
+    if (!raw) return raw;
+    // Tomar solo la parte antes del " - "
+    const base = raw.trim().split(' - ')[0].trim();
+    // Capitalizar "perfil X" → "Perfil X"
+    return base.replace(/^(perfil)\s+(\d+)$/i, (_, p, n) => `Perfil ${n}`);
 }
 
 function parseCSV(content) {
     const lines = content.replace(/\r/g, '').split('\n').filter(l => l.trim());
     const headers = lines[0].split(',').map(h => h.trim());
     return lines.slice(1).map(line => {
+        // Parseo simple (sin campos con comas como en JSON)
         const values = line.split(',');
         const row = {};
         headers.forEach((h, i) => { row[h] = (values[i] || '').trim(); });
@@ -142,10 +264,9 @@ function parseCSV(content) {
 // ── Limpiar tablas ────────────────────────────────────────────────────────────
 async function cleanDatabase() {
     console.log('\n🧹 Limpiando base de datos...');
-
-    // Orden importante: primero las que tienen FK
     const tables = ['sales', 'sale_slots', 'mother_accounts', 'customers'];
     for (const table of tables) {
+        if (dryRun) { console.log(`   [DRY] DELETE FROM ${table}`); continue; }
         const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
         if (error) {
             console.error(`   ❌ Error limpiando ${table}: ${error.message}`);
@@ -170,19 +291,14 @@ async function importCSV(csvPath) {
     function findPlatform(csvName) {
         const lower = csvName.toLowerCase();
         const lowerNoSpace = lower.replace(/\s+/g, '');
-        // 1. Exact match
         const exact = platformList.find(p => p.name.toLowerCase() === lower);
         if (exact) return exact;
-        // 2. Exact match sin espacios (HBOMAX ↔ HBO Max)
         const exactNS = platformList.find(p => p.name.toLowerCase().replace(/\s+/g, '') === lowerNoSpace);
         if (exactNS) return exactNS;
-        // 3. System name contains CSV name
         const contains1 = platformList.find(p => p.name.toLowerCase().includes(lower));
         if (contains1) return contains1;
-        // 4. CSV name contains system name
         const contains2 = platformList.find(p => lower.includes(p.name.toLowerCase()));
         if (contains2) return contains2;
-        // 5. Word-based: any significant word in CSV name matches part of system name
         const words = lower.split(/\s+/).filter(w => w.length > 3);
         return platformList.find(p => words.some(w => p.name.toLowerCase().includes(w))) || null;
     }
@@ -190,70 +306,99 @@ async function importCSV(csvPath) {
     // ── PASO 1: Identificar y crear Mother Accounts ──────────────────────────
     console.log('\n📦 Importando cuentas madre...');
     const motherRows = rows.filter(r => r['Pantalla'] === 'PAGO CUENTA COMPLETA');
-    const motherAccountMap = {}; // email → id en BD
+    const motherAccountMap = {}; // email.toLowerCase() → id en BD
 
     for (const row of motherRows) {
         let platName = parsePlatformName(row['Plataforma']);
         const email = row['Usuario']?.trim();
         const password = row['Clave']?.trim();
         const renewalDate = parseDate(row['Fecha Vencimiento']);
-        const supplier = cleanSupplier(row['Nombre Proveedor']);
+        const rawSupplier = row['Nombre Proveedor'] || '';
+        const supplierInfo = normalizeSupplier(rawSupplier);
         const supplierPhone = storePhone(row['Celular Proveedor']);
-        const rawInstructions = row['Instrucciones'] || (row['PIN']?.trim() || '');
-        const instructions = (rawInstructions && rawInstructions !== '0' && rawInstructions !== '-') ? rawInstructions : null;
-        const maxSlotsFromCSV = parseInt(row['Número de Pantallas']);
-        // Plataformas familia: slots son emails del cliente, no pre-crear "Perfil X"
-        const familyPlatforms = ['spotify', 'youtube'];
-        const isFamilyAccount = maxSlotsFromCSV === 0 || familyPlatforms.some(fp => platName.toLowerCase().includes(fp));
-        // Si familia → no pre-crear slots, se crean al vuelo
-        const maxSlots = isFamilyAccount ? 5 : (maxSlotsFromCSV > 0 ? maxSlotsFromCSV : 5);
+        const maxSlotsFromCSV = parseInt(row['Número de Pantallas']) || 5;
+        const purchasePrice = parsePrice(row['Precio Comprada']);
+
+        // PIN en la fila PAGO CUENTA COMPLETA:
+        // - Puede ser instrucción larga → guardar en instructions
+        // - Puede ser AUTOPAY (ya manejado en normalizeSupplier)
+        // - O basura → null
+        const rawPin = row['PIN'] || '';
+        let motherInstructions = null;
+        if (isLongInstruction(rawPin)) {
+            motherInstructions = rawPin.trim();
+        }
+        // Si el proveedor generó extraInstructions (COCOS), combinar
+        if (supplierInfo.extraInstructions) {
+            motherInstructions = motherInstructions
+                ? `${supplierInfo.extraInstructions}\n${motherInstructions}`
+                : supplierInfo.extraInstructions;
+        }
+
+        const maxSlots = maxSlotsFromCSV > 0 ? maxSlotsFromCSV : 5;
 
         if (!email || !platName) {
             console.log(`   ⚠️ Fila madre sin email o plataforma — se omite`);
             continue;
         }
 
-        // Verificar que la plataforma existe
+        // Verificar que la plataforma existe en el sistema
         let foundPlatform = findPlatform(platName);
         if (!foundPlatform) {
             console.log(`   ⚠️ Plataforma "${platName}" no encontrada. Creándola...`);
-            const { data: newPlat, error: platError } = await supabase
-                .from('platforms')
-                .insert({ name: platName, sale_price_gs: 0, is_active: true })
-                .select('id, name')
-                .single();
-            if (platError) {
-                console.error(`   ❌ Error creando plataforma ${platName}: ${platError.message}`);
-                continue;
+            if (!dryRun) {
+                const { data: newPlat, error: platError } = await supabase
+                    .from('platforms')
+                    .insert({ name: platName, sale_price_gs: 0, is_active: true })
+                    .select('id, name')
+                    .single();
+                if (platError) {
+                    console.error(`   ❌ Error creando plataforma ${platName}: ${platError.message}`);
+                    continue;
+                }
+                platformList.push(newPlat);
+                foundPlatform = newPlat;
+                console.log(`   ✅ Plataforma "${platName}" creada`);
+            } else {
+                console.log(`   [DRY] Se crearía plataforma "${platName}"`);
+                foundPlatform = { id: 'dry-run-id', name: platName };
             }
-            platformList.push(newPlat);
-            foundPlatform = newPlat;
-            console.log(`   ✅ Plataforma "${platName}" creada`);
         } else {
-            platName = foundPlatform.name; // usar el nombre canónico del sistema
+            platName = foundPlatform.name;
         }
 
-        const diasRestantes = parseInt(row['Dias Restantes']) || 0;
-        const maStatus = diasRestantes < 0 ? 'expired' : 'active';
+        const diasRestantes = parseDias(row['Dias Restantes']);
+        const maStatus = (diasRestantes !== null && diasRestantes < 0) ? 'expired' : 'active';
 
-        // Insertar mother account
+        const motherPayload = {
+            platform: platName,
+            email,
+            password,
+            renewal_date: renewalDate,
+            supplier_name: supplierInfo.name,
+            supplier_phone: supplierPhone,
+            purchase_cost_gs: purchasePrice,
+            purchase_cost_usdt: 0,
+            sale_price_gs: 0,
+            max_slots: maxSlots,
+            status: maStatus,
+            sale_type: 'profile',
+            instructions: motherInstructions,
+            is_autopay: supplierInfo.isAutopay,
+        };
+
+        const autopayTag = supplierInfo.isAutopay ? ' 🔄 AUTOPAY' : '';
+        const instructTag = motherInstructions ? ` [instrucciones: ${motherInstructions.substring(0, 30)}...]` : '';
+
+        if (dryRun) {
+            console.log(`   [DRY] Madre: ${email} (${platName}) - Proveedor: ${supplierInfo.name}${autopayTag}${instructTag}`);
+            motherAccountMap[email.toLowerCase()] = `dry-${email}`;
+            continue;
+        }
+
         const { data: ma, error } = await supabase
             .from('mother_accounts')
-            .insert({
-                platform: platName,
-                email,
-                password,
-                renewal_date: renewalDate,
-                supplier_name: supplier,
-                supplier_phone: supplierPhone,
-                purchase_cost_gs: 0,
-                purchase_cost_usdt: 0,
-                sale_price_gs: 0,
-                max_slots: maxSlots,
-                status: maStatus,
-                sale_type: 'profile',
-                instructions: instructions,
-            })
+            .insert(motherPayload)
             .select('id')
             .single();
 
@@ -264,128 +409,94 @@ async function importCSV(csvPath) {
 
         motherAccountMap[email.toLowerCase()] = ma.id;
 
-        // Para cuentas familia (YouTube) NO pre-crear slots — se crean con email del cliente al vuelo
-        if (isFamilyAccount) {
-            console.log(`   ✅ Cuenta madre: ${email} (${platName}) — slots al vuelo | estado: ${maStatus}`);
+        // Crear slots Perfil 1..maxSlots
+        const slots = Array.from({ length: maxSlots }, (_, i) => ({
+            mother_account_id: ma.id,
+            slot_identifier: `Perfil ${i + 1}`,
+            pin_code: null,
+            status: 'available',
+        }));
+        const { error: slotsErr } = await supabase.from('sale_slots').insert(slots);
+        if (slotsErr) {
+            console.error(`   ⚠️ Error creando slots para ${email}: ${slotsErr.message}`);
         } else {
-            // Crear TODOS los slots Perfil 1..maxSlots
-            const slots = Array.from({ length: maxSlots }, (_, i) => ({
-                mother_account_id: ma.id,
-                slot_identifier: `Perfil ${i + 1}`,
-                pin_code: null,
-                status: 'available',
-            }));
-            const { error: slotsErr } = await supabase.from('sale_slots').insert(slots);
-            if (slotsErr) {
-                console.error(`   ⚠️ Error creando slots para ${email}: ${slotsErr.message}`);
-            } else {
-                console.log(`   ✅ Cuenta madre: ${email} (${platName}) — ${maxSlots} slots | estado: ${maStatus}`);
-            }
+            console.log(`   ✅ Madre: ${email} (${platName}) — ${maxSlots} slots | ${maStatus} | Proveedor: ${supplierInfo.name}${autopayTag}${instructTag}`);
         }
     }
 
     // ── PASO 2: Importar slots vendidos y congelados ──────────────────────────
     console.log('\n👥 Importando clientes y ventas...');
+
     const slotRows = rows.filter(r => {
         const p = r['Pantalla']?.trim();
         const e = r['Estado']?.trim();
         const hasClient = !!normalizePhone(r['Celular Cliente']);
-        // Incluir Activo, Congelado, Caducado, y A la Venta con cliente (cuenta familia)
         return p !== 'PAGO CUENTA COMPLETA' &&
             (e === 'Activo' || e === 'Congelado' || e === 'Caducado' || (e?.includes('Venta') && hasClient));
     });
 
-    let clientsOk = 0, salesOk = 0, errors = 0;
-    const quarantinedMothers = new Set(); // madres con slots congelados
+    let clientsOk = 0, salesOk = 0, errors = 0, skipped = 0;
+    const quarantinedMothers = new Set();
 
-    // También buscar slots huérfanos (Activo, sin PAGO CUENTA COMPLETA en el archivo)
-    // y crear sus madres si no existen
-    const allMotherEmails = new Set(rows
-        .filter(r => r['Pantalla']?.trim() === 'PAGO CUENTA COMPLETA')
-        .map(r => r['Usuario']?.trim().toLowerCase())
-        .filter(Boolean)
+    // Set de madres que aparecen en el CSV con PAGO CUENTA COMPLETA
+    const allMotherEmails = new Set(
+        motherRows.map(r => r['Usuario']?.trim().toLowerCase()).filter(Boolean)
     );
 
     for (const row of slotRows) {
         const email = row['Usuario']?.trim();
         const emailLower = email?.toLowerCase();
+        const estado = row['Estado']?.trim();
+        const clientPhone = normalizePhone(row['Celular Cliente']);
+        const slotIdentifier = normalizeSlotIdentifier(row['Pantalla']?.trim() || '');
+        const diasRestantes = parseDias(row['Dias Restantes']);
 
-        // Si no tiene madre en el archivo → auto-crear
-        if (emailLower && !allMotherEmails.has(emailLower) && !motherAccountMap[emailLower]) {
-            const platName = parsePlatformName(row['Plataforma']);
-            let resolvedPlat = platName;
-            let foundPlat = findPlatform(platName);
-            if (!foundPlat) {
-                const { data: np } = await supabase.from('platforms')
-                    .insert({ name: platName, price: 0, is_active: true })
-                    .select('id, name').single();
-                if (np) { platformList.push(np); foundPlat = np; }
+        // Regla: huérfanas sin fila PAGO, Congelado sin cliente, sin teléfono → NO importar
+        if (!clientPhone) {
+            if (estado === 'Congelado') {
+                // Congelado sin cliente → marcar madre para quarantined pero no importar slot
+                const maId = motherAccountMap[emailLower];
+                if (maId) quarantinedMothers.add(maId);
             } else {
-                resolvedPlat = foundPlat.name;
+                console.log(`   ⚠️ Slot ${slotIdentifier} sin teléfono (${email}) — omitido`);
             }
-
-            // Calcular max_slots a partir del número de perfil
-            const slotNum = parseInt((row['Pantalla'] || '').replace(/\D/g, '')) || 1;
-            const autoMaxSlots = Math.max(slotNum, 3);
-            const diasMadre = parseInt(row['Dias Restantes']) || 0;
-            const autoStatus = diasMadre < 0 ? 'expired' : 'active';
-
-            const { data: autoMa } = await supabase.from('mother_accounts').insert({
-                platform: resolvedPlat,
-                email: email,
-                password: row['Clave']?.trim() || '',
-                renewal_date: null,
-                supplier_name: cleanSupplier(row['Nombre Proveedor']),
-                supplier_phone: storePhone(row['Celular Proveedor']),
-                purchase_cost_gs: 0, purchase_cost_usdt: 0, sale_price_gs: 0,
-                max_slots: autoMaxSlots, status: autoStatus, sale_type: 'profile',
-            }).select('id').single();
-
-            if (autoMa) {
-                motherAccountMap[emailLower] = autoMa.id;
-                allMotherEmails.add(emailLower);
-                const autoSlots = Array.from({ length: autoMaxSlots }, (_, i) => ({
-                    mother_account_id: autoMa.id,
-                    slot_identifier: `Perfil ${i + 1}`,
-                    pin_code: null, status: 'available',
-                }));
-                await supabase.from('sale_slots').insert(autoSlots);
-                console.log(`   🆕 Madre auto-creada: ${email} (${autoMaxSlots} slots)`);
-            }
+            skipped++;
+            continue;
         }
 
-        // Extraer slot_identifier: si es email (cuenta familia), solo el email antes de " - "
-        const slotIdentifier = (row['Pantalla']?.trim() || '').split(' - ')[0].trim();
-        const clientPhone = normalizePhone(row['Celular Cliente']);
-        const startDate = parseDate(row['Fecha de Entrega']);
-        const endDate = parseDate(row['Fecha Vencimiento']);
-        const diasRestantesSlot = parseInt(row['Dias Restantes']) || 0;
-        const estado = row['Estado']?.trim();
         const isCongelado = estado === 'Congelado';
         const isCaducado = estado === 'Caducado';
-        // Congelado/Caducado siempre inactivo; Activo depende de dias
-        const isActive = !isCongelado && !isCaducado && diasRestantesSlot > 0;
+        const isActive = !isCongelado && !isCaducado && (diasRestantes === null || diasRestantes > 0);
 
-        // Si congelado sin cliente → skip (slot queda available), pero registrar madre para quarantine
-        if (isCongelado && !clientPhone) {
+        if (isCongelado) {
             const maId = motherAccountMap[emailLower];
             if (maId) quarantinedMothers.add(maId);
-            continue;
         }
 
-        if (!clientPhone) {
-            console.log(`   ⚠️ Slot ${slotIdentifier} sin teléfono — se omite`);
-            continue;
-        }
-
+        // Si no hay madre en el mapa → omitir (huérfana sin PAGO CUENTA COMPLETA)
         const maId = motherAccountMap[emailLower];
         if (!maId) {
-            console.log(`   ⚠️ Sin cuenta madre para ${email} — slot ${slotIdentifier}`);
+            console.log(`   ⚠️ Huérfana: sin cuenta madre para ${email} — slot ${slotIdentifier} — omitido`);
+            skipped++;
             errors++;
             continue;
         }
 
-        if (isCongelado) quarantinedMothers.add(maId);
+        // Precio de venta
+        const salePrice = parsePrice(row['Precio de Venta']);
+
+        // PIN del perfil
+        const pinCode = parsePin(row['PIN']);
+
+        const startDate = parseDate(row['Fecha de Entrega']);
+        const endDate = parseDate(row['Fecha Vencimiento']);
+
+        if (dryRun) {
+            const tag = isCongelado ? ' [CONGELADO]' : (!isActive ? ' [VENCIDO]' : '');
+            console.log(`   [DRY] Venta${tag}: ${clientPhone} → ${email} (${slotIdentifier}) Gs ${salePrice}`);
+            salesOk++;
+            continue;
+        }
 
         // Crear o encontrar cliente
         let customerId;
@@ -413,57 +524,36 @@ async function importCSV(csvPath) {
             clientsOk++;
         }
 
-        // Lookup: exact → prefijo → crear al vuelo
-        const prefixIdentifier = slotIdentifier.split(' - ')[0].trim();
+        // Buscar slot por identifier normalizado
         let slot = null;
 
         const { data: slotExact } = await supabase
             .from('sale_slots')
-            .select('id')
+            .select('id, status')
             .eq('mother_account_id', maId)
             .eq('slot_identifier', slotIdentifier)
             .maybeSingle();
 
         if (slotExact) {
             slot = slotExact;
-        } else if (prefixIdentifier !== slotIdentifier) {
-            // Buscar por el prefijo base ("Perfil 3")
-            const { data: slotPrefix } = await supabase
-                .from('sale_slots')
-                .select('id')
-                .eq('mother_account_id', maId)
-                .eq('slot_identifier', prefixIdentifier)
-                .maybeSingle();
-            if (slotPrefix) slot = slotPrefix;
+        } else {
+            // No encontrado → posible error en CSV data
+            console.log(`   ⚠️ Slot "${slotIdentifier}" no encontrado en madre ${email}`);
+            errors++;
+            continue;
         }
 
-        // Si aún no hay slot → crear al vuelo (cuenta familia)
-        if (!slot) {
-            const { data: newSlot } = await supabase
-                .from('sale_slots')
-                .insert({
-                    mother_account_id: maId,
-                    slot_identifier: slotIdentifier,
-                    pin_code: null,
-                    status: 'available',
-                })
-                .select('id')
-                .single();
-            if (newSlot) {
-                slot = newSlot;
-            } else {
-                console.error(`   ❌ No se pudo crear slot "${slotIdentifier}" para ${email}`);
-                errors++;
-                continue;
-            }
+        // Actualizar PIN en el slot si tenemos uno
+        if (pinCode) {
+            await supabase.from('sale_slots').update({ pin_code: pinCode }).eq('id', slot.id);
         }
 
         // Crear venta
         const { error: saleErr } = await supabase.from('sales').insert({
             customer_id: customerId,
             slot_id: slot.id,
-            amount_gs: 0,
-            original_price_gs: 0,
+            amount_gs: salePrice,
+            original_price_gs: salePrice,
             override_price: false,
             start_date: startDate,
             end_date: endDate,
@@ -477,24 +567,27 @@ async function importCSV(csvPath) {
             continue;
         }
 
-        // Marcar slot como vendido (o expired si venció)
+        // Marcar slot como vendido
         const slotStatus = isActive ? 'sold' : (isCongelado ? 'sold' : 'expired');
         await supabase.from('sale_slots').update({ status: slotStatus }).eq('id', slot.id);
+
         salesOk++;
         const tag = isCongelado ? ' [CONGELADO]' : (!isActive ? ' [VENCIDO]' : '');
-        console.log(`   ✅ Venta${tag}: ${clientPhone} → ${email} (${slotIdentifier})`);
+        console.log(`   ✅ Venta${tag}: ${clientPhone} → ${email} (${slotIdentifier}) Gs ${salePrice}`);
     }
 
     // ── PASO 3: Marcar cuentas madre congeladas como quarantined ─────────────
     if (quarantinedMothers.size > 0) {
         console.log(`\n🧊 Marcando ${quarantinedMothers.size} cuentas como quarantined...`);
-        for (const maId of quarantinedMothers) {
-            await supabase.from('mother_accounts').update({ status: 'quarantined' }).eq('id', maId);
+        if (!dryRun) {
+            for (const maId of quarantinedMothers) {
+                await supabase.from('mother_accounts').update({ status: 'quarantined' }).eq('id', maId);
+            }
         }
         console.log('   ✅ Cuentas quarantined actualizadas');
     }
 
-    // ── PASO 3: Resumen ──────────────────────────────────────────────────────
+    // ── Resumen ──────────────────────────────────────────────────────────────
     console.log('\n════════════════════════════════════');
     console.log('📋 RESUMEN DE IMPORTACIÓN');
     console.log('════════════════════════════════════');
@@ -502,6 +595,7 @@ async function importCSV(csvPath) {
     console.log(`🧊 Quarantined:      ${quarantinedMothers.size}`);
     console.log(`✅ Clientes nuevos:  ${clientsOk}`);
     console.log(`✅ Ventas creadas:   ${salesOk}`);
+    console.log(`⏭️  Omitidos:         ${skipped}`);
     console.log(`❌ Errores:          ${errors}`);
     console.log('════════════════════════════════════\n');
 }
@@ -515,6 +609,7 @@ async function importCSV(csvPath) {
         await importCSV(csvPath);
     } catch (err) {
         console.error('❌ Error fatal:', err.message);
+        console.error(err.stack);
         process.exit(1);
     }
 })();
