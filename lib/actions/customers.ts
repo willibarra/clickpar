@@ -29,10 +29,13 @@ export async function createCustomer(formData: FormData) {
         }
     }
 
+    const customerType = (formData.get('customer_type') as string) || 'cliente';
+
     const { data, error } = await (supabase.from('customers') as any)
         .insert({
             full_name: fullName,
             phone,
+            customer_type: customerType,
         })
         .select('id')
         .single();
@@ -70,8 +73,10 @@ export async function updateCustomer(id: string, formData: FormData) {
         }
     }
 
+    const customerType = (formData.get('customer_type') as string) || 'cliente';
+
     const { error } = await (supabase.from('customers') as any)
-        .update({ full_name: fullName, phone })
+        .update({ full_name: fullName, phone, customer_type: customerType })
         .eq('id', id);
 
     if (error) {

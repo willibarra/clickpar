@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createCustomer } from '@/lib/actions/customers';
 
 export function AddCustomerModal() {
@@ -80,6 +81,19 @@ export function AddCustomerModal() {
                                 name="phone_number"
                                 placeholder="+595 9XX XXX XXX"
                             />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Tipo de cliente</Label>
+                            <Select name="customer_type" defaultValue="cliente">
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cliente">👤 Cliente</SelectItem>
+                                    <SelectItem value="creador">🎬 Creador (Canje)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="space-y-2">

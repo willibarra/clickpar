@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Pencil, Loader2, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
 
 interface Customer {
     id: string;
     full_name: string | null;
     phone_number: string | null;
+    customer_type?: string;
 }
 
 export function EditCustomerModal({ customer }: { customer: Customer }) {
@@ -92,6 +94,19 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                                 defaultValue={customer.phone_number || ''}
                                 placeholder="+595 9XX XXX XXX"
                             />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Tipo de cliente</Label>
+                            <Select name="customer_type" defaultValue={customer.customer_type || 'cliente'}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cliente">👤 Cliente</SelectItem>
+                                    <SelectItem value="creador">🎬 Creador (Canje)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
 

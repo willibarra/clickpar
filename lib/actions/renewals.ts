@@ -100,10 +100,9 @@ export async function getAccountsForRenewal() {
 export async function getClientSubscriptions() {
     const supabase = await createAdminClient();
 
-    // 1. Get all active sales (flat, no joins)
+    // Get all sales (active AND expired/vencido) so expired ones show in renewal center
     const { data: salesData, error } = await (supabase.from('sales') as any)
         .select('id, amount_gs, start_date, end_date, is_active, slot_id, customer_id')
-        .eq('is_active', true)
         .order('end_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };

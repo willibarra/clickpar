@@ -102,7 +102,7 @@ function parsePin(raw) {
     const u = raw.trim().toUpperCase();
     // Instrucciones internas o sin pin → null
     const nullPins = [
-        'NO REQUIERE', 'NA', '0', '-',
+        'NO REQUIERE', 'NO REQUIERE PIN', 'NA', '0', '-',
         'AGREGAR PERFIL', 'PIDE COD DE INICIO', 'CONTRASEÑA INCORRECTA',
         'NO EXISTE CUENTA', 'BLOQUEADO', 'NO ESTA PREMIUM', 'CANJE',
     ];

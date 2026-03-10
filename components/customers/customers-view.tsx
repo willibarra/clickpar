@@ -32,6 +32,7 @@ export interface CustomerRow {
     id: string;
     full_name: string;
     phone: string;
+    customer_type: 'cliente' | 'creador';
     services: CustomerService[];
     history: CustomerHistory[];
     // Computed in server
@@ -91,7 +92,7 @@ function daysBadge(dateStr: string | null) {
 
 type SortField = 'name' | 'status' | 'nextExpiry' | 'totalSpent';
 type SortDirection = 'asc' | 'desc';
-type StatusFilter = 'all' | 'active' | 'expired' | 'inactive';
+type StatusFilter = 'all' | 'active' | 'expired' | 'inactive' | 'creador';
 
 const statusOrder = { active: 1, expired: 2, inactive: 3 };
 
@@ -108,15 +109,16 @@ export function CustomersView({ customers }: CustomersViewProps) {
 
     // Counts per status
     const counts = useMemo(() => {
-        const c = { all: customers.length, active: 0, expired: 0, inactive: 0 };
-        customers.forEach(cu => { c[cu.status]++; });
+        const c = { all: customers.length, active: 0, expired: 0, inactive: 0, creador: 0 };
+        customers.forEach(cu => { c[cu.status]++; if (cu.customer_type === 'creador') c.creador++; });
         return c;
     }, [customers]);
 
-    // Filter
     const filteredCustomers = useMemo(() => {
         let result = customers;
-        if (statusFilter !== 'all') {
+        if (statusFilter === 'creador') {
+            result = result.filter(c => c.customer_type === 'creador');
+        } else if (statusFilter !== 'all') {
             result = result.filter(c => c.status === statusFilter);
         }
         if (searchQuery.trim()) {
@@ -229,6 +231,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                     { key: 'active' as StatusFilter, label: '🟢 Activos', color: '#86EFAC' },
                     { key: 'expired' as StatusFilter, label: '🔴 Vencidos', color: '#EF4444' },
                     { key: 'inactive' as StatusFilter, label: '⚪ Sin Servicio', color: '#6B7280' },
+                    { key: 'creador' as StatusFilter, label: '🎬 Creadores', color: '#818CF8' },
                 ]).map(f => (
                     <button
                         key={f.key}
@@ -313,9 +316,16 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-medium text-foreground truncate">
-                                                            {customer.full_name || 'Sin nombre'}
-                                                        </p>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="text-sm font-medium text-foreground truncate">
+                                                                {customer.full_name || 'Sin nombre'}
+                                                            </p>
+                                                            {customer.customer_type === 'creador' && (
+                                                                <span className="inline-flex items-center rounded-full bg-[#818CF8]/15 border border-[#818CF8]/30 px-1.5 py-0.5 text-[9px] font-semibold text-[#818CF8]">
+                                                                    🎬 Creador
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                                             <Phone className="h-3 w-3 flex-shrink-0" />
                                                             <span className="truncate">{customer.phone || '—'}</span>
@@ -397,6 +407,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                         id: customer.id,
                                                         full_name: customer.full_name,
                                                         phone_number: customer.phone,
+                                                        customer_type: customer.customer_type,
                                                     }} />
                                                 </div>
                                             </td>
@@ -445,7 +456,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
             ) : (
                 <div className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
                     <Search className="h-10 w-10 opacity-30" />
-                    <p className="text-sm">No se encontraron clientes{statusFilter !== 'all' ? ` con estado "${statusConfig[statusFilter].label}"` : ''}.</p>
+                    <p className="text-sm">No se encontraron clientes{statusFilter !== 'all' && statusFilter !== 'creador' ? ` con estado "${statusConfig[statusFilter].label}"` : statusFilter === 'creador' ? ' creadores' : ''}.</p>
                 </div>
             )}
 
