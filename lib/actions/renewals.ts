@@ -100,61 +100,66 @@ export async function getAccountsForRenewal() {
 export async function getClientSubscriptions() {
     const supabase = await createAdminClient();
 
-    // Get all sales (active AND expired/vencido) so expired ones show in renewal center
+    // Helper: split array into chunks to avoid URL length limits in .in() queries
+    function chunk<T>(arr: T[], size: number): T[][] {
+        const chunks: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+        return chunks;
+    }
+
+    // 1. Get all active sales ordered by end_date
     const { data: salesData, error } = await (supabase.from('sales') as any)
         .select('id, amount_gs, start_date, end_date, is_active, slot_id, customer_id')
+        .eq('is_active', true)
         .order('end_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
     const sales = salesData || [];
     if (sales.length === 0) return { data: [] };
 
-    // 2. Fetch all referenced customers
-    const customerIds = [...new Set(sales.map((s: any) => s.customer_id).filter(Boolean))];
-    let customerMap = new Map<string, any>();
-    if (customerIds.length > 0) {
+    // 2. Fetch customers in chunks of 400
+    const customerIds = [...new Set(sales.map((s: any) => s.customer_id).filter(Boolean))] as string[];
+    const customerMap = new Map<string, any>();
+    for (const ids of chunk(customerIds, 400)) {
         const { data: customers } = await (supabase.from('customers') as any)
             .select('id, full_name, phone')
-            .in('id', customerIds);
+            .in('id', ids);
         (customers || []).forEach((c: any) => customerMap.set(c.id, c));
     }
 
-    // 3. Fetch all referenced slots → mother accounts
-    const slotIds = [...new Set(sales.map((s: any) => s.slot_id).filter(Boolean))];
-    let slotMap = new Map<string, any>();
-    if (slotIds.length > 0) {
+    // 3. Fetch slots in chunks of 400
+    const slotIds = [...new Set(sales.map((s: any) => s.slot_id).filter(Boolean))] as string[];
+    const slotDataMap = new Map<string, any>();
+    for (const ids of chunk(slotIds, 400)) {
         const { data: slots } = await (supabase.from('sale_slots') as any)
             .select('id, slot_identifier, status, mother_account_id')
-            .in('id', slotIds);
-        const slotsFiltered = slots || [];
-
-        // Fetch mother accounts for these slots
-        const maIds = [...new Set(slotsFiltered.map((s: any) => s.mother_account_id).filter(Boolean))];
-        let maMap = new Map<string, any>();
-        if (maIds.length > 0) {
-            const { data: mas } = await (supabase.from('mother_accounts') as any)
-                .select('id, platform, email, renewal_date')
-                .in('id', maIds);
-            (mas || []).forEach((m: any) => maMap.set(m.id, m));
-        }
-
-        slotsFiltered.forEach((s: any) => {
-            slotMap.set(s.id, {
-                ...s,
-                mother_account: maMap.get(s.mother_account_id) || null,
-            });
-        });
+            .in('id', ids);
+        (slots || []).forEach((s: any) => slotDataMap.set(s.id, s));
     }
 
-    // 4. Combine into the expected shape
-    const enriched = sales.map((sale: any) => ({
-        ...sale,
-        customer: customerMap.get(sale.customer_id) || null,
-        slot: slotMap.get(sale.slot_id) || null,
-    }));
+    // 4. Fetch mother accounts in chunks of 400
+    const maIds = [...new Set([...slotDataMap.values()].map((s: any) => s.mother_account_id).filter(Boolean))] as string[];
+    const maMap = new Map<string, any>();
+    for (const ids of chunk(maIds, 400)) {
+        const { data: mas } = await (supabase.from('mother_accounts') as any)
+            .select('id, platform, email, renewal_date')
+            .in('id', ids);
+        (mas || []).forEach((m: any) => maMap.set(m.id, m));
+    }
+
+    // 5. Combine
+    const enriched = sales.map((sale: any) => {
+        const slotData = slotDataMap.get(sale.slot_id);
+        return {
+            ...sale,
+            customer: customerMap.get(sale.customer_id) || null,
+            slot: slotData ? { ...slotData, mother_account: maMap.get(slotData.mother_account_id) || null } : null,
+        };
+    });
 
     return { data: enriched };
 }
+
 
 /**
  * Bulk renew mother accounts (provider renewals)
