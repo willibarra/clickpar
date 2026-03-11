@@ -170,11 +170,30 @@ export async function getClientSubscriptions() {
         (rows || []).forEach((r: any) => slotMap.set(r.id, r));
     }
 
-    // 4. Combinar
+    // 4. Obtener último aviso enviado por venta (whatsapp_send_log)
+    const saleIds = sales.map((s: any) => s.id) as string[];
+    const notifMap = new Map<string, { sentAt: string; template: string }>();
+    for (const ids of chunk(saleIds, 200)) {
+        const { data: logs } = await (supabase.from('whatsapp_send_log') as any)
+            .select('sale_id, created_at, template_key, status')
+            .in('sale_id', ids)
+            .in('template_key', ['pre_vencimiento', 'vencimiento_hoy'])
+            .eq('status', 'sent')
+            .order('created_at', { ascending: false });
+        // Guardar el log más reciente por sale_id
+        (logs || []).forEach((log: any) => {
+            if (!notifMap.has(log.sale_id)) {
+                notifMap.set(log.sale_id, { sentAt: log.created_at, template: log.template_key });
+            }
+        });
+    }
+
+    // 5. Combinar
     const enriched = sales.map((sale: any) => ({
         ...sale,
         customer: custMap.get(sale.customer_id) || null,
         slot: slotMap.get(sale.slot_id) || null,
+        lastNotified: notifMap.get(sale.id) || null,
     }));
 
     return { data: enriched };

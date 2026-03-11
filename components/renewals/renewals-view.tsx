@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
-    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search
+    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search,
+    MessageSquare, MessageSquareOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions } from '@/lib/actions/renewals';
@@ -503,7 +504,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
-                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_100px_90px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
                                 <div className="flex items-center">
                                     <Checkbox
                                         checked={clientSelected.size === paginatedSubs.length && paginatedSubs.length > 0}
@@ -514,6 +515,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 <div>Plataforma / Cuenta</div>
                                 <div>Vencimiento</div>
                                 <div>Estado</div>
+                                <div>Aviso WA</div>
                                 <div>Monto</div>
                             </div>
                             {paginatedSubs.length === 0 && (
@@ -530,7 +532,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 return (
                                     <div
                                         key={sub.id}
-                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_100px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_100px_90px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
                                             }`}
                                     >
                                         <div>
@@ -558,6 +560,28 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         </div>
                                         <div className="text-sm font-medium text-[#86EFAC]">
                                             {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
+                                        </div>
+                                        {/* Aviso WhatsApp */}
+                                        <div>
+                                            {sub.lastNotified ? (
+                                                <div
+                                                    className="flex items-center gap-1 text-xs text-[#86EFAC] cursor-default"
+                                                    title={`${sub.lastNotified.template === 'vencimiento_hoy' ? 'Aviso día de vencimiento' : 'Aviso previo'} · ${new Date(sub.lastNotified.sentAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+                                                >
+                                                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
+                                                    <span>
+                                                        {new Date(sub.lastNotified.sentAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div
+                                                    className="flex items-center gap-1 text-xs text-muted-foreground/50 cursor-default"
+                                                    title="Sin aviso enviado aún"
+                                                >
+                                                    <MessageSquareOff className="h-3.5 w-3.5 flex-shrink-0" />
+                                                    <span>Sin aviso</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
