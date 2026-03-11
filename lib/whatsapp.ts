@@ -744,26 +744,17 @@ export async function notifyAccountCredentialChange(params: {
 }): Promise<{ sent: SendResult[]; activeSlots: any[]; expiredSlots: any[] }> {
     const supabase = await waSupabase();
 
-    // Get all slots with active sales for this mother account
+    // Get all slots with sales for this mother account
+    // Usamos sale_slots con status='sold' y buscamos ventas activas asociadas
     const { data: slots } = await supabase
         .from('sale_slots')
         .select(`
-      id,
-      slot_identifier,
-      status,
-      sales!inner (
-        id,
-        status,
-        expiration_date,
-        customer:customers!inner (
-          id,
-          name,
-          phone
-        )
-      )
-    `)
+            id,
+            slot_identifier,
+            status
+        `)
         .eq('mother_account_id', params.motherAccountId)
-        .eq('status', 'occupied');
+        .eq('status', 'sold');
 
     // Get mother account info
     const { data: account } = await supabase
@@ -776,38 +767,67 @@ export async function notifyAccountCredentialChange(params: {
     const activeSlots: any[] = [];
     const expiredSlots: any[] = [];
     const sent: SendResult[] = [];
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (!slots || slots.length === 0) return { sent, activeSlots, expiredSlots };
+
+    // Fetch sales for these slots (is_active=true)
+    const slotIds = (slots as any[]).map((s: any) => s.id);
+    const { data: sales } = await (supabase as any)
+        .from('sales')
+        .select('id, slot_id, end_date, customer_id')
+        .in('slot_id', slotIds)
+        .eq('is_active', true);
+
+    // Fetch customer info
+    const custIds = [...new Set((sales || []).map((s: any) => s.customer_id).filter(Boolean))] as string[];
+    const custMap = new Map<string, any>();
+    if (custIds.length > 0) {
+        const { data: customers } = await (supabase as any)
+            .from('customers')
+            .select('id, full_name, phone')
+            .in('id', custIds);
+        (customers || []).forEach((c: any) => custMap.set(c.id, c));
+    }
+
+    // Build sale map by slot_id
+    const saleBySlot = new Map<string, any>();
+    (sales || []).forEach((s: any) => saleBySlot.set(s.slot_id, s));
 
     for (const slot of (slots || []) as any[]) {
-        const sale = Array.isArray(slot.sales) ? slot.sales[0] : slot.sales;
+        const sale = saleBySlot.get(slot.id);
         if (!sale) continue;
 
-        const customer = sale.customer;
-        const expDate = sale.expiration_date ? new Date(sale.expiration_date) : null;
-        const isExpired = expDate && expDate < now;
+        const customer = custMap.get(sale.customer_id);
+        // Atrasado: end_date existe y ya venció
+        const endDate = sale.end_date ? new Date(sale.end_date + 'T00:00:00') : null;
+        const isOverdue = endDate !== null && endDate < today;
 
-        if (isExpired || sale.status !== 'active') {
+        if (isOverdue) {
+            // Cliente atrasado: NO enviar mensaje
             expiredSlots.push({
                 slotId: slot.id,
                 slotName: slot.slot_identifier,
-                customerName: customer?.name,
-                customerPhone: customer?.phone,
-                expirationDate: sale.expiration_date,
+                customerName: customer?.full_name || null,
+                customerPhone: customer?.phone || null,
+                endDate: sale.end_date,
+                daysOverdue: endDate ? Math.floor((today.getTime() - endDate.getTime()) / 86400000) : 0,
             });
         } else {
+            // Cliente al día: enviar actualización de credenciales
             activeSlots.push({
                 slotId: slot.id,
                 slotName: slot.slot_identifier,
-                customerName: customer?.name,
-                customerPhone: customer?.phone,
-                expirationDate: sale.expiration_date,
+                customerName: customer?.full_name || null,
+                customerPhone: customer?.phone || null,
+                endDate: sale.end_date,
             });
 
-            // Send credential update to active (paid) users
             if (customer?.phone) {
                 const result = await sendCredentialUpdate({
                     customerPhone: customer.phone,
-                    customerName: customer.name || 'Cliente',
+                    customerName: customer.full_name || 'Cliente',
                     platform,
                     email: params.newEmail,
                     password: params.newPassword,
@@ -821,3 +841,4 @@ export async function notifyAccountCredentialChange(params: {
 
     return { sent, activeSlots, expiredSlots };
 }
+

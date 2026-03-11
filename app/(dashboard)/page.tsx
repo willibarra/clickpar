@@ -6,6 +6,7 @@ import { ExpirationAlerts } from '@/components/dashboard/expiration-alerts';
 import { PlatformStats } from '@/components/dashboard/platform-stats';
 import { SearchResults } from '@/components/dashboard/search-results';
 import { QuarantineAlerts } from '@/components/dashboard/quarantine-alerts';
+import { OverdueClientsAlert } from '@/components/dashboard/overdue-clients-alert';
 
 // Utilidad para formatear números en Guaraníes
 function formatGs(amount: number): string {
@@ -55,7 +56,8 @@ export default async function DashboardPage({
         { data: expiringAccounts },
         { data: expiringSales },
         { data: platformStats },
-        { data: quarantinedRaw }
+        { data: quarantinedRaw },
+        { data: overdueRaw }
     ] = await Promise.all([
         // Cuentas activas
         supabase.from('mother_accounts').select('*', { count: 'exact', head: true }).eq('status', 'active'),
@@ -98,7 +100,18 @@ export default async function DashboardPage({
         (supabase.from('mother_accounts') as any)
             .select(`id, platform, email, quarantined_at, sale_slots(id, slot_identifier, status)`)
             .eq('status', 'quarantine')
-            .order('quarantined_at', { ascending: true, nullsFirst: false })
+            .order('quarantined_at', { ascending: true, nullsFirst: false }),
+        // Ventas activas con end_date ya vencida (clientes que no renovaron)
+        (supabase.from('sales') as any)
+            .select(`
+                id, slot_id, end_date, customer_id,
+                customers:customer_id(full_name, phone),
+                sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform, email))
+            `)
+            .eq('is_active', true)
+            .not('end_date', 'is', null)
+            .lt('end_date', new Date().toISOString().split('T')[0])
+            .order('end_date', { ascending: true })
     ]);
 
     // Calcular totales - salesData puede estar vacío si la tabla no existe
@@ -152,6 +165,28 @@ export default async function DashboardPage({
             customer_phone: quarantineSlotCustomers[slot.id]?.phone || null,
         })),
     }));
+
+    // Mapear clientes atrasados (end_date < hoy, is_active = true)
+    const overdueClients = (overdueRaw || []).map((sale: any) => {
+        const endDate = sale.end_date;
+        const daysOverdue = endDate
+            ? Math.floor((Date.now() - new Date(endDate + 'T00:00:00').getTime()) / 86400000)
+            : 0;
+        const slot = Array.isArray(sale.sale_slots) ? sale.sale_slots[0] : sale.sale_slots;
+        const customer = Array.isArray(sale.customers) ? sale.customers[0] : sale.customers;
+        const motherAccount = slot?.mother_accounts;
+        return {
+            saleId: sale.id,
+            slotId: sale.slot_id,
+            customerName: customer?.full_name || null,
+            customerPhone: customer?.phone || null,
+            platform: motherAccount?.platform || '—',
+            accountEmail: motherAccount?.email || '—',
+            slotIdentifier: slot?.slot_identifier || null,
+            endDate,
+            daysOverdue,
+        };
+    });
 
     // Obtener plataformas activas (con umbral de stock)
     const { data: rawPlatforms } = await supabase
@@ -223,6 +258,9 @@ export default async function DashboardPage({
 
             {/* Quarantine Alerts */}
             <QuarantineAlerts accounts={quarantinedAccounts} />
+
+            {/* Overdue Clients — falta liberar */}
+            <OverdueClientsAlert clients={overdueClients} />
 
             {/* Stock Low Alerts */}
             {stockAlerts.length > 0 && (
