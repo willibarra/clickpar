@@ -116,10 +116,24 @@ export async function updateMotherAccount(id: string, formData: FormData) {
     const renewalDate = formData.get('renewal_date') as string;
     const billingDay = renewalDate ? new Date(renewalDate + 'T12:00:00').getDate() : undefined;
 
+    const newEmail = formData.get('email') as string;
+    const newPassword = formData.get('password') as string;
+
+    // Obtener datos actuales para detectar cambios de credenciales
+    const { data: currentAccount } = await (supabase.from('mother_accounts') as any)
+        .select('email, password, platform')
+        .eq('id', id)
+        .single();
+
+    const credentialsChanged = currentAccount && (
+        currentAccount.email !== newEmail ||
+        currentAccount.password !== newPassword
+    );
+
     const data: Record<string, any> = {
         platform: formData.get('platform') as string,
-        email: formData.get('email') as string,
-        password: formData.get('password') as string,
+        email: newEmail,
+        password: newPassword,
         purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,
         purchase_cost_gs: parseFloat(formData.get('purchase_cost_gs') as string) || 0,
         renewal_date: renewalDate,
@@ -144,11 +158,29 @@ export async function updateMotherAccount(id: string, formData: FormData) {
     }
 
     await logAction('update_account', 'mother_account', id, {
-        message: `editó la cuenta de ${data.platform} (${data.email})`
+        message: `editó la cuenta de ${data.platform} (${data.email})${credentialsChanged ? ' — credenciales actualizadas' : ''}`
     });
 
+    // Si cambiaron las credenciales, notificar a los clientes con slots activos (no-bloqueante)
+    if (credentialsChanged) {
+        try {
+            const { notifyAccountCredentialChange } = await import('@/lib/whatsapp');
+            // No awaitar en producción para no bloquear la respuesta al usuario,
+            // pero tampoco lanzar errores si falla WhatsApp
+            notifyAccountCredentialChange({
+                motherAccountId: id,
+                newEmail,
+                newPassword,
+            }).catch((err) => {
+                console.error('[updateMotherAccount] Error notificando clientes por WhatsApp:', err);
+            });
+        } catch (waErr) {
+            console.error('[updateMotherAccount] No se pudo importar whatsapp module:', waErr);
+        }
+    }
+
     revalidatePath('/inventory');
-    return { success: true };
+    return { success: true, notified: credentialsChanged };
 }
 
 export async function deleteMotherAccount(id: string) {

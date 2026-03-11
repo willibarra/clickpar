@@ -93,8 +93,12 @@ export function EditAccountModal({ account }: { account: Account }) {
             setError(result.error);
             setLoading(false);
         } else {
-            setOpen(false);
             setLoading(false);
+            if ((result as any).notified) {
+                setSuccessMessage('✅ Guardado. Se enviará la actualización de credenciales a los clientes activos por WhatsApp.');
+            } else {
+                setOpen(false);
+            }
         }
     }
 
