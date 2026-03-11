@@ -368,7 +368,8 @@ async function importCSV(csvPath) {
         }
 
         const diasRestantes = parseDias(row['Dias Restantes']);
-        const maStatus = (diasRestantes !== null && diasRestantes < 0) ? 'expired' : 'active';
+        // Dias=0 significa que vence hoy (o ya venció) → expired
+        const maStatus = (diasRestantes !== null && diasRestantes <= 0) ? 'expired' : 'active';
 
         const motherPayload = {
             platform: platName,

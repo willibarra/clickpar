@@ -140,6 +140,7 @@ export async function createQuickSale(data: QuickSaleData) {
                 end_date: endDate.toISOString().split('T')[0],
                 is_active: true,
                 payment_method: 'cash',
+                whatsapp_instance: data.whatsappInstance || null,
             });
 
         if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
@@ -335,15 +336,20 @@ export async function swapService(data: SwapServiceData) {
     const supabase = await createAdminClient();
 
     try {
-        // 1. Get current sale info (to preserve price)
+        // 1. Get current sale info (to preserve price, dates AND whatsapp instance)
         const { data: oldSale } = await (supabase.from('sales') as any)
-            .select('amount_gs, customer_id, slot_id')
+            .select('amount_gs, customer_id, slot_id, whatsapp_instance, start_date, end_date')
             .eq('id', data.oldSaleId)
             .single();
 
         if (!oldSale) throw new Error('Venta original no encontrada');
 
         const price = oldSale.amount_gs;
+        // Preservar fechas originales del cliente
+        const originalStartDate = oldSale.start_date || new Date().toISOString().split('T')[0];
+        const originalEndDate = oldSale.end_date || null;
+        // Usar instancia de la venta original si no se especifica una nueva
+        const instanceToUse = data.whatsappInstance || oldSale.whatsapp_instance || undefined;
 
         // Get mother account info from old slot
         const { data: oldSlotInfo } = await (supabase.from('sale_slots') as any)
@@ -404,7 +410,7 @@ export async function swapService(data: SwapServiceData) {
             throw new Error('Debe especificar un slot o plataforma de destino');
         }
 
-        // 5. Create new sale
+        // 5. Create new sale — preservando las fechas originales del cliente
         const { error: saleError } = await (supabase.from('sales') as any)
             .insert({
                 customer_id: data.customerId,
@@ -412,9 +418,11 @@ export async function swapService(data: SwapServiceData) {
                 amount_gs: price,
                 original_price_gs: price,
                 override_price: false,
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: originalStartDate,
+                end_date: originalEndDate,
                 is_active: true,
                 payment_method: 'cash',
+                whatsapp_instance: instanceToUse || null,
             });
         if (saleError) throw new Error(`Error creando nueva venta: ${saleError.message}`);
 
@@ -452,10 +460,10 @@ export async function swapService(data: SwapServiceData) {
 
                 if (customer && newSlotInfo?.mother_accounts) {
                     const acct = newSlotInfo.mother_accounts;
-                    // Calcular nueva fecha de vencimiento (30 días desde hoy)
-                    const expDate = new Date();
-                    expDate.setDate(expDate.getDate() + 30);
-                    const expDateStr = expDate.toLocaleDateString('es-PY');
+                    // Usar fecha de vencimiento original del cliente, no recalcular
+                    const expDateStr = originalEndDate
+                        ? new Date(originalEndDate + 'T12:00:00').toLocaleDateString('es-PY')
+                        : new Date(Date.now() + 30 * 86400000).toLocaleDateString('es-PY');
 
                     await sendSaleCredentials({
                         customerPhone: customer.phone || data.customerId,
@@ -466,7 +474,7 @@ export async function swapService(data: SwapServiceData) {
                         profile: newSlotInfo.slot_identifier || 'Perfil asignado',
                         expirationDate: expDateStr,
                         customerId: data.customerId,
-                        instanceName: data.whatsappInstance,
+                        instanceName: instanceToUse,
                     });
 
                     if (acct.send_instructions && acct.instructions) {
@@ -475,7 +483,7 @@ export async function swapService(data: SwapServiceData) {
                         await sendText(
                             customer.phone,
                             `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
-                            { instanceName: (data as any).whatsappInstance, customerId: data.customerId }
+                            { instanceName: instanceToUse, customerId: data.customerId }
                         );
                     }
                 }

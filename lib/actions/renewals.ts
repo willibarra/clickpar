@@ -77,17 +77,32 @@ export async function createRenewal(formData: FormData) {
 }
 
 /**
- * Get all mother accounts for renewal center, sorted by renewal_date ASC
+ * Get mother accounts needing renewal:
+ * - status = 'active' con renewal_date en los próximos 15 días
+ * - status = 'expired' con renewal_date en los últimos 30 días
+ * Sorted by renewal_date ASC
  */
 export async function getAccountsForRenewal() {
     const supabase = await createAdminClient();
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Ventana: 30 días atrás hasta 15 días adelante
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - 30);
+    const windowEnd = new Date(today);
+    windowEnd.setDate(windowEnd.getDate() + 15);
+
     const { data, error } = await (supabase.from('mother_accounts') as any)
         .select(`
-            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status,
+            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status, is_autopay,
             sale_slots (id, status, slot_identifier)
         `)
-        .in('status', ['active', 'expired', 'suspended', 'frozen'])
+        .in('status', ['active', 'expired'])
+        .gte('renewal_date', windowStart.toISOString().split('T')[0])
+        .lte('renewal_date', windowEnd.toISOString().split('T')[0])
+        .eq('is_autopay', false)  // excluir las de autopay
         .order('renewal_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
@@ -95,67 +110,72 @@ export async function getAccountsForRenewal() {
 }
 
 /**
- * Get client sales/subscriptions for renewal center, sorted by start_date ASC
+ * Get client subscriptions needing renewal:
+ * - Ventas activas con end_date en los próximos 15 días
+ * - Ventas activas cuyo end_date ya venció (últimos 7 días)
+ * Sorted by end_date ASC
  */
 export async function getClientSubscriptions() {
     const supabase = await createAdminClient();
 
-    // Helper: split array into chunks to avoid URL length limits in .in() queries
-    function chunk<T>(arr: T[], size: number): T[][] {
-        const chunks: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
-        return chunks;
-    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // 1. Get all active sales ordered by end_date
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - 7);
+    const windowEnd = new Date(today);
+    windowEnd.setDate(windowEnd.getDate() + 15);
+
+    const startStr = windowStart.toISOString().split('T')[0];
+    const endStr = windowEnd.toISOString().split('T')[0];
+
+    // 1. Obtener ventas activas en la ventana de fechas
     const { data: salesData, error } = await (supabase.from('sales') as any)
         .select('id, amount_gs, start_date, end_date, is_active, slot_id, customer_id')
         .eq('is_active', true)
+        .gte('end_date', startStr)
+        .lte('end_date', endStr)
         .order('end_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
     const sales = salesData || [];
     if (sales.length === 0) return { data: [] };
 
-    // 2. Fetch customers in chunks of 400
-    const customerIds = [...new Set(sales.map((s: any) => s.customer_id).filter(Boolean))] as string[];
-    const customerMap = new Map<string, any>();
-    for (const ids of chunk(customerIds, 400)) {
-        const { data: customers } = await (supabase.from('customers') as any)
-            .select('id, full_name, phone')
-            .in('id', ids);
-        (customers || []).forEach((c: any) => customerMap.set(c.id, c));
+    // Helper para dividir en lotes
+    function chunk<T>(arr: T[], size: number): T[][] {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
     }
 
-    // 3. Fetch slots in chunks of 400
+    // 2. Obtener customers por id (en lotes de 200)
+    const custIds = [...new Set(sales.map((s: any) => s.customer_id).filter(Boolean))] as string[];
+    const custMap = new Map<string, any>();
+    for (const ids of chunk(custIds, 200)) {
+        const { data: rows } = await (supabase.from('customers') as any)
+            .select('id, full_name, phone').in('id', ids);
+        (rows || []).forEach((r: any) => custMap.set(r.id, r));
+    }
+
+    // 3. Obtener slots por id (en lotes de 200) — sale_slots SÍ tiene FK hacia mother_accounts
     const slotIds = [...new Set(sales.map((s: any) => s.slot_id).filter(Boolean))] as string[];
-    const slotDataMap = new Map<string, any>();
-    for (const ids of chunk(slotIds, 400)) {
-        const { data: slots } = await (supabase.from('sale_slots') as any)
-            .select('id, slot_identifier, status, mother_account_id')
+    const slotMap = new Map<string, any>();
+    for (const ids of chunk(slotIds, 200)) {
+        const { data: rows } = await (supabase.from('sale_slots') as any)
+            .select(`
+                id, slot_identifier, status,
+                mother_account:mother_accounts(id, platform, email, renewal_date)
+            `)
             .in('id', ids);
-        (slots || []).forEach((s: any) => slotDataMap.set(s.id, s));
+        (rows || []).forEach((r: any) => slotMap.set(r.id, r));
     }
 
-    // 4. Fetch mother accounts in chunks of 400
-    const maIds = [...new Set([...slotDataMap.values()].map((s: any) => s.mother_account_id).filter(Boolean))] as string[];
-    const maMap = new Map<string, any>();
-    for (const ids of chunk(maIds, 400)) {
-        const { data: mas } = await (supabase.from('mother_accounts') as any)
-            .select('id, platform, email, renewal_date')
-            .in('id', ids);
-        (mas || []).forEach((m: any) => maMap.set(m.id, m));
-    }
-
-    // 5. Combine
-    const enriched = sales.map((sale: any) => {
-        const slotData = slotDataMap.get(sale.slot_id);
-        return {
-            ...sale,
-            customer: customerMap.get(sale.customer_id) || null,
-            slot: slotData ? { ...slotData, mother_account: maMap.get(slotData.mother_account_id) || null } : null,
-        };
-    });
+    // 4. Combinar
+    const enriched = sales.map((sale: any) => ({
+        ...sale,
+        customer: custMap.get(sale.customer_id) || null,
+        slot: slotMap.get(sale.slot_id) || null,
+    }));
 
     return { data: enriched };
 }
@@ -169,6 +189,7 @@ export async function getClientSubscriptions() {
 export async function bulkRenewAccounts(accountIds: string[], totalCostGs: number, daysToExtend: number) {
     const supabase = await createAdminClient();
     const errors: string[] = [];
+
     const costPerAccount = totalCostGs / accountIds.length;
 
     for (const accountId of accountIds) {

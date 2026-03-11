@@ -33,28 +33,40 @@ export default async function SalesPage() {
     const customerIds = [...new Set(rawSales?.map((s: any) => s.customer_id).filter(Boolean))] as string[];
     const slotIds = [...new Set(rawSales?.map((s: any) => s.slot_id).filter(Boolean))] as string[];
 
-    // 3. Fetch related data
-    // Customers
-    const { data: customers } = await (supabase
-        .from('customers') as any)
-        .select('id, full_name, phone')
-        .in('id', customerIds);
+    // Helper para dividir en lotes (evitar "URI too long" con muchos IDs)
+    function chunk<T>(arr: T[], size: number): T[][] {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+    }
 
-    // Slots with Mother Accounts
-    const { data: slots } = await (supabase
-        .from('sale_slots') as any)
-        .select(`
-            id,
-            slot_identifier,
-            mother_accounts (platform, email)
-        `)
-        .in('id', slotIds);
+    // 3. Fetch related data en lotes de 200
+    // Customers
+    const custMap = new Map<string, any>();
+    for (const ids of chunk(customerIds, 200)) {
+        const { data: rows } = await (supabase.from('customers') as any)
+            .select('id, full_name, phone').in('id', ids);
+        (rows || []).forEach((r: any) => custMap.set(r.id, r));
+    }
+
+    // Slots con Mother Accounts (sale_slots SÍ tiene FK hacia mother_accounts)
+    const slotMap = new Map<string, any>();
+    for (const ids of chunk(slotIds, 200)) {
+        const { data: rows } = await (supabase.from('sale_slots') as any)
+            .select(`
+                id,
+                slot_identifier,
+                mother_accounts (platform, email)
+            `)
+            .in('id', ids);
+        (rows || []).forEach((r: any) => slotMap.set(r.id, r));
+    }
 
     // 4. Manual Join
     const sales = rawSales?.map((sale: any) => ({
         ...sale,
-        customers: customers?.find((c: any) => c.id === sale.customer_id),
-        sale_slots: slots?.find((s: any) => s.id === sale.slot_id)
+        customers: custMap.get(sale.customer_id) || undefined,
+        sale_slots: slotMap.get(sale.slot_id) || undefined,
     })) || [];
 
     // Calculate admin stats
