@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, User, Lock, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar } from 'lucide-react';
-import { updateSlot } from '@/lib/actions/inventory';
+import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { updateSlot, deleteSlot } from '@/lib/actions/inventory';
 
 interface SlotDetailsModalProps {
     slot: {
@@ -36,6 +35,8 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [copied, setCopied] = useState<string | null>(null);
     const [status, setStatus] = useState(slot.status);
@@ -46,6 +47,7 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
 
     useEffect(() => {
         if (!open) return;
+        setConfirmDelete(false);
         setLoadingCustomer(true);
         setSlotCustomer(null);
         fetch(`/api/search/slot-customer?slotId=${slot.id}`)
@@ -72,14 +74,28 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
         setLoading(false);
     }
 
+    async function handleDelete() {
+        setDeleting(true);
+        const result = await deleteSlot(slot.id);
+        if (!result.error) {
+            setOpen(false);
+        } else {
+            setDeleting(false);
+            setConfirmDelete(false);
+        }
+    }
+
     async function copyToClipboard(text: string, key: string) {
         await navigator.clipboard.writeText(text);
         setCopied(key);
         setTimeout(() => setCopied(null), 2000);
     }
 
+    // Whether this slot can be deleted (no active customer)
+    const canDelete = !slotCustomer && !loadingCustomer;
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setConfirmDelete(false); }}>
             <DialogTrigger asChild>
                 <button
                     className={`rounded px-2 py-1 text-xs font-medium transition-all hover:scale-105 hover:ring-2 hover:ring-white/30 ${statusColor}`}
@@ -99,217 +115,259 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4 py-4">
-                    {/* Account Info (read-only) */}
-                    <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                        <h4 className="text-sm font-medium text-muted-foreground">
-                            Cuenta Madre: {account.platform}
-                        </h4>
-
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-muted-foreground">Email</Label>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-mono">{account.email}</span>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={() => copyToClipboard(account.email, 'email')}
-                                    >
-                                        {copied === 'email' ? (
-                                            <Check className="h-3 w-3 text-green-500" />
-                                        ) : (
-                                            <Copy className="h-3 w-3" />
-                                        )}
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                                <Label className="text-muted-foreground">Contraseña</Label>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-mono">
-                                        {showPassword ? account.password : '••••••••'}
-                                    </span>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                        {showPassword ? (
-                                            <EyeOff className="h-3 w-3" />
-                                        ) : (
-                                            <Eye className="h-3 w-3" />
-                                        )}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={() => copyToClipboard(account.password, 'password')}
-                                    >
-                                        {copied === 'password' ? (
-                                            <Check className="h-3 w-3 text-green-500" />
-                                        ) : (
-                                            <Copy className="h-3 w-3" />
-                                        )}
-                                    </Button>
-                                </div>
+                {confirmDelete ? (
+                    // Delete confirmation
+                    <div className="py-4">
+                        <div className="flex items-center gap-3 rounded-lg bg-red-500/10 p-4 mb-4">
+                            <AlertTriangle className="h-6 w-6 text-red-500 flex-shrink-0" />
+                            <div>
+                                <p className="font-medium text-red-500 text-sm">Eliminar este slot</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Se eliminará el slot <span className="font-medium">{slot.slot_identifier}</span> permanentemente.
+                                </p>
                             </div>
                         </div>
+                        <DialogFooter className="flex gap-2">
+                            <Button variant="outline" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                                Cancelar
+                            </Button>
+                            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                                {deleting ? (
+                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Eliminando...</>
+                                ) : (
+                                    <><Trash2 className="mr-2 h-4 w-4" />Sí, Eliminar</>
+                                )}
+                            </Button>
+                        </DialogFooter>
                     </div>
-
-                    {/* Cliente del slot */}
-                    {loadingCustomer ? (
-                        <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">Cargando cliente...</span>
-                        </div>
-                    ) : slotCustomer ? (() => {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const endDate = slotCustomer.end_date ? new Date(slotCustomer.end_date + 'T00:00:00') : null;
-                        const daysLeft = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                        const isExpired = daysLeft !== null && daysLeft < 0;
-                        const isExpiringSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
-                        const borderColor = isExpired ? 'border-red-500/40 bg-red-500/5' : isExpiringSoon ? 'border-yellow-500/40 bg-yellow-500/5' : 'border-[#86EFAC]/30 bg-[#86EFAC]/5';
-                        return (
-                            <div className={`rounded-lg border ${borderColor} p-3 flex items-center justify-between gap-2`}>
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <User className={`h-4 w-4 flex-shrink-0 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-[#86EFAC]'}`} />
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-medium text-foreground truncate">
-                                            {slotCustomer.full_name || slotCustomer.phone || 'Sin nombre'}
-                                        </p>
-                                        {slotCustomer.phone && slotCustomer.full_name !== slotCustomer.phone && (
-                                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <Phone className="h-3 w-3" />
-                                                {slotCustomer.phone}
-                                            </p>
-                                        )}
-                                        {slotCustomer.end_date && (
-                                            <p className={`text-xs flex items-center gap-1 font-medium ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-muted-foreground'}`}>
-                                                <Calendar className="h-3 w-3" />
-                                                {isExpired
-                                                    ? `⚠️ Vencido hace ${Math.abs(daysLeft!)}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
-                                                    : isExpiringSoon
-                                                        ? `⏰ Vence en ${daysLeft}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
-                                                        : `Vence: ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                                                }
-                                            </p>
-                                        )}
+                ) : (
+                    <div className="space-y-4 py-4">
+                        {/* ── Cliente asignado (arriba) ── */}
+                        {loadingCustomer ? (
+                            <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">Cargando cliente...</span>
+                            </div>
+                        ) : slotCustomer ? (() => {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const endDate = slotCustomer.end_date ? new Date(slotCustomer.end_date + 'T00:00:00') : null;
+                            const daysLeft = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                            const isExpired = daysLeft !== null && daysLeft < 0;
+                            const isExpiringSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+                            const borderColor = isExpired ? 'border-red-500/40 bg-red-500/5' : isExpiringSoon ? 'border-yellow-500/40 bg-yellow-500/5' : 'border-[#86EFAC]/30 bg-[#86EFAC]/5';
+                            return (
+                                <div className={`rounded-lg border ${borderColor} p-3`}>
+                                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Cliente asignado</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <User className={`h-5 w-5 flex-shrink-0 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-[#86EFAC]'}`} />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-foreground truncate">
+                                                    {slotCustomer.full_name || 'Sin nombre'}
+                                                </p>
+                                                {slotCustomer.phone && (
+                                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Phone className="h-3 w-3" />
+                                                        {slotCustomer.phone}
+                                                    </p>
+                                                )}
+                                                {slotCustomer.end_date && (
+                                                    <p className={`text-xs flex items-center gap-1 font-medium ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                                                        <Calendar className="h-3 w-3" />
+                                                        {isExpired
+                                                            ? `⚠️ Vencido hace ${Math.abs(daysLeft!)}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
+                                                            : isExpiringSoon
+                                                                ? `⏰ Vence en ${daysLeft}d — ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}`
+                                                                : `Vence: ${new Date(slotCustomer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                        }
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className={`flex-shrink-0 gap-1 text-xs h-8 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
+                                            onClick={() => {
+                                                setOpen(false);
+                                                router.push(`/?q=${encodeURIComponent(slotCustomer.phone || slotCustomer.full_name || '')}`);
+                                            }}
+                                        >
+                                            <Search className="h-3 w-3" />
+                                            Buscar
+                                        </Button>
                                     </div>
                                 </div>
+                            );
+                        })() : (
+                            <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center justify-between">
+                                <p className="text-xs text-muted-foreground">Slot sin cliente asignado</p>
                                 <Button
                                     type="button"
-                                    variant="outline"
+                                    variant="ghost"
                                     size="sm"
-                                    className={`flex-shrink-0 gap-1 text-xs h-8 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
-                                    onClick={() => {
-                                        setOpen(false);
-                                        router.push(`/?q=${encodeURIComponent(slotCustomer.phone || slotCustomer.full_name || '')}`);
-                                    }}
+                                    className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 gap-1"
+                                    onClick={() => setConfirmDelete(true)}
                                 >
-                                    <Search className="h-3 w-3" />
-                                    Buscar
+                                    <Trash2 className="h-3 w-3" />
+                                    Eliminar Slot
                                 </Button>
                             </div>
-                        );
-                    })() : (
-                        <div className="rounded-lg border border-border/40 bg-muted/20 p-3 text-center">
-                            <p className="text-xs text-muted-foreground">Slot sin cliente asignado</p>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Slot Editable Fields */}
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="slot_name">Nombre del Perfil</Label>
-                            <Input
-                                id="slot_name"
-                                value={slotName}
-                                onChange={(e) => setSlotName(e.target.value)}
-                                placeholder="Perfil 1"
-                            />
-                        </div>
+                        {/* ── Cuenta madre (read-only) ── */}
+                        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                            <h4 className="text-sm font-medium text-muted-foreground">
+                                Cuenta Madre: {account.platform}
+                            </h4>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="pin_code" className="flex items-center gap-2">
-                                <Key className="h-4 w-4" />
-                                PIN del Perfil
-                            </Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="pin_code"
-                                    value={pinCode}
-                                    onChange={(e) => setPinCode(e.target.value)}
-                                    placeholder="1234"
-                                    maxLength={6}
-                                    className="font-mono text-lg tracking-widest"
-                                />
-                                {pinCode && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="icon"
-                                        onClick={() => copyToClipboard(pinCode, 'pin')}
-                                    >
-                                        {copied === 'pin' ? (
-                                            <Check className="h-4 w-4 text-green-500" />
-                                        ) : (
-                                            <Copy className="h-4 w-4" />
-                                        )}
-                                    </Button>
-                                )}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-muted-foreground">Email</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-mono">{account.email}</span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => copyToClipboard(account.email, 'email')}
+                                        >
+                                            {copied === 'email' ? (
+                                                <Check className="h-3 w-3 text-green-500" />
+                                            ) : (
+                                                <Copy className="h-3 w-3" />
+                                            )}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-muted-foreground">Contraseña</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-mono">
+                                            {showPassword ? account.password : '••••••••'}
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                        >
+                                            {showPassword ? (
+                                                <EyeOff className="h-3 w-3" />
+                                            ) : (
+                                                <Eye className="h-3 w-3" />
+                                            )}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => copyToClipboard(account.password, 'password')}
+                                        >
+                                            {copied === 'password' ? (
+                                                <Check className="h-3 w-3 text-green-500" />
+                                            ) : (
+                                                <Copy className="h-3 w-3" />
+                                            )}
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label>Estado</Label>
-                            <Select value={status} onValueChange={setStatus}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {statusOptions.map((opt) => (
-                                        <SelectItem key={opt.value} value={opt.value}>
-                                            <div className="flex items-center gap-2">
-                                                <div className={`h-2 w-2 rounded-full ${opt.color.split(' ')[0]}`} />
-                                                {opt.label}
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        {/* ── Slot Editable Fields ── */}
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="slot_name">Nombre del Perfil</Label>
+                                <Input
+                                    id="slot_name"
+                                    value={slotName}
+                                    onChange={(e) => setSlotName(e.target.value)}
+                                    placeholder="Perfil 1"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="pin_code" className="flex items-center gap-2">
+                                    <Key className="h-4 w-4" />
+                                    PIN del Perfil
+                                </Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="pin_code"
+                                        value={pinCode}
+                                        onChange={(e) => setPinCode(e.target.value)}
+                                        placeholder="1234"
+                                        maxLength={6}
+                                        className="font-mono text-lg tracking-widest"
+                                    />
+                                    {pinCode && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={() => copyToClipboard(pinCode, 'pin')}
+                                        >
+                                            {copied === 'pin' ? (
+                                                <Check className="h-4 w-4 text-green-500" />
+                                            ) : (
+                                                <Copy className="h-4 w-4" />
+                                            )}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Estado</Label>
+                                <Select value={status} onValueChange={setStatus}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {statusOptions.map((opt) => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`h-2 w-2 rounded-full ${opt.color.split(' ')[0]}`} />
+                                                    {opt.label}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
 
-                <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                        Cancelar
-                    </Button>
-                    <Button
-                        type="button"
-                        className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
-                        disabled={loading}
-                        onClick={handleSave}
-                    >
-                        {loading ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Guardando...
-                            </>
-                        ) : (
-                            'Guardar Cambios'
-                        )}
-                    </Button>
-                </DialogFooter>
+                {!confirmDelete && (
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                            disabled={loading}
+                            onClick={handleSave}
+                        >
+                            {loading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Guardando...
+                                </>
+                            ) : (
+                                'Guardar Cambios'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                )}
             </DialogContent>
         </Dialog>
     );

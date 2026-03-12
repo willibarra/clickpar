@@ -287,14 +287,43 @@ export async function toggleTemplate(id: string, enabled: boolean): Promise<bool
 // ==========================================
 
 /**
- * Render a template with variables
+ * Render a template with variables.
+ * Lines that contain a variable that resolves to an empty string are removed entirely
+ * (e.g. "🔒 PIN: {pin}" won't appear when there is no PIN).
  */
 export function renderTemplate(template: string, variables: Record<string, string>): string {
-    let result = template;
-    for (const [key, value] of Object.entries(variables)) {
-        result = result.replaceAll(`{${key}}`, value || '');
-    }
-    return result;
+    const emptyKeys = new Set(
+        Object.entries(variables)
+            .filter(([, v]) => !v)
+            .map(([k]) => k)
+    );
+
+    return template
+        .split('\n')
+        .filter(line => {
+            // If this line contains a placeholder for an empty variable, drop the line
+            for (const key of emptyKeys) {
+                if (line.includes(`{${key}}`)) return false;
+            }
+            return true;
+        })
+        .map(line => {
+            let result = line;
+            for (const [key, value] of Object.entries(variables)) {
+                result = result.replaceAll(`{${key}}`, value || '');
+            }
+            return result;
+        })
+        // Collapse consecutive blank lines into one
+        .reduce<string[]>((acc, line) => {
+            if (line.trim() === '' && acc.length > 0 && acc[acc.length - 1].trim() === '') {
+                return acc; // skip duplicate blank line
+            }
+            acc.push(line);
+            return acc;
+        }, [])
+        .join('\n')
+        .trimEnd();
 }
 
 /**
@@ -516,6 +545,7 @@ export async function sendSaleCredentials(params: {
     email: string;
     password: string;
     profile: string;
+    pin?: string;
     expirationDate: string;
     customerId?: string;
     saleId?: string;
@@ -530,6 +560,7 @@ export async function sendSaleCredentials(params: {
         email: params.email,
         password: params.password,
         perfil: params.profile,
+        pin: params.pin || '',
         fecha_vencimiento: params.expirationDate,
     });
 
@@ -713,6 +744,7 @@ export async function sendCredentialUpdate(params: {
     email: string;
     password: string;
     profile: string;
+    pin?: string;
     customerId?: string;
 }): Promise<SendResult> {
     const message = await getRenderedTemplate('credenciales_actualizadas', {
@@ -721,6 +753,7 @@ export async function sendCredentialUpdate(params: {
         email: params.email,
         password: params.password,
         perfil: params.profile,
+        pin: params.pin || '',
     });
 
     if (!message) {
@@ -751,6 +784,7 @@ export async function notifyAccountCredentialChange(params: {
         .select(`
             id,
             slot_identifier,
+            pin_code,
             status
         `)
         .eq('mother_account_id', params.motherAccountId)
@@ -832,6 +866,7 @@ export async function notifyAccountCredentialChange(params: {
                     email: params.newEmail,
                     password: params.newPassword,
                     profile: slot.slot_identifier || 'Tu perfil',
+                    pin: slot.pin_code || undefined,
                     customerId: customer.id,
                 });
                 sent.push(result);

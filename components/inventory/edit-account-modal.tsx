@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link } from 'lucide-react';
 import { updateMotherAccount, deleteMotherAccount, syncSlots } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
 
@@ -16,6 +16,7 @@ const fallbackPlatforms = ['Netflix', 'Spotify', 'HBO Max', 'Disney+', 'Amazon P
 interface Platform {
     id: string;
     name: string;
+    business_type?: string;
 }
 
 interface Account {
@@ -31,6 +32,11 @@ interface Account {
     status?: string;
     notes?: string | null;
     sale_slots?: { id: string }[];
+    supplier_name?: string | null;
+    supplier_phone?: string | null;
+    invitation_url?: string | null;
+    invite_address?: string | null;
+    sale_type?: string | null;
 }
 
 export function EditAccountModal({ account }: { account: Account }) {
@@ -42,6 +48,7 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [platforms, setPlatforms] = useState<Platform[]>([]);
+    const [selectedPlatformType, setSelectedPlatformType] = useState<string>('');
 
     useEffect(() => {
         if (open) {
@@ -51,18 +58,24 @@ export function EditAccountModal({ account }: { account: Account }) {
 
     async function fetchPlatforms() {
         const supabase = createClient();
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('platforms')
-            .select('id, name')
+            .select('id, name, business_type')
             .eq('is_active', true)
             .order('name');
 
         if (error || !data || data.length === 0) {
             setPlatforms(fallbackPlatforms.map((name, i) => ({ id: `fallback-${i}`, name })));
         } else {
-            setPlatforms(data);
+            const typedData = data as Platform[];
+            setPlatforms(typedData);
+            // Set type for current account platform
+            const match = typedData.find((p: Platform) => p.name === account.platform);
+            setSelectedPlatformType(match?.business_type || '');
         }
     }
+
+    const isFamilyAccount = selectedPlatformType === 'family_account';
 
     const currentSlots = account.sale_slots?.length || 0;
     const needsSync = currentSlots < account.max_slots;
@@ -133,7 +146,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                     <Pencil className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] bg-card border-border">
+            <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
                         {confirmDelete ? 'Confirmar Eliminación' : 'Editar Cuenta Madre'}
@@ -241,7 +254,14 @@ export function EditAccountModal({ account }: { account: Account }) {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="platform">Plataforma</Label>
-                                    <Select name="platform" defaultValue={account.platform}>
+                                    <Select
+                                        name="platform"
+                                        defaultValue={account.platform}
+                                        onValueChange={(val) => {
+                                            const p = platforms.find(pl => pl.name === val);
+                                            setSelectedPlatformType(p?.business_type || '');
+                                        }}
+                                    >
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
@@ -346,6 +366,63 @@ export function EditAccountModal({ account }: { account: Account }) {
                                     />
                                 </div>
                             </div>
+
+                            {/* Proveedor */}
+                            <div className="border-t border-border/50 pt-4">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Proveedor</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="supplier_name">Nombre Proveedor</Label>
+                                        <Input
+                                            id="supplier_name"
+                                            name="supplier_name"
+                                            type="text"
+                                            defaultValue={account.supplier_name || ''}
+                                            placeholder="Nombre del proveedor"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="supplier_phone">Número Proveedor</Label>
+                                        <Input
+                                            id="supplier_phone"
+                                            name="supplier_phone"
+                                            type="text"
+                                            defaultValue={account.supplier_phone || ''}
+                                            placeholder="+595 ..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Invitación Familia */}
+                            {isFamilyAccount && (
+                                <div className="rounded-lg border border-[#86EFAC]/20 bg-[#86EFAC]/5 p-3 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Link className="h-4 w-4 text-[#86EFAC]" />
+                                        <p className="text-xs font-medium text-[#86EFAC]">Datos de Invitación Familia</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="invitation_url">URL de Invitación</Label>
+                                        <Input
+                                            id="invitation_url"
+                                            name="invitation_url"
+                                            type="text"
+                                            defaultValue={account.invitation_url || ''}
+                                            placeholder="https://..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="invite_address">Dirección de Invitación</Label>
+                                        <Input
+                                            id="invite_address"
+                                            name="invite_address"
+                                            type="text"
+                                            defaultValue={account.invite_address || ''}
+                                            placeholder="Ciudad, País..."
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <Label htmlFor="notes">Observación</Label>

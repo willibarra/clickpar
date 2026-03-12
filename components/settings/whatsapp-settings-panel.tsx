@@ -494,7 +494,7 @@ export function WhatsAppSettingsPanel() {
                                                 />
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-xs text-muted-foreground">
-                                                        Variables: {'{nombre}'} {'{plataforma}'} {'{email}'} {'{password}'} {'{perfil}'} {'{fecha_vencimiento}'} {'{dias_restantes}'} {'{precio}'}
+                                                        Variables: {'{nombre}'} {'{plataforma}'} {'{email}'} {'{password}'} {'{perfil}'} {'{pin}'} {'{fecha_vencimiento}'} {'{dias_restantes}'} {'{precio}'}
                                                     </p>
                                                     <Button
                                                         size="sm"

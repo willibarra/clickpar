@@ -139,8 +139,10 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         renewal_date: renewalDate,
         max_slots: parseInt(formData.get('max_slots') as string) || 5,
         status: formData.get('status') as string || 'active',
-        supplier_name: formData.get('supplier_name') as string || null,
-        supplier_phone: formData.get('supplier_phone') as string || null,
+        supplier_name: (formData.get('supplier_name') as string) || null,
+        supplier_phone: (formData.get('supplier_phone') as string) || null,
+        invitation_url: (formData.get('invitation_url') as string) || null,
+        invite_address: (formData.get('invite_address') as string) || null,
         sale_price_gs: parseFloat(formData.get('sale_price_gs') as string) || null,
         notes: (formData.get('notes') as string) || null,
     };

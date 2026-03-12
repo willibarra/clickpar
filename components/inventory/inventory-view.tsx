@@ -38,6 +38,11 @@ interface Account {
     status?: string;
     is_autopay?: boolean;
     notes?: string | null;
+    supplier_name?: string | null;
+    supplier_phone?: string | null;
+    invitation_url?: string | null;
+    invite_address?: string | null;
+    sale_type?: string | null;
 }
 
 interface InventoryViewProps {
