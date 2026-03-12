@@ -41,6 +41,7 @@ interface SlotCustomer {
     customer_phone: string;
     amount: number;
     start_date: string;
+    end_date: string;
 }
 
 interface SlotDetail {
@@ -94,7 +95,7 @@ const statusColors: Record<string, string> = {
 
 function daysRemaining(dateStr: string): number {
     if (!dateStr) return 0;
-    const diff = new Date(dateStr).getTime() - Date.now();
+    const diff = new Date(dateStr + 'T12:00:00').getTime() - Date.now();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
@@ -108,7 +109,7 @@ function daysBadge(dateStr: string) {
 
 function formatDate(d: string) {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return new Date(d + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function formatGs(n: number | null | undefined) {
@@ -499,9 +500,6 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
         try {
             await saveField('account', account.id, {
                 email, password, renewal_date: renewalDate,
-                purchase_cost_gs: parseInt(purchaseCost) || 0,
-                sale_price_gs: parseInt(salePrice) || 0,
-                supplier_name: supplierName, supplier_phone: supplierPhone,
             });
             setSaved(true);
             setTimeout(() => { setSaved(false); setEditing(false); }, 1200);
@@ -641,13 +639,13 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                     </div>
                 </div>
 
-                {/* ── EDIT PANEL ── */}
+                {/* ── EDIT PANEL — only Vencimiento, Usuario, Clave, Guardar ── */}
                 {editing && (
                     <div className="border-t border-yellow-500/30 bg-[#0d0d0d]">
                         <div className="px-4 py-2">
                             <Badge variant="outline" className="text-[10px] border-yellow-500/40 text-yellow-500 bg-yellow-500/5 mb-2">Editando cuenta</Badge>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 pb-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-4 pb-3">
                             <div>
                                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Vencimiento</label>
                                 <EditInput type="date" value={renewalDate} onChange={setRenewalDate} />
@@ -660,31 +658,15 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Clave</label>
                                 <PassInput value={password} onChange={setPassword} />
                             </div>
-                            <div>
-                                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Precio Venta (Gs)</label>
-                                <EditInput type="number" value={salePrice} onChange={setSalePrice} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Precio Compra (Gs)</label>
-                                <EditInput type="number" value={purchaseCost} onChange={setPurchaseCost} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Proveedor</label>
-                                <EditInput value={supplierName} onChange={setSupplierName} placeholder="Nombre" />
-                            </div>
-                            <div>
-                                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Tel. Proveedor</label>
-                                <EditInput value={supplierPhone} onChange={setSupplierPhone} placeholder="Tel" />
-                            </div>
-                            <div className="flex items-end">
-                                <button onClick={handleSave} disabled={saving}
-                                    className={`flex items-center gap-1.5 rounded-md px-4 py-1 text-xs font-medium transition-all w-full justify-center ${saved ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'bg-[#86EFAC]/10 text-[#86EFAC] hover:bg-[#86EFAC]/20'
-                                        } disabled:opacity-50`}>
-                                    {saving ? <><Loader2 className="h-3 w-3 animate-spin" /> Guardando...</>
-                                        : saved ? <><Check className="h-3 w-3" /> Guardado</>
-                                            : <><Save className="h-3 w-3" /> Guardar</>}
-                                </button>
-                            </div>
+                        </div>
+                        <div className="flex items-center justify-between px-4 pb-3">
+                            <div>{error && <span className="text-xs text-red-500">{error}</span>}</div>
+                            <button onClick={handleSave} disabled={saving}
+                                className={`flex items-center gap-1.5 rounded-md px-4 py-1 text-xs font-medium transition-all ${saved ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'bg-[#86EFAC]/10 text-[#86EFAC] hover:bg-[#86EFAC]/20'} disabled:opacity-50`}>
+                                {saving ? <><Loader2 className="h-3 w-3 animate-spin" /> Guardando...</>
+                                    : saved ? <><Check className="h-3 w-3" /> Guardado</>
+                                        : <><Save className="h-3 w-3" /> Guardar</>}
+                            </button>
                         </div>
 
                         {/* ── GESTIÓN DE SLOTS ── */}
@@ -701,19 +683,40 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                 )}
                             </div>
 
-                            {/* Lista de slots existentes */}
+                            {/* Slot list — compact info rows */}
                             <div className="space-y-1.5">
                                 {allSlotsSorted.map(slot => (
-                                    <div key={slot.id} className="flex items-center gap-3 rounded-md bg-[#111] px-3 py-1.5 border border-border/30">
+                                    <div key={slot.id} className="flex items-center gap-2 rounded-md bg-[#111] px-3 py-2 border border-border/30">
+                                        {/* Status dot */}
                                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusColors[slot.status] || '#666' }} />
-                                        <span className="text-sm text-foreground flex-1">{slot.identifier || 'Sin nombre'}</span>
-                                        {slot.pin_code && <span className="text-[10px] text-muted-foreground">PIN: {slot.pin_code}</span>}
-                                        <Badge variant="outline" className="text-[10px]" style={{
+                                        {/* Perfil */}
+                                        <span className="text-sm font-medium text-foreground w-16 flex-shrink-0 truncate">{slot.identifier || 'Sin nombre'}</span>
+                                        {/* Customer info */}
+                                        {slot.customer ? (
+                                            <>
+                                                <span className="text-sm text-foreground flex-1 truncate">{slot.customer.customer_name}</span>
+                                                <span className="text-xs text-muted-foreground w-28 flex-shrink-0 truncate">{slot.customer.customer_phone || '—'}</span>
+                                                <span className="text-xs text-muted-foreground w-20 flex-shrink-0">
+                                                    {slot.customer.end_date
+                                                        ? new Date(slot.customer.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })
+                                                        : '—'}
+                                                </span>
+                                                {/* Search by phone */}
+                                                {slot.customer.customer_phone && (
+                                                    <SearchPhoneButton phone={slot.customer.customer_phone} />
+                                                )}
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground flex-1 italic">Libre</span>
+                                        )}
+                                        {/* Status badge */}
+                                        <Badge variant="outline" className="text-[10px] flex-shrink-0" style={{
                                             borderColor: `${statusColors[slot.status]}40`,
                                             color: statusColors[slot.status],
                                         }}>
                                             {statusLabels[slot.status] || slot.status}
                                         </Badge>
+                                        {/* Delete (only available slots) */}
                                         {slot.status !== 'sold' && (
                                             confirmDeleteId === slot.id ? (
                                                 <div className="flex items-center gap-1 flex-shrink-0">

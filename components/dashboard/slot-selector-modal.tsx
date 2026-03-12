@@ -120,7 +120,7 @@ export function SlotSelectorModal({ isOpen, platform, onClose, onSelect }: SlotS
                                     <p className="font-medium text-foreground text-sm">{account.email}</p>
                                     {account.renewal_date && (
                                         <p className="text-xs text-muted-foreground">
-                                            Vence: {new Date(account.renewal_date).toLocaleDateString('es-PY')}
+                                            Vence: {new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
                                         </p>
                                     )}
                                 </div>

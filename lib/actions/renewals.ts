@@ -96,7 +96,7 @@ export async function getAccountsForRenewal() {
 
     const { data, error } = await (supabase.from('mother_accounts') as any)
         .select(`
-            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status, is_autopay,
+            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status, is_autopay, supplier_name,
             sale_slots (id, status, slot_identifier)
         `)
         .in('status', ['active', 'expired'])

@@ -122,7 +122,7 @@ export function SlotPicker({
                                 {displaySlot.slot.mother_accounts?.email}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                                Vence: {new Date(displaySlot.slot.mother_accounts?.renewal_date || '').toLocaleDateString('es-PY')}
+                                Vence: {new Date((displaySlot.slot.mother_accounts?.renewal_date || '') + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </p>
 
                             <p className="text-xs text-green-400 mt-2 flex items-center gap-1">

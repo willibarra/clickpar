@@ -56,6 +56,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Provider tab state
     const [provFilter, setProvFilter] = useState<FilterType>('all');
     const [provSearch, setProvSearch] = useState('');
+    const [provPlatformFilter, setProvPlatformFilter] = useState<string>('all');
     const [provSelected, setProvSelected] = useState<Set<string>>(new Set());
     const [showProvModal, setShowProvModal] = useState(false);
     const [provCost, setProvCost] = useState('');
@@ -104,8 +105,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const clientTodayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 0).length;
     const clientWeekCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 0 && s.daysUntilExpiry <= 7).length;
 
-    // Filter accounts
-    const filteredAccounts = useMemo(() => {
+    // Accounts filtered by status+search only (no platform filter)
+    // Used to compute correct per-platform counts and unique platforms for the chips
+    const accountsForPlatformFilter = useMemo(() => {
         return accounts.filter(a => {
             const days = getDaysUntil(a.renewal_date);
             if (provFilter === 'expired') { if (days >= 0) return false; }
@@ -118,6 +120,31 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             return true;
         });
     }, [accounts, provFilter, provSearch]);
+
+    // Unique platform list derived from context-filtered accounts
+    const uniquePlatforms = useMemo(() => {
+        const set = new Set<string>();
+        accountsForPlatformFilter.forEach(a => { if (a.platform) set.add(a.platform); });
+        return Array.from(set).sort();
+    }, [accountsForPlatformFilter]);
+
+    // Filter accounts
+    const filteredAccounts = useMemo(() => {
+        return accounts.filter(a => {
+            const days = getDaysUntil(a.renewal_date);
+            if (provFilter === 'expired') { if (days >= 0) return false; }
+            else if (provFilter === 'today') { if (days !== 0) return false; }
+            else if (provFilter === 'week') { if (days < 0 || days > 7) return false; }
+            if (provPlatformFilter !== 'all') {
+                if (a.platform !== provPlatformFilter) return false;
+            }
+            if (provSearch.trim()) {
+                const q = provSearch.toLowerCase();
+                return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
+            }
+            return true;
+        });
+    }, [accounts, provFilter, provPlatformFilter, provSearch]);
 
     // Paginate providers
     const paginatedAccounts = useMemo(() => {
@@ -263,24 +290,52 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                 {/* ─── PROVIDERS TAB ─── */}
                 <TabsContent value="providers" className="space-y-4">
-                    {/* Stats Row */}
+                    {/* Stats Row — clickable filters */}
                     <div className="grid grid-cols-4 gap-3">
-                        <div className="rounded-xl border border-border bg-[#1a1a1a] p-4">
+                        <button
+                            onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                provFilter === 'all'
+                                    ? 'border-[#86EFAC] bg-[#86EFAC]/10 ring-1 ring-[#86EFAC]/50'
+                                    : 'border-border bg-[#1a1a1a] hover:border-border/80'
+                            }`}
+                        >
                             <p className="text-xs text-muted-foreground">Total Cuentas</p>
                             <p className="text-2xl font-bold">{accounts.length}</p>
-                        </div>
-                        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setProvFilter('expired'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                provFilter === 'expired'
+                                    ? 'border-red-400 bg-red-500/15 ring-1 ring-red-400/50'
+                                    : 'border-red-500/30 bg-red-500/5 hover:border-red-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{expiredCount}</p>
-                        </div>
-                        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setProvFilter('today'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                provFilter === 'today'
+                                    ? 'border-orange-400 bg-orange-500/15 ring-1 ring-orange-400/50'
+                                    : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-orange-400">🟠 Vencen Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{todayCount}</p>
-                        </div>
-                        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setProvFilter('week'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                provFilter === 'week'
+                                    ? 'border-blue-400 bg-blue-500/15 ring-1 ring-blue-400/50'
+                                    : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-blue-400">🔵 Próx. 7 días</p>
                             <p className="text-2xl font-bold text-blue-400">{weekCount}</p>
-                        </div>
+                        </button>
                     </div>
 
                     {/* Search + Filters + Bulk Action */}
@@ -294,6 +349,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 className="pl-9 bg-[#1a1a1a] border-border"
                             />
                         </div>
+                        {/* Status filters row */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Filter className="h-4 w-4 text-muted-foreground" />
@@ -331,10 +387,43 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             )}
                         </div>
 
+                        {/* Platform / account filter chips */}
+                        {uniquePlatforms.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Cuenta:</span>
+                                <button
+                                    onClick={() => { setProvPlatformFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                        provPlatformFilter === 'all'
+                                            ? 'bg-white/10 text-white ring-1 ring-white/30'
+                                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Todas
+                                </button>
+                                {uniquePlatforms.map(platform => {
+                                    const count = accountsForPlatformFilter.filter(a => a.platform === platform).length;
+                                    return (
+                                        <button
+                                            key={platform}
+                                            onClick={() => { setProvPlatformFilter(platform); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                                provPlatformFilter === platform
+                                                    ? 'bg-[#F97316] text-white'
+                                                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {platform} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
                             {/* Header */}
-                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                            <div className="grid grid-cols-[40px_1fr_160px_110px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
                                 <div className="flex items-center">
                                     <Checkbox
                                         checked={provSelected.size === filteredAccounts.length && filteredAccounts.length > 0}
@@ -342,10 +431,10 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     />
                                 </div>
                                 <div>Plataforma / Email</div>
-                                <div>Slots</div>
+                                <div>Proveedor</div>
                                 <div>Vencimiento</div>
                                 <div>Estado</div>
-                                <div>Costo</div>
+                                <div>USDT</div>
                             </div>
                             {/* Rows */}
                             {paginatedAccounts.length === 0 && (
@@ -356,13 +445,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             {paginatedAccounts.map((account: any) => {
                                 const days = getDaysUntil(account.renewal_date);
                                 const badge = getStatusBadge(days);
-                                const slots = account.sale_slots || [];
-                                const soldCount = slots.filter((s: any) => s.status === 'sold').length;
 
                                 return (
                                     <div
                                         key={account.id}
-                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                        className={`grid grid-cols-[40px_1fr_160px_110px_110px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
                                             }`}
                                     >
                                         <div>
@@ -371,24 +458,33 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 onCheckedChange={() => toggleProv(account.id)}
                                             />
                                         </div>
-                                        <div>
+                                        {/* Plataforma + Email */}
+                                        <div className="min-w-0">
                                             <p className="font-medium text-foreground">{account.platform}</p>
                                             <p className="text-xs text-muted-foreground truncate">{account.email}</p>
                                         </div>
-                                        <div className="text-sm text-muted-foreground">
-                                            {soldCount}/{slots.length} vendidos
+                                        {/* Proveedor */}
+                                        <div className="text-sm text-muted-foreground truncate">
+                                            {account.supplier_name || <span className="text-muted-foreground/40 italic text-xs">Sin proveedor</span>}
                                         </div>
-                                        <div className="text-sm">
-                                            {account.renewal_date ? new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
+                                        {/* Vencimiento */}
+                                        <div className="text-sm font-medium tabular-nums">
+                                            {account.renewal_date
+                                                ? new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: '2-digit' })
+                                                : '—'}
                                         </div>
+                                        {/* Estado */}
                                         <div>
-                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
+                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${badge.color}`}>
                                                 <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
                                                 {badge.label}
                                             </span>
                                         </div>
-                                        <div className="text-xs text-muted-foreground">
-                                            {account.purchase_cost_gs ? `${(account.purchase_cost_gs / 1000).toFixed(0)}k` : '—'}
+                                        {/* Costo USDT */}
+                                        <div className="text-sm font-medium text-[#86EFAC]">
+                                            {account.purchase_cost_usdt != null
+                                                ? `$${Number(account.purchase_cost_usdt).toFixed(0)}`
+                                                : '—'}
                                         </div>
                                     </div>
                                 );
@@ -434,24 +530,52 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                 {/* ─── CLIENTS TAB ─── */}
                 <TabsContent value="clients" className="space-y-4">
-                    {/* Stats Row */}
+                    {/* Stats Row — clickable filters */}
                     <div className="grid grid-cols-4 gap-3">
-                        <div className="rounded-xl border border-border bg-[#1a1a1a] p-4">
+                        <button
+                            onClick={() => { setClientFilter('all'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                clientFilter === 'all'
+                                    ? 'border-[#86EFAC] bg-[#86EFAC]/10 ring-1 ring-[#86EFAC]/50'
+                                    : 'border-border bg-[#1a1a1a] hover:border-border/80'
+                            }`}
+                        >
                             <p className="text-xs text-muted-foreground">Total Suscripciones</p>
                             <p className="text-2xl font-bold">{enrichedSubs.length}</p>
-                        </div>
-                        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setClientFilter('expired'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                clientFilter === 'expired'
+                                    ? 'border-red-400 bg-red-500/15 ring-1 ring-red-400/50'
+                                    : 'border-red-500/30 bg-red-500/5 hover:border-red-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{clientExpiredCount}</p>
-                        </div>
-                        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setClientFilter('today'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                clientFilter === 'today'
+                                    ? 'border-orange-400 bg-orange-500/15 ring-1 ring-orange-400/50'
+                                    : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-orange-400">🟠 Vencen Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{clientTodayCount}</p>
-                        </div>
-                        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4">
+                        </button>
+                        <button
+                            onClick={() => { setClientFilter('week'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                clientFilter === 'week'
+                                    ? 'border-blue-400 bg-blue-500/15 ring-1 ring-blue-400/50'
+                                    : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50'
+                            }`}
+                        >
                             <p className="text-xs text-blue-400">🔵 Próx. 7 días</p>
                             <p className="text-2xl font-bold text-blue-400">{clientWeekCount}</p>
-                        </div>
+                        </button>
                     </div>
 
                     {/* Search + Filters + Bulk Action */}

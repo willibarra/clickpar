@@ -97,7 +97,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                     comparison = aAvailable - bAvailable;
                     break;
                 case 'renewal_date':
-                    comparison = new Date(a.renewal_date).getTime() - new Date(b.renewal_date).getTime();
+                    comparison = new Date(a.renewal_date + 'T12:00:00').getTime() - new Date(b.renewal_date + 'T12:00:00').getTime();
                     break;
             }
             return sortDirection === 'asc' ? comparison : -comparison;
@@ -277,7 +277,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             <div className="text-xs text-muted-foreground">
                                                 {account.is_autopay
                                                     ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
-                                                    : <>Vence: {new Date(account.renewal_date).toLocaleDateString('es-PY')}</>}
+                                                    : <>Vence: {new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}</>}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -389,7 +389,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             <td className="px-4 py-3 text-sm text-muted-foreground">
                                                 {account.is_autopay
                                                     ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
-                                                    : new Date(account.renewal_date).toLocaleDateString('es-PY')}
+                                                    : new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <EditAccountModal account={account} />

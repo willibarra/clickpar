@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
             );
             if (allSlotIds.length > 0) {
                 const { data: slotSales } = await (supabase.from('sales') as any)
-                    .select('id, customer_id, slot_id, amount_gs, start_date, is_active')
+                    .select('id, customer_id, slot_id, amount_gs, start_date, end_date, is_active')
                     .in('slot_id', allSlotIds)
                     .eq('is_active', true);
 
@@ -174,6 +174,7 @@ export async function GET(request: NextRequest) {
                         customer_phone: cust?.phone || '',
                         amount: sale.amount_gs,
                         start_date: sale.start_date,
+                        end_date: sale.end_date || '',
                     };
                 });
             }
