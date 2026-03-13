@@ -111,7 +111,9 @@ async function handleMessage(chatId: number, userId: number, text: string, first
     if (text.startsWith('/start') || text.startsWith('/ayuda') || text.startsWith('/menu')) {
         resetState(chatId);
         await sendMessage(chatId,
-            `👋 Hola *${firstName}*\\! Soy el bot de *ClickPar*\\.\n\n¿Qué querés hacer?`,
+            `👋 Hola *${firstName}*! Soy el bot de *ClickPar*.
+
+¿Qué querés hacer?`,
             { buttons: MAIN_MENU_BUTTONS }
         );
         return;
@@ -221,7 +223,7 @@ async function handleCallback(chatId: number, data: string, firstName: string) {
         case 'cmd:menu':
             resetState(chatId);
             await sendMessage(chatId,
-                `👋 Hola *${firstName}*\\! ¿Qué querés hacer?`,
+                `👋 Hola *${firstName}*! ¿Qué querés hacer?`,
                 { buttons: MAIN_MENU_BUTTONS }
             );
             return;
@@ -369,7 +371,9 @@ async function handleVencimientos(chatId: number) {
     }
 
     await sendMessage(chatId,
-        `📅 *Próximos vencimientos \\(7 días\\)*\n\n${lines.join('\n\n')}`,
+        `📅 *Próximos vencimientos (7 días)*
+
+${lines.join('\n\n')}`,
         { buttons: BACK_BUTTON }
     );
 }
@@ -393,7 +397,9 @@ async function handleResumenDia(chatId: number) {
     const total = list.reduce((sum: number, s: any) => sum + (s.amount_gs || 0), 0);
 
     if (list.length === 0) {
-        await sendMessage(chatId, `📊 *Resumen de hoy* \\(${formatDate(today)}\\)\n\n_No hay ventas registradas hoy._`, { buttons: BACK_BUTTON });
+        await sendMessage(chatId, `📊 *Resumen de hoy* (${formatDate(today)})
+
+_No hay ventas registradas hoy._`, { buttons: BACK_BUTTON });
         return;
     }
 
@@ -404,7 +410,9 @@ async function handleResumenDia(chatId: number) {
     });
 
     await sendMessage(chatId,
-        `📊 *Resumen de hoy* \\(${formatDate(today)}\\)\n\n` +
+        `📊 *Resumen de hoy* (${formatDate(today)})
+
+` +
         `${lines.join('\n')}\n\n` +
         `💰 *Total: ${formatGs(total)}*\n` +
         `🛒 *Ventas: ${list.length}*`,
@@ -520,7 +528,7 @@ async function handleVerServiciosCliente(chatId: number, customerId: string) {
         lines.push(
             `${emoji} *${platform}* — ${slot}\n` +
             `${pin}` +
-            `💰 ${precio} · _${vence}_ \(${formatDate(sale.end_date)}\)`
+            `💰 ${precio} · _${vence}_ (${formatDate(sale.end_date)})`
         );
     }
 
@@ -561,7 +569,10 @@ async function handleCrearCliente(chatId: number, nombre: string, telefono: stri
     }
 
     await sendMessage(chatId,
-        `✅ *Cliente creado exitosamente\\!*\n\n👤 *${nombre}*\n📱 ${phone}`,
+        `✅ *Cliente creado exitosamente!*
+
+👤 *${nombre}*
+📱 ${phone}`,
         { buttons: BACK_BUTTON }
     );
 }
@@ -622,7 +633,7 @@ async function handleVenderTelefono(chatId: number, platform: string, phone: str
 
     const customerInfo = customer
         ? `✅ Cliente encontrado: *${customer.full_name}*`
-        : `ℹ️ Cliente nuevo \\(se creará automáticamente\\)`;
+        : `ℹ️ Cliente nuevo (se creará automáticamente)`;
 
     await sendMessage(chatId,
         `📺 Plataforma: *${platform}*\n` +
@@ -655,11 +666,18 @@ async function handleConfirmarVenta(
         }
 
         await sendMessage(chatId,
-            `✅ *¡Venta registrada exitosamente\\!*\n\n` +
-            `📺 *${platform}*\n` +
-            `👤 ${customerName}\n` +
-            `📱 ${phone}\n` +
-            `💰 ${formatGs(precio)}\n\n` +
+            `✅ *¡Venta registrada exitosamente!*
+
+` +
+            `📺 *${platform}*
+` +
+            `👤 ${customerName}
+` +
+            `📱 ${phone}
+` +
+            `💰 ${formatGs(precio)}
+
+` +
             `_Las credenciales se enviaron automáticamente por WhatsApp si estaba activado._`,
             { buttons: BACK_BUTTON }
         );
