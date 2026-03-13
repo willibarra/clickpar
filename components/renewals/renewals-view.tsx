@@ -61,9 +61,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [showProvModal, setShowProvModal] = useState(false);
     const [provCost, setProvCost] = useState('');
     const [provUsdt, setProvUsdt] = useState('');
+    const [exchangeRate, setExchangeRate] = useState<string>('7800'); // Gs por USD, editable
     const [provDays, setProvDays] = useState('30');
-    const [usdtRate, setUsdtRate] = useState<number | null>(null);
-    const [usdtRateLoading, setUsdtRateLoading] = useState(false);
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
 
@@ -220,24 +219,32 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
     // Fetch USD/PYG exchange rate when provider modal opens
     const handleOpenProvModal = () => {
         setShowProvModal(true);
-        if (!usdtRate) {
-            setUsdtRateLoading(true);
-            fetch('https://api.frankfurter.app/latest?from=USD&to=PYG')
-                .then(r => r.json())
-                .then(data => {
-                    const rate = data?.rates?.PYG;
-                    if (rate) setUsdtRate(Math.round(rate));
-                })
-                .catch(() => {})
-                .finally(() => setUsdtRateLoading(false));
-        }
+        // Fetch current rate and update (fallback is 7800)
+        fetch('https://api.frankfurter.app/latest?from=USD&to=PYG')
+            .then(r => r.json())
+            .then(data => {
+                const rate = data?.rates?.PYG;
+                if (rate && rate > 0) setExchangeRate(Math.round(rate).toString());
+            })
+            .catch(() => {}); // mantiene el valor manual si falla
     };
 
     const handleUsdtChange = (val: string) => {
         setProvUsdt(val);
-        if (usdtRate && val) {
-            const gs = Math.round(parseFloat(val) * usdtRate);
+        const rate = parseFloat(exchangeRate);
+        if (!isNaN(rate) && rate > 0 && val) {
+            const gs = Math.round(parseFloat(val) * rate);
             if (!isNaN(gs)) setProvCost(gs.toString());
+        }
+    };
+
+    const handleRateChange = (val: string) => {
+        setExchangeRate(val);
+        // Recalculate Gs if USDT is already filled
+        if (provUsdt) {
+            const rate = parseFloat(val);
+            const gs = Math.round(parseFloat(provUsdt) * rate);
+            if (!isNaN(gs) && gs > 0) setProvCost(gs.toString());
         }
     };
 
@@ -807,28 +814,33 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             {provSelected.size} cuenta(s) serán renovadas
                         </div>
 
-                        {/* USDT Input */}
+                        {/* USDT + Tipo de cambio */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
                                 <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#F0B90B]/20 text-[#F0B90B]">USDT</span>
                                 Costo en USDT
-                                {usdtRate && (
-                                    <span className="ml-auto text-xs text-muted-foreground">
-                                        {usdtRateLoading ? 'Cargando...' : `1 USD = Gs. ${usdtRate.toLocaleString('es-PY')}`}
-                                    </span>
-                                )}
-                                {!usdtRate && usdtRateLoading && (
-                                    <span className="ml-auto text-xs text-muted-foreground">Obteniendo cambio...</span>
-                                )}
                             </Label>
-                            <Input
-                                type="number"
-                                value={provUsdt}
-                                onChange={e => handleUsdtChange(e.target.value)}
-                                placeholder="Ej: 4.5"
-                                step="0.01"
-                                className="border-[#F0B90B]/30 focus-visible:ring-[#F0B90B]/30"
-                            />
+                            <div className="flex gap-2">
+                                <Input
+                                    type="number"
+                                    value={provUsdt}
+                                    onChange={e => handleUsdtChange(e.target.value)}
+                                    placeholder="Ej: 4.5"
+                                    step="0.01"
+                                    className="flex-1 border-[#F0B90B]/30 focus-visible:ring-[#F0B90B]/30"
+                                />
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">× Gs/USD</span>
+                                    <Input
+                                        type="number"
+                                        value={exchangeRate}
+                                        onChange={e => handleRateChange(e.target.value)}
+                                        className="w-24 text-sm"
+                                        title="Tipo de cambio (Gs. por USD)"
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Ingresá USDT → se calcula en Gs. automáticamente</p>
                         </div>
 
                         {/* Gs (auto-filled from USDT or manual) */}
