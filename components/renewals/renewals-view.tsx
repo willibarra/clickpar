@@ -666,7 +666,12 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                             />
                                         </div>
                                         <div>
-                                            <p className="font-medium text-foreground">{customer?.full_name || 'N/A'}</p>
+                                            <p className="font-medium text-foreground flex items-center gap-1.5">
+                                                {customer?.full_name || 'N/A'}
+                                                {customer?.customer_type === 'creador' && (
+                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">🎬</span>
+                                                )}
+                                            </p>
                                             <p className="text-xs text-muted-foreground">{customer?.phone || ''}</p>
                                         </div>
                                         <div>
@@ -682,8 +687,16 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 {badge.label}
                                             </span>
                                         </div>
-                                        <div className="text-sm font-medium text-[#86EFAC]">
-                                            {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
+                                        <div className="text-sm font-medium">
+                                            {sub.is_canje ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[11px] font-semibold">
+                                                    🎬 Canje
+                                                </span>
+                                            ) : (
+                                                <span className="text-[#86EFAC]">
+                                                    {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
+                                                </span>
+                                            )}
                                         </div>
                                         {/* Aviso WhatsApp */}
                                         <div>

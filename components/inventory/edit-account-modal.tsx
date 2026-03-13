@@ -25,6 +25,7 @@ interface Account {
     email: string;
     password: string;
     purchase_cost_usdt?: number;
+    sale_price_gs?: number | null;
     purchase_cost_gs?: number;
     renewal_date: string;
     target_billing_day?: number;
@@ -310,7 +311,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="purchase_cost_usdt">Costo (USDT)</Label>
                                     <Input
@@ -328,6 +329,16 @@ export function EditAccountModal({ account }: { account: Account }) {
                                         name="purchase_cost_gs"
                                         type="number"
                                         defaultValue={account.purchase_cost_gs}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="sale_price_gs">Precio Venta (Gs.)</Label>
+                                    <Input
+                                        id="sale_price_gs"
+                                        name="sale_price_gs"
+                                        type="number"
+                                        defaultValue={account.sale_price_gs ?? ''}
+                                        placeholder="0"
                                     />
                                 </div>
                             </div>

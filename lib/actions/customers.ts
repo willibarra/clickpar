@@ -75,6 +75,14 @@ export async function updateCustomer(id: string, formData: FormData) {
 
     const customerType = (formData.get('customer_type') as string) || 'cliente';
 
+    // Obtener tipo actual para detectar cambios
+    const { data: currentCustomer } = await (supabase.from('customers') as any)
+        .select('customer_type')
+        .eq('id', id)
+        .single();
+
+    const previousType = currentCustomer?.customer_type || 'cliente';
+
     const { error } = await (supabase.from('customers') as any)
         .update({ full_name: fullName, phone, customer_type: customerType })
         .eq('id', id);
@@ -83,11 +91,34 @@ export async function updateCustomer(id: string, formData: FormData) {
         return { error: error.message };
     }
 
-    await logAction('update_customer', 'customer', id, {
-        message: `actualizó los datos del cliente ${fullName}`
-    });
+    // Si cambia a CREADOR: marcar todas sus ventas activas como canje (precio = 0)
+    if (customerType === 'creador' && previousType !== 'creador') {
+        await (supabase.from('sales') as any)
+            .update({ is_canje: true, amount_gs: 0 })
+            .eq('customer_id', id)
+            .eq('is_active', true);
+
+        await logAction('update_customer', 'customer', id, {
+            message: `convirtió a ${fullName} en CREADOR — beneficios aplicados a sus servicios activos`
+        });
+    } else if (customerType === 'cliente' && previousType === 'creador') {
+        // Revertir flag is_canje si vuelve a ser cliente (sin restaurar precio)
+        await (supabase.from('sales') as any)
+            .update({ is_canje: false })
+            .eq('customer_id', id)
+            .eq('is_active', true);
+
+        await logAction('update_customer', 'customer', id, {
+            message: `actualizó los datos del cliente ${fullName} (de Creador a Cliente)`
+        });
+    } else {
+        await logAction('update_customer', 'customer', id, {
+            message: `actualizó los datos del cliente ${fullName}`
+        });
+    }
 
     revalidatePath('/customers');
+    revalidatePath('/renewals');
     return { success: true };
 }
 
