@@ -131,7 +131,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         return Array.from(set).sort();
     }, [accountsForPlatformFilter]);
 
-    // Filter accounts
+    // Filter accounts and sort A-Z by email
     const filteredAccounts = useMemo(() => {
         return accounts.filter(a => {
             const days = getDaysUntil(a.renewal_date);
@@ -146,7 +146,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                 return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
             }
             return true;
-        });
+        }).sort((a: any, b: any) => (a.email || '').localeCompare(b.email || '', 'es'));
     }, [accounts, provFilter, provPlatformFilter, provSearch]);
 
     // Paginate providers
