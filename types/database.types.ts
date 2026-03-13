@@ -13,7 +13,7 @@ export type Json =
 
 // Enum Types
 export type UserRole = 'super_admin' | 'staff' | 'customer' | 'affiliate';
-export type AccountStatus = 'active' | 'review' | 'dead' | 'expired';
+export type AccountStatus = 'active' | 'review' | 'dead' | 'expired' | 'frozen';
 export type SlotStatus = 'available' | 'sold' | 'reserved' | 'warranty_claim';
 export type PaymentMethod = 'bank_transfer' | 'tigo_money' | 'binance' | 'cash';
 
