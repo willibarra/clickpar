@@ -483,14 +483,11 @@ async function handleVerServiciosCliente(chatId: number, customerId: string) {
             amount_gs,
             start_date,
             end_date,
-            is_canje,
             sale_slots:slot_id (
                 slot_identifier,
                 pin_code,
                 mother_accounts:mother_account_id (
-                    platform,
-                    email,
-                    password
+                    platform
                 )
             )
         `)
@@ -505,7 +502,12 @@ async function handleVerServiciosCliente(chatId: number, customerId: string) {
         .eq('id', customerId)
         .single();
 
-    if (error || !sales?.length) {
+    if (error) {
+        console.error('[Telegram] handleVerServiciosCliente error:', error);
+        await sendMessage(chatId, `⚠️ Error al obtener servicios: ${error.message}`, { buttons: BACK_BUTTON });
+        return;
+    }
+    if (!sales?.length) {
         await sendMessage(chatId, '📋 Este cliente no tiene servicios activos.', { buttons: BACK_BUTTON });
         return;
     }
@@ -519,7 +521,7 @@ async function handleVerServiciosCliente(chatId: number, customerId: string) {
         const pin = sale.sale_slots?.pin_code ? `🔒 PIN: ${sale.sale_slots.pin_code}\n` : '';
         const days = daysUntil(sale.end_date);
         const emoji = days < 0 ? '🔴' : days === 0 ? '🟠' : days <= 3 ? '🟡' : '🟢';
-        const precio = sale.is_canje ? '🎬 Canje' : formatGs(sale.amount_gs || 0);
+        const precio = formatGs(sale.amount_gs || 0);
         const vence = days < 0
             ? `vencido hace ${Math.abs(days)}d`
             : days === 0 ? 'vence HOY'
