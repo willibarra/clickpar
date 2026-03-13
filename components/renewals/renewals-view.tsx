@@ -60,7 +60,10 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [provSelected, setProvSelected] = useState<Set<string>>(new Set());
     const [showProvModal, setShowProvModal] = useState(false);
     const [provCost, setProvCost] = useState('');
+    const [provUsdt, setProvUsdt] = useState('');
     const [provDays, setProvDays] = useState('30');
+    const [usdtRate, setUsdtRate] = useState<number | null>(null);
+    const [usdtRateLoading, setUsdtRateLoading] = useState(false);
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
 
@@ -211,6 +214,30 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
             setClientSelected(new Set());
         } else {
             setClientSelected(new Set(filteredSubs.map((s: any) => s.id)));
+        }
+    };
+
+    // Fetch USD/PYG exchange rate when provider modal opens
+    const handleOpenProvModal = () => {
+        setShowProvModal(true);
+        if (!usdtRate) {
+            setUsdtRateLoading(true);
+            fetch('https://api.frankfurter.app/latest?from=USD&to=PYG')
+                .then(r => r.json())
+                .then(data => {
+                    const rate = data?.rates?.PYG;
+                    if (rate) setUsdtRate(Math.round(rate));
+                })
+                .catch(() => {})
+                .finally(() => setUsdtRateLoading(false));
+        }
+    };
+
+    const handleUsdtChange = (val: string) => {
+        setProvUsdt(val);
+        if (usdtRate && val) {
+            const gs = Math.round(parseFloat(val) * usdtRate);
+            if (!isNaN(gs)) setProvCost(gs.toString());
         }
     };
 
@@ -377,7 +404,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         COPIAR seleccionados
                                     </Button>
                                     <Button
-                                        onClick={() => setShowProvModal(true)}
+                                        onClick={handleOpenProvModal}
                                         className="bg-[#F97316] hover:bg-[#F97316]/90 text-white gap-2 h-9"
                                     >
                                         <RefreshCw className="h-4 w-4" />
@@ -779,15 +806,47 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         <div className="rounded-lg bg-[#F97316]/10 border border-[#F97316]/20 p-3 text-sm text-[#F97316]">
                             {provSelected.size} cuenta(s) serán renovadas
                         </div>
+
+                        {/* USDT Input */}
                         <div className="space-y-2">
-                            <Label>Costo Total de Renovación (Gs.)</Label>
+                            <Label className="flex items-center gap-2">
+                                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#F0B90B]/20 text-[#F0B90B]">USDT</span>
+                                Costo en USDT
+                                {usdtRate && (
+                                    <span className="ml-auto text-xs text-muted-foreground">
+                                        {usdtRateLoading ? 'Cargando...' : `1 USD = Gs. ${usdtRate.toLocaleString('es-PY')}`}
+                                    </span>
+                                )}
+                                {!usdtRate && usdtRateLoading && (
+                                    <span className="ml-auto text-xs text-muted-foreground">Obteniendo cambio...</span>
+                                )}
+                            </Label>
+                            <Input
+                                type="number"
+                                value={provUsdt}
+                                onChange={e => handleUsdtChange(e.target.value)}
+                                placeholder="Ej: 4.5"
+                                step="0.01"
+                                className="border-[#F0B90B]/30 focus-visible:ring-[#F0B90B]/30"
+                            />
+                        </div>
+
+                        {/* Gs (auto-filled from USDT or manual) */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-2">
+                                Costo Total de Renovación (Gs.)
+                                {provUsdt && provCost && (
+                                    <span className="ml-auto text-xs text-[#86EFAC]">↑ calculado automáticamente</span>
+                                )}
+                            </Label>
                             <Input
                                 type="number"
                                 value={provCost}
-                                onChange={e => setProvCost(e.target.value)}
+                                onChange={e => { setProvCost(e.target.value); setProvUsdt(''); }}
                                 placeholder="Ej: 150000"
                             />
                         </div>
+
                         <div className="space-y-2">
                             <Label>Días a Extender</Label>
                             <Input
