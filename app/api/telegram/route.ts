@@ -253,6 +253,13 @@ async function handleCallback(chatId: number, data: string, firstName: string) {
         return;
     }
 
+    // Ver servicios de un cliente
+    if (data.startsWith('servicios:')) {
+        const customerId = data.replace('servicios:', '');
+        await handleVerServiciosCliente(chatId, customerId);
+        return;
+    }
+
     // Back to menu
     if (data === 'menu') {
         resetState(chatId);
@@ -429,7 +436,6 @@ async function handleBuscarCliente(chatId: number, query: string) {
     }
 
     for (const customer of data) {
-        // Get active sales count
         const { count } = await (supabase
             .from('sales') as any)
             .select('id', { count: 'exact', head: true })
@@ -437,14 +443,91 @@ async function handleBuscarCliente(chatId: number, query: string) {
             .eq('is_active', true);
 
         const typeLabel = customer.customer_type === 'creador' ? ' 🎬' : '';
+        const nombre = customer.full_name || 'Sin nombre';
+        const activeCount = count || 0;
+
         await sendMessage(chatId,
-            `👤 *${customer.full_name || 'Sin nombre'}*${typeLabel}\n` +
+            `👤 *${nombre}*${typeLabel}\n` +
             `📱 ${customer.phone || 'Sin teléfono'}\n` +
-            `🛒 Servicios activos: *${count || 0}*`
+            `🛒 Servicios activos: *${activeCount}*`,
+            {
+                buttons: activeCount > 0
+                    ? [[
+                        { text: `📋 Ver servicios (${activeCount})`, callback_data: `servicios:${customer.id}` },
+                    ], BACK_BUTTON[0]]
+                    : BACK_BUTTON,
+            }
         );
     }
 
-    await sendMessage(chatId, '¿Qué más querés hacer?', { buttons: BACK_BUTTON });
+    if (data.length > 1) {
+        await sendMessage(chatId, '¿Qué más querés hacer?', { buttons: BACK_BUTTON });
+    }
+}
+
+async function handleVerServiciosCliente(chatId: number, customerId: string) {
+    const supabase = await createAdminClient();
+
+    const { data: sales, error } = await (supabase
+        .from('sales') as any)
+        .select(`
+            id,
+            amount_gs,
+            start_date,
+            end_date,
+            is_canje,
+            sale_slots:slot_id (
+                slot_identifier,
+                pin_code,
+                mother_accounts:mother_account_id (
+                    platform,
+                    email,
+                    password
+                )
+            )
+        `)
+        .eq('customer_id', customerId)
+        .eq('is_active', true)
+        .order('end_date', { ascending: true });
+
+    // Fetch customer name
+    const { data: customer } = await (supabase
+        .from('customers') as any)
+        .select('full_name')
+        .eq('id', customerId)
+        .single();
+
+    if (error || !sales?.length) {
+        await sendMessage(chatId, '📋 Este cliente no tiene servicios activos.', { buttons: BACK_BUTTON });
+        return;
+    }
+
+    const nombre = customer?.full_name || 'Cliente';
+    const lines: string[] = [];
+
+    for (const sale of sales) {
+        const platform = sale.sale_slots?.mother_accounts?.platform || 'Plataforma';
+        const slot = sale.sale_slots?.slot_identifier || 'Perfil';
+        const pin = sale.sale_slots?.pin_code ? `🔒 PIN: ${sale.sale_slots.pin_code}\n` : '';
+        const days = daysUntil(sale.end_date);
+        const emoji = days < 0 ? '🔴' : days === 0 ? '🟠' : days <= 3 ? '🟡' : '🟢';
+        const precio = sale.is_canje ? '🎬 Canje' : formatGs(sale.amount_gs || 0);
+        const vence = days < 0
+            ? `vencido hace ${Math.abs(days)}d`
+            : days === 0 ? 'vence HOY'
+            : `vence en ${days}d`;
+
+        lines.push(
+            `${emoji} *${platform}* — ${slot}\n` +
+            `${pin}` +
+            `💰 ${precio} · _${vence}_ \(${formatDate(sale.end_date)}\)`
+        );
+    }
+
+    await sendMessage(chatId,
+        `📋 *Servicios de ${nombre}*\n\n${lines.join('\n\n')}`,
+        { buttons: BACK_BUTTON }
+    );
 }
 
 async function handleCrearCliente(chatId: number, nombre: string, telefono: string) {
