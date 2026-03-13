@@ -328,6 +328,10 @@ async function handleVencimientos(chatId: number) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Rango: desde ayer hasta 7 días en el futuro
+    const from3daysAgo = new Date(today);
+    from3daysAgo.setDate(from3daysAgo.getDate() - 3);
     const in7days = new Date(today);
     in7days.setDate(in7days.getDate() + 7);
 
@@ -344,11 +348,14 @@ async function handleVencimientos(chatId: number) {
             )
         `)
         .eq('is_active', true)
+        .gte('end_date', from3daysAgo.toISOString().split('T')[0])
         .lte('end_date', in7days.toISOString().split('T')[0])
-        .order('end_date', { ascending: true });
+        .order('end_date', { ascending: true })
+        .limit(20);
 
     if (error) {
-        await sendMessage(chatId, '⚠️ Error al obtener los vencimientos.');
+        console.error('[Telegram] handleVencimientos error:', error);
+        await sendMessage(chatId, `⚠️ Error al obtener vencimientos: ${error.message}`, { buttons: BACK_BUTTON });
         return;
     }
 
@@ -370,12 +377,8 @@ async function handleVencimientos(chatId: number) {
         lines.push(`${emoji} *${customer}* — ${platform}\n   _${dayLabel}_ · ${formatDate(sale.end_date)}`);
     }
 
-    await sendMessage(chatId,
-        `📅 *Próximos vencimientos (7 días)*
-
-${lines.join('\n\n')}`,
-        { buttons: BACK_BUTTON }
-    );
+    const header = `📅 *Próximos vencimientos (7 días)*`;
+    await sendMessage(chatId, `${header}\n\n${lines.join('\n\n')}`, { buttons: BACK_BUTTON });
 }
 
 async function handleResumenDia(chatId: number) {
@@ -384,12 +387,22 @@ async function handleResumenDia(chatId: number) {
 
     const { data: sales, error } = await (supabase
         .from('sales') as any)
-        .select('id, amount_gs, start_date, customers:customer_id(full_name), sale_slots:slot_id(mother_accounts:mother_account_id(platform))')
+        .select(`
+            id,
+            amount_gs,
+            start_date,
+            customers:customer_id (full_name),
+            sale_slots:slot_id (
+                mother_accounts:mother_account_id (platform)
+            )
+        `)
         .eq('start_date', today)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(30);
 
     if (error) {
-        await sendMessage(chatId, '⚠️ Error al obtener el resumen.');
+        console.error('[Telegram] handleResumenDia error:', error);
+        await sendMessage(chatId, `⚠️ Error al obtener el resumen: ${error.message}`, { buttons: BACK_BUTTON });
         return;
     }
 
