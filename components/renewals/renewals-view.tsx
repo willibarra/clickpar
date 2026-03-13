@@ -146,7 +146,11 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                 return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
             }
             return true;
-        }).sort((a: any, b: any) => (a.email || '').localeCompare(b.email || '', 'es'));
+        }).sort((a: any, b: any) => {
+            const da = a.renewal_date || '9999';
+            const db = b.renewal_date || '9999';
+            return da.localeCompare(db);
+        });
     }, [accounts, provFilter, provPlatformFilter, provSearch]);
 
     // Paginate providers
