@@ -359,7 +359,11 @@ async function handleVencimientos(chatId: number) {
         return;
     }
 
-    const sales = data || [];
+    const sales = (data || []).sort((a: any, b: any) => {
+        const nameA = (a.customers?.full_name || a.customers?.phone || 'zzz').toLowerCase();
+        const nameB = (b.customers?.full_name || b.customers?.phone || 'zzz').toLowerCase();
+        return nameA.localeCompare(nameB, 'es');
+    });
 
     if (sales.length === 0) {
         await sendMessage(chatId, '📅 *Vencimientos*\n\n✅ No hay vencimientos en los próximos 7 días.', { buttons: BACK_BUTTON });
