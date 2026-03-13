@@ -423,14 +423,22 @@ _No hay ventas registradas hoy._`, { buttons: BACK_BUTTON });
 async function handleBuscarCliente(chatId: number, query: string) {
     const supabase = await createAdminClient();
 
-    const isPhone = /^\d+$/.test(query.replace(/[\s+\-()]/g, ''));
+    const rawQuery = query.replace(/[\s+\-()]/g, '');
+    const isPhone = /^\d+$/.test(rawQuery);
+
+    // Normalize phone: 0973... → 595973..., 973... → 595973...
+    let searchPhone = rawQuery;
+    if (isPhone) {
+        const { normalizePhone } = await import('@/lib/utils/phone');
+        searchPhone = normalizePhone(rawQuery);
+    }
 
     const { data, error } = await (supabase
         .from('customers') as any)
         .select('id, full_name, phone, customer_type')
         .or(
             isPhone
-                ? `phone.ilike.%${query}%`
+                ? `phone.ilike.%${searchPhone}%`
                 : `full_name.ilike.%${query}%,phone.ilike.%${query}%`
         )
         .limit(5);
