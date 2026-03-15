@@ -140,7 +140,6 @@ export async function createQuickSale(data: QuickSaleData) {
                 end_date: endDate.toISOString().split('T')[0],
                 is_active: true,
                 payment_method: 'cash',
-                whatsapp_instance: data.whatsappInstance || null,
             });
 
         if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
@@ -337,9 +336,9 @@ export async function swapService(data: SwapServiceData) {
     const supabase = await createAdminClient();
 
     try {
-        // 1. Get current sale info (to preserve price, dates AND whatsapp instance)
+        // 1. Get current sale info (to preserve price and dates)
         const { data: oldSale } = await (supabase.from('sales') as any)
-            .select('amount_gs, customer_id, slot_id, whatsapp_instance, start_date, end_date')
+            .select('amount_gs, customer_id, slot_id, start_date, end_date')
             .eq('id', data.oldSaleId)
             .single();
 
@@ -349,8 +348,6 @@ export async function swapService(data: SwapServiceData) {
         // Preservar fechas originales del cliente
         const originalStartDate = oldSale.start_date || new Date().toISOString().split('T')[0];
         const originalEndDate = oldSale.end_date || null;
-        // Usar instancia de la venta original si no se especifica una nueva
-        const instanceToUse = data.whatsappInstance || oldSale.whatsapp_instance || undefined;
 
         // Get mother account info from old slot
         const { data: oldSlotInfo } = await (supabase.from('sale_slots') as any)
@@ -423,7 +420,6 @@ export async function swapService(data: SwapServiceData) {
                 end_date: originalEndDate,
                 is_active: true,
                 payment_method: 'cash',
-                whatsapp_instance: instanceToUse || null,
             });
         if (saleError) throw new Error(`Error creando nueva venta: ${saleError.message}`);
 
@@ -441,9 +437,9 @@ export async function swapService(data: SwapServiceData) {
         try {
             const waSettings = await getWhatsAppSettings();
             if (waSettings.auto_send_credentials) {
-                // Obtener datos del cliente
+                // Obtener datos del cliente (including preferred WA instance)
                 const { data: customer } = await (supabase.from('customers') as any)
-                    .select('full_name, phone')
+                    .select('full_name, phone, whatsapp_instance')
                     .eq('id', data.customerId)
                     .single();
 
@@ -476,7 +472,7 @@ export async function swapService(data: SwapServiceData) {
                         pin: newSlotInfo.pin_code || undefined,
                         expirationDate: expDateStr,
                         customerId: data.customerId,
-                        instanceName: instanceToUse,
+                        instanceName: customer.whatsapp_instance || undefined,
                     });
 
                     if (acct.send_instructions && acct.instructions) {
@@ -485,7 +481,7 @@ export async function swapService(data: SwapServiceData) {
                         await sendText(
                             customer.phone,
                             `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
-                            { instanceName: instanceToUse, customerId: data.customerId }
+                            { instanceName: customer.whatsapp_instance || undefined, customerId: data.customerId }
                         );
                     }
                 }
@@ -971,9 +967,12 @@ export async function processComboSale(data: ComboSaleData) {
 
                 // Create sale record
                 const isLast = assignedSlots.length === totalItems - 1;
-                const comboEndDate = data.deliveryDate
+                const comboStartDate = data.deliveryDate
                     ? data.deliveryDate
-                    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    : today;
+                const comboEndDateObj = new Date(comboStartDate + 'T12:00:00');
+                comboEndDateObj.setDate(comboEndDateObj.getDate() + 30);
+                const comboEndDate = comboEndDateObj.toISOString().split('T')[0];
                 const { error: saleError } = await (supabase
                     .from('sales') as any)
                     .insert({
@@ -983,7 +982,7 @@ export async function processComboSale(data: ComboSaleData) {
                             ? data.totalPrice - (pricePerSlot * (totalItems - 1))
                             : pricePerSlot,
                         original_price_gs: pricePerSlot,
-                        start_date: today,
+                        start_date: comboStartDate,
                         end_date: comboEndDate,
                         is_active: true,
                         payment_method: 'cash'

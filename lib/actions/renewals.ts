@@ -4,6 +4,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { checkPasswordRotation } from './notifications';
+import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification } from '@/lib/whatsapp';
 
 /**
  * Legacy createRenewal for backward compatibility with finance/renewal-modal.tsx
@@ -177,7 +178,7 @@ export async function getClientSubscriptions() {
         const { data: logs } = await (supabase.from('whatsapp_send_log') as any)
             .select('sale_id, created_at, template_key, status')
             .in('sale_id', ids)
-            .in('template_key', ['pre_vencimiento', 'vencimiento_hoy'])
+            .in('template_key', ['pre_vencimiento', 'vencimiento_hoy', 'vencimiento_vencido'])
             .eq('status', 'sent')
             .order('created_at', { ascending: false });
         // Guardar el log más reciente por sale_id
@@ -203,13 +204,21 @@ export async function getClientSubscriptions() {
 /**
  * Bulk renew mother accounts (provider renewals)
  * - Updates renewal_date by adding specified days
+ * - Updates purchase_cost_gs and purchase_cost_usdt per account
  * - Registers expense in expenses table
  */
-export async function bulkRenewAccounts(accountIds: string[], totalCostGs: number, daysToExtend: number) {
+export async function bulkRenewAccounts(
+    accountIds: string[],
+    totalCostGs: number,
+    daysToExtend: number,
+    totalCostUsdt?: number
+) {
     const supabase = await createAdminClient();
     const errors: string[] = [];
 
-    const costPerAccount = totalCostGs / accountIds.length;
+    const count = accountIds.length;
+    const costPerAccountGs   = Math.round(totalCostGs / count);
+    const costPerAccountUsdt = totalCostUsdt != null ? totalCostUsdt / count : null;
 
     for (const accountId of accountIds) {
         // Get current renewal date
@@ -230,10 +239,19 @@ export async function bulkRenewAccounts(accountIds: string[], totalCostGs: numbe
         newDate.setDate(newDate.getDate() + daysToExtend);
         const newRenewalDate = newDate.toISOString().split('T')[0];
 
+        // Build update payload — always update renewal_date and cost
+        const updatePayload: Record<string, any> = {
+            renewal_date: newRenewalDate,
+            purchase_cost_gs: costPerAccountGs,
+        };
+        if (costPerAccountUsdt != null) {
+            updatePayload.purchase_cost_usdt = costPerAccountUsdt;
+        }
+
         // Update the account
         const { error: updateError } = await supabase
             .from('mother_accounts')
-            .update({ renewal_date: newRenewalDate })
+            .update(updatePayload)
             .eq('id', accountId);
 
         if (updateError) {
@@ -242,12 +260,13 @@ export async function bulkRenewAccounts(accountIds: string[], totalCostGs: numbe
         }
 
         // Register the expense
+        const usdtNote = costPerAccountUsdt != null ? ` (${costPerAccountUsdt.toFixed(2)} USDT)` : '';
         await (supabase.from('expenses') as any).insert({
             mother_account_id: accountId,
             expense_date: new Date().toISOString().split('T')[0],
-            amount_gs: Math.round(costPerAccount),
+            amount_gs: costPerAccountGs,
             expense_type: 'renewal',
-            description: `Renovación ${(account as any).platform} (${(account as any).email}) - +${daysToExtend} días`,
+            description: `Renovación ${(account as any).platform} (${(account as any).email}) - +${daysToExtend} días${usdtNote}`,
         });
     }
 
@@ -261,6 +280,7 @@ export async function bulkRenewAccounts(accountIds: string[], totalCostGs: numbe
     }
     return { success: true, renewed: accountIds.length };
 }
+
 
 /**
  * Bulk renew client subscriptions
@@ -400,4 +420,105 @@ export async function expireSlot(slotId: string, motherAccountId: string) {
     revalidatePath('/');
 
     return { success: true };
+}
+
+/**
+ * Send a WhatsApp renewal notice for a specific sale
+ * Uses pre_vencimiento or vencimiento_hoy template based on days remaining
+ */
+export async function sendRenewalNotice(saleId: string) {
+    const supabase = await createAdminClient();
+
+    // 1. Get sale data
+    const { data: sale, error } = await (supabase.from('sales') as any)
+        .select('id, amount_gs, end_date, customer_id, slot_id, is_canje')
+        .eq('id', saleId)
+        .single();
+
+    if (error || !sale) return { success: false, error: 'Venta no encontrada' };
+
+    // 2. Get customer (including preferred WhatsApp instance)
+    const { data: customer } = await (supabase.from('customers') as any)
+        .select('id, full_name, phone, whatsapp_instance')
+        .eq('id', sale.customer_id)
+        .single();
+
+    if (!customer?.phone) return { success: false, error: 'Cliente sin número de teléfono' };
+
+    // 3. Get slot + mother account platform
+    const { data: slot } = await (supabase.from('sale_slots') as any)
+        .select('id, slot_identifier, mother_account:mother_accounts(id, platform, email)')
+        .eq('id', sale.slot_id)
+        .single();
+
+    const platform = slot?.mother_account?.platform || 'Plataforma';
+
+    // 4. Determine days until expiry
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiryDate = sale.end_date ? new Date(sale.end_date + 'T00:00:00') : null;
+    const daysUntil = expiryDate
+        ? Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        : -1;
+
+    const formattedExpiry = expiryDate
+        ? expiryDate.toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })
+        : '';
+
+    const priceStr = sale.amount_gs
+        ? `Gs. ${Number(sale.amount_gs).toLocaleString('es-PY')}`
+        : '';
+
+    // 5. Send appropriate template
+    let result;
+    if (daysUntil < 0) {
+        // Already expired → vencimiento_vencido "venció el {fecha}"
+        result = await sendExpiredNotification({
+            customerPhone: customer.phone,
+            customerName: customer.full_name || customer.phone,
+            platform,
+            expirationDate: formattedExpiry,
+            price: priceStr,
+            customerId: customer.id,
+            saleId: sale.id,
+            instanceName: customer.whatsapp_instance || undefined,
+        });
+    } else if (daysUntil === 0) {
+        // Expires today → vencimiento_hoy "vence hoy"
+        result = await sendExpiryNotification({
+            customerPhone: customer.phone,
+            customerName: customer.full_name || customer.phone,
+            platform,
+            price: priceStr,
+            customerId: customer.id,
+            saleId: sale.id,
+            instanceName: customer.whatsapp_instance || undefined,
+        });
+    } else {
+        // Future → pre_vencimiento
+        result = await sendPreExpiryReminder({
+            customerPhone: customer.phone,
+            customerName: customer.full_name || customer.phone,
+            platform,
+            expirationDate: formattedExpiry,
+            daysRemaining: daysUntil,
+            price: priceStr,
+            customerId: customer.id,
+            saleId: sale.id,
+            instanceName: customer.whatsapp_instance || undefined,
+        });
+    }
+
+    revalidatePath('/renewals');
+
+    if (result.success) {
+        // Auto-assign WhatsApp instance to the CUSTOMER if they didn't have one
+        if (!customer.whatsapp_instance && result.instanceUsed) {
+            await (supabase.from('customers') as any)
+                .update({ whatsapp_instance: result.instanceUsed })
+                .eq('id', customer.id);
+        }
+        return { success: true };
+    }
+    return { success: false, error: result.error || 'Error al enviar' };
 }

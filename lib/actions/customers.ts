@@ -44,6 +44,44 @@ export async function createCustomer(formData: FormData) {
         return { error: error.message };
     }
 
+    // Auto-generate portal credentials
+    if (phone) {
+        try {
+            const password = 'CP-' + Math.random().toString(36).slice(2, 8);
+            const email = `${phone.replace('+', '')}@clickpar.shop`;
+
+            // Create Supabase Auth user
+            const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+                email,
+                phone: phone.startsWith('+') ? phone : `+${phone}`,
+                password,
+                email_confirm: true,
+                phone_confirm: true,
+                user_metadata: { full_name: fullName, customer_id: data?.id },
+            });
+
+            if (authUser?.user) {
+                // Create profile with customer role
+                await (supabase.from('profiles') as any)
+                    .upsert({
+                        id: authUser.user.id,
+                        full_name: fullName,
+                        phone_number: phone,
+                        role: 'customer',
+                    });
+
+                // Store generated password in customers table for reference
+                await (supabase.from('customers') as any)
+                    .update({ portal_password: password })
+                    .eq('id', data?.id);
+            } else if (authError) {
+                console.warn('[createCustomer] Auth user creation failed (non-blocking):', authError.message);
+            }
+        } catch (err) {
+            console.warn('[createCustomer] Portal credential generation failed (non-blocking):', err);
+        }
+    }
+
     await logAction('create_customer', 'customer', data?.id || '', {
         message: `agregó al cliente ${fullName}`
     });
@@ -74,6 +112,8 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     const customerType = (formData.get('customer_type') as string) || 'cliente';
+    const waInstance = formData.get('whatsapp_instance') as string | null;
+    const whatsappInstance = waInstance && waInstance !== 'auto' ? waInstance : null;
 
     // Obtener tipo actual para detectar cambios
     const { data: currentCustomer } = await (supabase.from('customers') as any)
@@ -84,7 +124,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     const previousType = currentCustomer?.customer_type || 'cliente';
 
     const { error } = await (supabase.from('customers') as any)
-        .update({ full_name: fullName, phone, customer_type: customerType })
+        .update({ full_name: fullName, phone, customer_type: customerType, whatsapp_instance: whatsappInstance })
         .eq('id', id);
 
     if (error) {

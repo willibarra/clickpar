@@ -5,51 +5,49 @@ import { DataExportButton, ExportColumn } from '@/components/ui/data-export-butt
 interface FinanceDataActionsProps {
     sales: any[];
     expenses: any[];
+    inventoryPurchases: any[];
     totalIncome: number;
     totalExpenses: number;
 }
 
-const salesColumns: ExportColumn[] = [
-    { key: 'date', header: 'Fecha', width: 12, format: (v) => v ? new Date(v).toLocaleDateString('es-PY') : '' },
-    { key: 'customer', header: 'Cliente', width: 20 },
-    { key: 'platform', header: 'Plataforma', width: 15 },
-    { key: 'amount', header: 'Monto (Gs)', width: 15, format: (v) => v?.toLocaleString('es-PY') || '0' },
-    { key: 'method', header: 'Método', width: 12 },
+const reportColumns: ExportColumn[] = [
+    { key: 'fecha', header: 'Fecha', width: 12, format: (v) => v ? new Date(v).toLocaleDateString('es-PY') : '' },
+    { key: 'tipo', header: 'Tipo', width: 18 },
+    { key: 'descripcion', header: 'Descripción', width: 40 },
+    { key: 'categoria', header: 'Categoría', width: 16 },
+    { key: 'monto', header: 'Monto (Gs)', width: 16, format: (v) => v?.toLocaleString('es-PY') || '0' },
 ];
 
-const expensesColumns: ExportColumn[] = [
-    { key: 'date', header: 'Fecha', width: 12, format: (v) => v ? new Date(v).toLocaleDateString('es-PY') : '' },
-    { key: 'description', header: 'Descripción', width: 30 },
-    { key: 'category', header: 'Categoría', width: 15 },
-    { key: 'amount', header: 'Monto (Gs)', width: 15, format: (v) => v?.toLocaleString('es-PY') || '0' },
-];
-
-export function FinanceDataActions({ sales, expenses, totalIncome, totalExpenses }: FinanceDataActionsProps) {
-    // Combinar ingresos y gastos para reporte general
+export function FinanceDataActions({
+    sales,
+    expenses,
+    inventoryPurchases,
+    totalIncome,
+    totalExpenses,
+}: FinanceDataActionsProps) {
     const combinedData = [
         ...sales.map((s: any) => ({
+            fecha: s.created_at,
             tipo: 'Ingreso',
-            fecha: s.start_date,
-            descripcion: `Venta ${s.slot?.mother_account?.platform || 'Servicio'}`,
+            descripcion: `Venta de servicio`,
             categoria: 'Venta',
-            monto: s.amount_gs,
+            monto: Number(s.amount_gs) || 0,
         })),
         ...expenses.map((e: any) => ({
-            tipo: 'Gasto',
-            fecha: e.date,
-            descripcion: e.description,
-            categoria: e.category,
-            monto: -e.amount,
-        }))
+            fecha: e.created_at,
+            tipo: e.expense_type === 'renewal' ? 'Egreso — Renovación' : 'Egreso — Gasto Op.',
+            descripcion: e.description || 'Gasto operativo',
+            categoria: e.expense_type || 'operativo',
+            monto: -(Number(e.amount_gs) || 0),
+        })),
+        ...inventoryPurchases.map((p: any) => ({
+            fecha: p.created_at,
+            tipo: 'Egreso — Compra Inventario',
+            descripcion: `${p.platform} — ${p.email}`,
+            categoria: 'inventario',
+            monto: -(Number(p.purchase_cost_gs) || 0),
+        })),
     ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-
-    const reportColumns: ExportColumn[] = [
-        { key: 'fecha', header: 'Fecha', width: 12, format: (v) => v ? new Date(v).toLocaleDateString('es-PY') : '' },
-        { key: 'tipo', header: 'Tipo', width: 10 },
-        { key: 'descripcion', header: 'Descripción', width: 35 },
-        { key: 'categoria', header: 'Categoría', width: 15 },
-        { key: 'monto', header: 'Monto (Gs)', width: 15, format: (v) => v?.toLocaleString('es-PY') || '0' },
-    ];
 
     const netProfit = totalIncome - totalExpenses;
 
@@ -58,8 +56,8 @@ export function FinanceDataActions({ sales, expenses, totalIncome, totalExpenses
             data={combinedData}
             columns={reportColumns}
             filename="reporte_financiero"
-            title="Reporte Financiero - Cierre de Caja"
-            subtitle={`Ingresos: ${totalIncome.toLocaleString('es-PY')} Gs | Gastos: ${totalExpenses.toLocaleString('es-PY')} Gs | Balance: ${netProfit.toLocaleString('es-PY')} Gs`}
+            title="Reporte Financiero — ClickPar"
+            subtitle={`Ingresos: ${totalIncome.toLocaleString('es-PY')} Gs | Egresos: ${totalExpenses.toLocaleString('es-PY')} Gs | Balance: ${netProfit.toLocaleString('es-PY')} Gs`}
         />
     );
 }

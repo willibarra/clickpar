@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Check, Search, Loader2, KeyRound } from 'lucide-react';
+import { Copy, Eye, EyeOff, Check, Search } from 'lucide-react';
+import { CodeIframeModal } from './code-iframe-modal';
 
 interface ServiceCardProps {
     saleId?: string;
@@ -12,6 +13,9 @@ interface ServiceCardProps {
     profile?: string | null;
     expiresAt: string | null;
     renewalDate?: string | null;
+    supplierName?: string | null;
+    needsCode?: boolean;
+    codeUrl?: string | null;
 }
 
 const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
@@ -27,8 +31,8 @@ const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
     iCloud: { emoji: '☁️', gradient: 'from-sky-400 to-sky-600' },
 };
 
-// Platforms that commonly need verification codes
-const CODE_PLATFORMS = ['Netflix', 'Disney+', 'HBO Max', 'Amazon Prime Video', 'Paramount+', 'Crunchyroll'];
+// Code lookup is now dynamic based on provider_support_config
+// No hardcoded platform list needed
 
 function getExpiryBadge(expiresAt: string | null) {
     if (!expiresAt) return { label: 'Sin vencimiento', color: 'bg-muted text-muted-foreground' };
@@ -66,93 +70,33 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     );
 }
 
-function VerCodeButton({ saleId }: { saleId: string }) {
-    const [loading, setLoading] = useState(false);
-    const [code, setCode] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
-
-    const handleSearch = async () => {
-        setLoading(true);
-        setError(null);
-        setCode(null);
-
-        try {
-            const res = await fetch(`/api/portal/verification-code?saleId=${saleId}`);
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.error || 'Error al buscar código');
-                return;
-            }
-
-            if (data.found && data.code) {
-                setCode(data.code);
-            } else {
-                setError(data.message || 'No se encontró código');
-            }
-        } catch {
-            setError('Error de conexión');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleCopy = async () => {
-        if (!code) return;
-        await navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    if (code) {
-        return (
-            <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-3 py-2">
-                    <KeyRound className="h-4 w-4 text-[#86EFAC]" />
-                    <span className="text-lg font-bold tracking-[0.3em] text-[#86EFAC]">{code}</span>
-                </div>
-                <button
-                    onClick={handleCopy}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#86EFAC]/10 text-[#86EFAC] transition-colors hover:bg-[#86EFAC]/20"
-                >
-                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </button>
-            </div>
-        );
-    }
+function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: string }) {
+    const [showModal, setShowModal] = useState(false);
 
     return (
-        <div className="space-y-1">
+        <>
             <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20 disabled:opacity-50"
+                onClick={() => setShowModal(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20"
             >
-                {loading ? (
-                    <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Buscando...
-                    </>
-                ) : (
-                    <>
-                        <Search className="h-4 w-4" />
-                        Ver Código
-                    </>
-                )}
+                <Search className="h-4 w-4" />
+                Consultar Código
             </button>
-            {error && (
-                <p className="text-xs text-center text-muted-foreground">{error}</p>
-            )}
-        </div>
+            <CodeIframeModal
+                isOpen={showModal}
+                onClose={() => setShowModal(false)}
+                codeUrl={codeUrl}
+                platform={platform}
+            />
+        </>
     );
 }
 
-export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt }: ServiceCardProps) {
+export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
     const platformInfo = PLATFORM_ICONS[platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
     const expiryBadge = getExpiryBadge(expiresAt);
-    const showVerCode = saleId && CODE_PLATFORMS.includes(platform);
+    const showVerCode = needsCode && codeUrl;
 
     const formattedDate = expiresAt
         ? new Date(expiresAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -223,7 +167,7 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                 )}
 
                 {/* Ver Código button */}
-                {showVerCode && <VerCodeButton saleId={saleId} />}
+                {showVerCode && <VerCodeButton platform={platform} codeUrl={codeUrl} />}
 
                 {/* Expiry date */}
                 {formattedDate && (

@@ -388,33 +388,21 @@ async function pickInstance(preferredInstance?: string): Promise<string> {
     let fallback: string;
 
     if (preferredInstance) {
+        // Client has a configured preferred instance → use it, fallback to the other
         primary = preferredInstance;
         fallback = preferredInstance === settings.instance_1_name
             ? settings.instance_2_name
             : settings.instance_1_name;
     } else {
-        switch (settings.send_mode) {
-            case 'instance-1':
-                primary = settings.instance_1_name;
-                fallback = settings.instance_2_name;
-                break;
-            case 'instance-2':
-                primary = settings.instance_2_name;
-                fallback = settings.instance_1_name;
-                break;
-            case 'alternate':
-                sendCounter++;
-                primary = sendCounter % 2 === 0
-                    ? settings.instance_1_name
-                    : settings.instance_2_name;
-                fallback = primary === settings.instance_1_name
-                    ? settings.instance_2_name
-                    : settings.instance_1_name;
-                break;
-            default:
-                primary = settings.instance_1_name;
-                fallback = settings.instance_2_name;
-        }
+        // No preferred instance → always rotate round-robin between both
+        // (send_mode in settings only applies when an explicit instance is requested)
+        sendCounter++;
+        primary = sendCounter % 2 === 0
+            ? settings.instance_1_name
+            : settings.instance_2_name;
+        fallback = primary === settings.instance_1_name
+            ? settings.instance_2_name
+            : settings.instance_1_name;
     }
 
     // Check connectivity, fallback if primary is down
@@ -429,6 +417,7 @@ async function pickInstance(preferredInstance?: string): Promise<string> {
     console.error(`[WhatsApp] Both instances appear disconnected, trying ${primary} anyway`);
     return primary;
 }
+
 
 /**
  * Format phone number for WhatsApp
@@ -735,6 +724,42 @@ export async function sendExpiryNotification(params: {
 }
 
 /**
+ * Send expired notification (service already past due)
+ * Uses template "vencimiento_vencido" → "venció el {fecha}"
+ */
+export async function sendExpiredNotification(params: {
+    customerPhone: string;
+    customerName: string;
+    platform: string;
+    expirationDate: string;
+    price: string;
+    customerId?: string;
+    saleId?: string;
+    instanceName?: string;
+}): Promise<SendResult> {
+    const displayName = await getPlatformDisplayName(params.platform);
+
+    const message = await getRenderedTemplate('vencimiento_vencido', {
+        nombre: params.customerName,
+        plataforma: displayName,
+        fecha_vencimiento: params.expirationDate,
+        precio: params.price,
+    });
+
+    if (!message) {
+        return { success: false, error: 'Template "vencimiento_vencido" not found or disabled' };
+    }
+
+    return sendText(params.customerPhone, message, {
+        templateKey: 'vencimiento_vencido',
+        customerId: params.customerId,
+        saleId: params.saleId,
+        instanceName: params.instanceName,
+    });
+}
+
+
+/**
  * Send updated credentials to active users of a mother account
  */
 export async function sendCredentialUpdate(params: {
@@ -877,3 +902,75 @@ export async function notifyAccountCredentialChange(params: {
     return { sent, activeSlots, expiredSlots };
 }
 
+// ==========================================
+// N8N Integration - AI Renewal Messages
+// ==========================================
+
+const N8N_WEBHOOK_URL = process.env.N8N_RENEWAL_WEBHOOK_URL || '';
+
+export interface RenewalN8NData {
+    customer: {
+        id: string;
+        name: string;
+        phone: string;
+        whatsapp_instance?: string;
+    };
+    sale: {
+        id: string;
+        platform: string;
+        platform_display: string;
+        amount_gs: number;
+        end_date: string;
+    };
+    type: 'pre_expiry' | 'expiry_today' | 'expired_yesterday';
+    instanceName?: string;
+}
+
+/**
+ * Send renewal data to N8N webhook for AI-powered message generation.
+ * N8N will generate a unique message via AI and send it through Evolution API.
+ * 
+ * Returns true if N8N accepted the webhook, false otherwise.
+ * On failure, the caller should fallback to static template messages.
+ */
+export async function sendRenewalToN8N(data: RenewalN8NData): Promise<boolean> {
+    if (!N8N_WEBHOOK_URL) {
+        console.warn('[WhatsApp/N8N] N8N_RENEWAL_WEBHOOK_URL not configured, skipping');
+        return false;
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+        const res = await fetch(N8N_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customer: data.customer,
+                sale: data.sale,
+                type: data.type,
+                instanceName: data.instanceName || data.customer.whatsapp_instance,
+                timestamp: new Date().toISOString(),
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (res.ok) {
+            console.log(`[WhatsApp/N8N] Renewal data sent for ${data.customer.name} (${data.type})`);
+            return true;
+        }
+
+        console.error(`[WhatsApp/N8N] Webhook returned ${res.status}: ${await res.text()}`);
+        return false;
+    } catch (err: any) {
+        if (err.name === 'AbortError') {
+            console.error('[WhatsApp/N8N] Webhook timeout (5s)');
+        } else {
+            console.error('[WhatsApp/N8N] Webhook error:', err.message);
+        }
+        return false;
+    }
+}

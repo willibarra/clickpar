@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { addNoteToLead, createVentaLead, refreshKommoToken } from '@/lib/kommo';
-import { sendPreExpiryReminder, sendExpiryNotification, getWhatsAppSettings } from '@/lib/whatsapp';
+import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification, getWhatsAppSettings, getPlatformDisplayName, sendRenewalToN8N } from '@/lib/whatsapp';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -100,6 +100,17 @@ export async function GET(request: NextRequest) {
             waSettings = await getWhatsAppSettings();
         } catch { waSettings = null; }
 
+        // Check if AI messages via N8N are enabled
+        let useAiMessages = false;
+        try {
+            const { data: aiConfig } = await supabase
+                .from('app_config' as any)
+                .select('value')
+                .eq('key', 'use_n8n_ai')
+                .single();
+            useAiMessages = aiConfig?.value === 'true';
+        } catch { /* default false */ }
+
         const batchInterval = (waSettings?.batch_send_interval_seconds || 30) * 1000;
         let messagesSentCount = 0;
 
@@ -116,7 +127,7 @@ export async function GET(request: NextRequest) {
         // ================================================
         const { data: expTomorrow } = await supabase
             .from('sales' as any)
-            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
+            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone, whatsapp_instance), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
             .eq('is_active', true)
             .eq('end_date', tomorrowStr);
 
@@ -124,6 +135,7 @@ export async function GET(request: NextRequest) {
             const customer = sale.customers;
             const slot = sale.sale_slots;
             const platform = slot?.mother_accounts?.platform || 'Servicio';
+            const displayPlatform = await getPlatformDisplayName(platform);
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
@@ -132,30 +144,44 @@ export async function GET(request: NextRequest) {
             try {
                 await sendKommoMessage(phone, name,
                     `⏰ *Recordatorio de Vencimiento*\n\n` +
-                    `Hola ${name}, tu servicio de *${platform}* vence *mañana* (${tomorrowStr}).\n\n` +
+                    `Hola ${name}, tu servicio de *${displayPlatform}* vence *mañana* (${tomorrowStr}).\n\n` +
                     `💰 Renovación: Gs. ${(sale.amount_gs || 0).toLocaleString()}\n\n` +
                     `Escribinos para renovar y seguir disfrutando del servicio 🙌`
                 );
-                results.reminder_1day.push(`${name} - ${platform}`);
+                results.reminder_1day.push(`${name} - ${displayPlatform}`);
             } catch (e: any) {
                 results.errors.push(`1day-kommo: ${name} - ${e.message}`);
             }
 
-            // WhatsApp directo (pre-vencimiento)
+            // WhatsApp: AI via N8N (with static fallback)
             if (waSettings?.auto_send_pre_expiry) {
                 try {
                     await batchDelay();
-                    await sendPreExpiryReminder({
-                        customerPhone: phone,
-                        customerName: name,
-                        platform,
-                        expirationDate: tomorrowStr,
-                        daysRemaining: 1,
-                        price: (sale.amount_gs || 0).toLocaleString(),
-                        customerId: sale.customer_id,
-                        saleId: sale.id,
-                        instanceName: sale.whatsapp_instance || undefined,
-                    });
+                    let sentViaN8N = false;
+
+                    if (useAiMessages) {
+                        sentViaN8N = await sendRenewalToN8N({
+                            customer: { id: sale.customer_id, name, phone, whatsapp_instance: customer?.whatsapp_instance },
+                            sale: { id: sale.id, platform, platform_display: displayPlatform, amount_gs: sale.amount_gs || 0, end_date: tomorrowStr },
+                            type: 'pre_expiry',
+                            instanceName: customer?.whatsapp_instance || undefined,
+                        });
+                    }
+
+                    // Fallback to static template if N8N is down or disabled
+                    if (!sentViaN8N) {
+                        await sendPreExpiryReminder({
+                            customerPhone: phone,
+                            customerName: name,
+                            platform,
+                            expirationDate: tomorrowStr,
+                            daysRemaining: 1,
+                            price: (sale.amount_gs || 0).toLocaleString(),
+                            customerId: sale.customer_id,
+                            saleId: sale.id,
+                            instanceName: customer?.whatsapp_instance || undefined,
+                        });
+                    }
                 } catch (e: any) {
                     results.errors.push(`1day-wa: ${name} - ${e.message}`);
                 }
@@ -167,7 +193,7 @@ export async function GET(request: NextRequest) {
         // ================================================
         const { data: expToday } = await supabase
             .from('sales' as any)
-            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
+            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone, whatsapp_instance), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
             .eq('is_active', true)
             .eq('end_date', todayStr);
 
@@ -175,6 +201,7 @@ export async function GET(request: NextRequest) {
             const customer = sale.customers;
             const slot = sale.sale_slots;
             const platform = slot?.mother_accounts?.platform || 'Servicio';
+            const displayPlatform = await getPlatformDisplayName(platform);
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
@@ -183,29 +210,42 @@ export async function GET(request: NextRequest) {
             try {
                 await sendKommoMessage(phone, name,
                     `🔴 *Tu servicio vence HOY*\n\n` +
-                    `Hola ${name}, tu servicio de *${platform}* vence *hoy* (${todayStr}).\n\n` +
+                    `Hola ${name}, tu servicio de *${displayPlatform}* vence *hoy* (${todayStr}).\n\n` +
                     `💰 Renovación: Gs. ${(sale.amount_gs || 0).toLocaleString()}\n\n` +
                     `Si no renovás hoy, mañana se suspenderá tu acceso.\n` +
                     `Escribinos ahora para renovar ✅`
                 );
-                results.reminder_today.push(`${name} - ${platform}`);
+                results.reminder_today.push(`${name} - ${displayPlatform}`);
             } catch (e: any) {
                 results.errors.push(`today-kommo: ${name} - ${e.message}`);
             }
 
-            // WhatsApp directo (vencimiento hoy)
+            // WhatsApp: AI via N8N (with static fallback)
             if (waSettings?.auto_send_expiry) {
                 try {
                     await batchDelay();
-                    await sendExpiryNotification({
-                        customerPhone: phone,
-                        customerName: name,
-                        platform,
-                        price: (sale.amount_gs || 0).toLocaleString(),
-                        customerId: sale.customer_id,
-                        saleId: sale.id,
-                        instanceName: sale.whatsapp_instance || undefined,
-                    });
+                    let sentViaN8N = false;
+
+                    if (useAiMessages) {
+                        sentViaN8N = await sendRenewalToN8N({
+                            customer: { id: sale.customer_id, name, phone, whatsapp_instance: customer?.whatsapp_instance },
+                            sale: { id: sale.id, platform, platform_display: displayPlatform, amount_gs: sale.amount_gs || 0, end_date: todayStr },
+                            type: 'expiry_today',
+                            instanceName: customer?.whatsapp_instance || undefined,
+                        });
+                    }
+
+                    if (!sentViaN8N) {
+                        await sendExpiryNotification({
+                            customerPhone: phone,
+                            customerName: name,
+                            platform,
+                            price: (sale.amount_gs || 0).toLocaleString(),
+                            customerId: sale.customer_id,
+                            saleId: sale.id,
+                            instanceName: customer?.whatsapp_instance || undefined,
+                        });
+                    }
                 } catch (e: any) {
                     results.errors.push(`today-wa: ${name} - ${e.message}`);
                 }
@@ -217,7 +257,7 @@ export async function GET(request: NextRequest) {
         // ================================================
         const { data: expYesterday } = await supabase
             .from('sales' as any)
-            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
+            .select('id, amount_gs, end_date, customer_id, slot_id, customers:customer_id(full_name, phone, whatsapp_instance), sale_slots:slot_id(slot_identifier, mother_accounts:mother_account_id(platform))')
             .eq('is_active', true)
             .eq('end_date', yesterdayStr);
 
@@ -225,6 +265,7 @@ export async function GET(request: NextRequest) {
             const customer = sale.customers;
             const slot = sale.sale_slots;
             const platform = slot?.mother_accounts?.platform || 'Servicio';
+            const displayPlatform = await getPlatformDisplayName(platform);
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
@@ -233,14 +274,45 @@ export async function GET(request: NextRequest) {
             try {
                 await sendKommoMessage(phone, name,
                     `⚠️ *Servicio vencido*\n\n` +
-                    `Hola ${name}, tu servicio de *${platform}* *venció ayer* (${yesterdayStr}).\n\n` +
+                    `Hola ${name}, tu servicio de *${displayPlatform}* *venció ayer* (${yesterdayStr}).\n\n` +
                     `Es tu última oportunidad para renovar antes de que se cancele definitivamente.\n\n` +
                     `💰 Renovación: Gs. ${(sale.amount_gs || 0).toLocaleString()}\n` +
                     `Escribinos para renovar 📲`
                 );
-                results.reminder_1day_after.push(`${name} - ${platform}`);
+                results.reminder_1day_after.push(`${name} - ${displayPlatform}`);
             } catch (e: any) {
                 results.errors.push(`1dayAfter: ${name} - ${e.message}`);
+            }
+
+            // WhatsApp: AI via N8N (with static fallback)
+            if (waSettings?.auto_send_expiry) {
+                try {
+                    await batchDelay();
+                    let sentViaN8N = false;
+
+                    if (useAiMessages) {
+                        sentViaN8N = await sendRenewalToN8N({
+                            customer: { id: sale.customer_id, name, phone, whatsapp_instance: customer?.whatsapp_instance },
+                            sale: { id: sale.id, platform, platform_display: displayPlatform, amount_gs: sale.amount_gs || 0, end_date: yesterdayStr },
+                            type: 'expired_yesterday',
+                            instanceName: customer?.whatsapp_instance || undefined,
+                        });
+                    }
+
+                    if (!sentViaN8N) {
+                        await sendExpiredNotification({
+                            customerPhone: phone,
+                            customerName: name,
+                            platform,
+                            expirationDate: yesterdayStr,
+                            price: (sale.amount_gs || 0).toLocaleString(),
+                            customerId: sale.customer_id,
+                            saleId: sale.id,
+                        });
+                    }
+                } catch (e: any) {
+                    results.errors.push(`1dayAfter-wa: ${name} - ${e.message}`);
+                }
             }
         }
 
@@ -257,6 +329,7 @@ export async function GET(request: NextRequest) {
             const customer = sale.customers;
             const slot = sale.sale_slots;
             const platform = slot?.mother_accounts?.platform || 'Servicio';
+            const displayPlatform = await getPlatformDisplayName(platform);
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
@@ -279,10 +352,10 @@ export async function GET(request: NextRequest) {
             try {
                 await sendKommoMessage(phone, name,
                     `❌ *Servicio cancelado*\n\n` +
-                    `Hola ${name}, tu servicio de *${platform}* fue cancelado por falta de pago.\n\n` +
+                    `Hola ${name}, tu servicio de *${displayPlatform}* fue cancelado por falta de pago.\n\n` +
                     `Si querés reactivar tu cuenta, escribinos y con gusto te ayudamos 🤝`
                 );
-                results.cancelled_2days_after.push(`${name} - ${platform}`);
+                results.cancelled_2days_after.push(`${name} - ${displayPlatform}`);
             } catch (e: any) {
                 results.errors.push(`cancel: ${name} - ${e.message}`);
             }

@@ -10,7 +10,7 @@ export default async function CustomersPage() {
 
     // 1. Fetch all customers
     const { data: rawCustomers } = await (supabase.from('customers') as any)
-        .select('id, full_name, phone, email, created_at, customer_type')
+        .select('id, full_name, phone, email, created_at, customer_type, whatsapp_instance')
         .order('created_at', { ascending: false });
 
     const customerList = (rawCustomers || []) as any[];
@@ -123,6 +123,7 @@ export default async function CustomersPage() {
             full_name: c.full_name || 'Sin nombre',
             phone: c.phone || '',
             customer_type: c.customer_type || 'cliente',
+            whatsapp_instance: c.whatsapp_instance || null,
             services,
             history,
             status,

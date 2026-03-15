@@ -844,7 +844,137 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
     );
 }
 
-/* ── Slot row with customer data + search phone button ───────── */
+/* ═══════════════════════════════════════════════════════════════
+   SUPPLIER ACCOUNT ROW — compact, no slots
+   (same info as AccountCard header row but without slot management)
+   ═══════════════════════════════════════════════════════════════ */
+
+function SupplierAccountRow({ account, onRefresh }: { account: SearchResult; onRefresh: () => void }) {
+    const color = platformColors[account.platform || ''] || '#86EFAC';
+    const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [error, setError] = useState('');
+    const [email, setEmail] = useState(account.email || '');
+    const [password, setPassword] = useState(account.password || '');
+    const [renewalDate, setRenewalDate] = useState(account.renewal_date || '');
+    const [salePrice, setSalePrice] = useState(String(account.sale_price_gs || ''));
+
+    const handleSave = async () => {
+        setSaving(true); setError(''); setSaved(false);
+        try {
+            await saveField('account', account.id, { email, password, renewal_date: renewalDate });
+            setSaved(true);
+            setTimeout(() => { setSaved(false); setEditing(false); }, 1200);
+            onRefresh();
+        } catch (err: any) { setError(err.message || 'Error'); }
+        finally { setSaving(false); }
+    };
+
+    const available = account.availableSlots || 0;
+    const sold = account.soldSlots || 0;
+    const total = account.totalSlots || 0;
+    const copyText = () => `${account.platform}\nUsuario: ${email}\nClave: ${password}\nVence: ${formatDate(renewalDate)}`;
+
+    return (
+        <div className={`rounded-lg border bg-[#0d0d0d] overflow-hidden ${
+            editing ? 'border-yellow-500/40' : 'border-border/40 hover:border-border/70'
+        } transition-colors`}>
+            {/* Compact row */}
+            <div className="flex items-center gap-3 px-4 py-2.5">
+                <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+
+                <div className="flex-1 grid grid-cols-2 md:grid-cols-6 gap-x-4 gap-y-1 items-center min-w-0">
+                    <div>
+                        <span className="text-xs text-muted-foreground block">Plataforma</span>
+                        <span className="text-sm font-semibold text-foreground">{account.platform}</span>
+                    </div>
+                    <div className="truncate">
+                        <span className="text-xs text-muted-foreground block">Usuario</span>
+                        <span
+                            className="text-sm text-foreground truncate block cursor-pointer hover:text-[#818CF8] transition-colors"
+                            title="Click para copiar"
+                            onClick={async () => { if (email) await navigator.clipboard.writeText(email); }}
+                        >{email || '—'}</span>
+                    </div>
+                    <div>
+                        <span className="text-xs text-muted-foreground block">Clave</span>
+                        <VisiblePassword value={password} />
+                    </div>
+                    <div>
+                        <span className="text-xs text-muted-foreground block">P. Venta</span>
+                        <span className="text-sm font-semibold text-[#86EFAC]">{formatGs(Number(salePrice))}</span>
+                    </div>
+                    <div>
+                        <span className="text-xs text-muted-foreground block">Vencimiento</span>
+                        <span className="text-sm text-foreground">{formatDate(renewalDate)}</span>
+                    </div>
+                    <div>
+                        <span className="text-xs text-muted-foreground block">Días</span>
+                        {daysBadge(renewalDate)}
+                    </div>
+                </div>
+
+                {/* Slot summary pills */}
+                <div className="hidden md:flex items-center gap-1.5 flex-shrink-0 text-[11px]">
+                    <span className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#86EFAC]" />
+                        <span className="text-[#86EFAC]">{available}L</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#F97316]" />
+                        <span className="text-[#F97316]">{sold}V</span>
+                    </span>
+                    <span className="text-muted-foreground/40">/{total}</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <CopyButton getText={copyText} />
+                    <button
+                        onClick={() => setEditing(!editing)}
+                        className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                            editing ? 'bg-yellow-500/20 text-yellow-500' : 'bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20'
+                        }`}
+                    >
+                        {editing ? <X className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+                        {editing ? 'Cerrar' : 'Editar'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Edit panel */}
+            {editing && (
+                <div className="border-t border-yellow-500/30 bg-[#0a0a0a]">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4">
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Vencimiento</label>
+                            <EditInput type="date" value={renewalDate} onChange={setRenewalDate} />
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Usuario</label>
+                            <EditInput value={email} onChange={setEmail} placeholder="email" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Clave</label>
+                            <PassInput value={password} onChange={setPassword} />
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between px-4 pb-3">
+                        <div>{error && <span className="text-xs text-red-500">{error}</span>}</div>
+                        <button onClick={handleSave} disabled={saving}
+                            className={`flex items-center gap-1.5 rounded-md px-4 py-1 text-xs font-medium transition-all ${
+                                saved ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'bg-[#86EFAC]/10 text-[#86EFAC] hover:bg-[#86EFAC]/20'
+                            } disabled:opacity-50`}>
+                            {saving ? <><Loader2 className="h-3 w-3 animate-spin" /> Guardando...</>
+                                : saved ? <><Check className="h-3 w-3" /> Guardado</>
+                                    : <><Save className="h-3 w-3" /> Guardar</>}
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 function SlotCustomerRow({ slot, accountEmail, accountPassword, renewalDate, platform, onSwap }: {
     slot: SlotDetail; accountEmail: string; accountPassword: string; renewalDate: string; platform: string; onSwap?: () => void;
@@ -982,12 +1112,52 @@ export function SearchResults({ query }: { query: string }) {
     };
 
     const customers = results.filter(r => r.type === 'customer');
-    const suppliers = results.filter(r => r.type === 'supplier');
+    const rawSuppliers = results.filter(r => r.type === 'supplier');
 
-    // Sort accounts
+    // Group accounts: those whose supplier_name matches are shown under the supplier section
+    // We detect a supplier search when all found accounts share the same supplier_name
+    const allAccounts = results.filter(r => r.type === 'account');
+
+    // Group by supplier_name
+    const supplierAccountsMap = new Map<string, SearchResult[]>();
+    const standaloneAccounts: SearchResult[] = [];
+
+    allAccounts.forEach(acct => {
+        const sn = acct.supplier_name?.trim();
+        if (sn) {
+            if (!supplierAccountsMap.has(sn)) supplierAccountsMap.set(sn, []);
+            supplierAccountsMap.get(sn)!.push(acct);
+        } else {
+            standaloneAccounts.push(acct);
+        }
+    });
+
+    // Only group into supplier sections when the query looks like a supplier search
+    // (i.e. most accounts share the same supplier_name and it matches the query)
+    const isSupplierSearch = supplierAccountsMap.size > 0 &&
+        [...supplierAccountsMap.keys()].some(name =>
+            name.toLowerCase().includes(query.toLowerCase())
+        );
+
+    // Accounts to show in supplier groups vs standalone accounts section
+    const supplierGroups: { name: string; accounts: SearchResult[] }[] = [];
+    const finalStandaloneAccounts: SearchResult[] = [...standaloneAccounts];
+
+    if (isSupplierSearch) {
+        supplierAccountsMap.forEach((accts, name) => {
+            if (name.toLowerCase().includes(query.toLowerCase())) {
+                supplierGroups.push({ name, accounts: accts });
+            } else {
+                finalStandaloneAccounts.push(...accts);
+            }
+        });
+    } else {
+        supplierAccountsMap.forEach((accts) => finalStandaloneAccounts.push(...accts));
+    }
+
+    // Sort standalone accounts
     const accounts = useMemo(() => {
-        const accts = results.filter(r => r.type === 'account');
-        return accts.sort((a, b) => {
+        return finalStandaloneAccounts.sort((a, b) => {
             let va: any, vb: any;
             switch (sortField) {
                 case 'platform': va = a.platform || ''; vb = b.platform || ''; break;
@@ -1003,7 +1173,7 @@ export function SearchResults({ query }: { query: string }) {
             }
             return sortDir === 'asc' ? va - vb : vb - va;
         });
-    }, [results, sortField, sortDir]);
+    }, [results, sortField, sortDir, isSupplierSearch]);
 
     if (isLoading) {
         return (
@@ -1114,10 +1284,40 @@ export function SearchResults({ query }: { query: string }) {
                 </Section>
             )}
 
-            {/* ── SUPPLIERS ── */}
-            {suppliers.length > 0 && (
-                <Section icon={<Truck className="h-3.5 w-3.5 text-[#818CF8]" />} label="Proveedores" count={suppliers.length} color="#818CF8">
-                    {suppliers.map(s => (
+            {/* ── PROVEEDORES (grouped accounts by supplier_name) ── */}
+            {supplierGroups.map(group => (
+                <Section
+                    key={group.name}
+                    icon={<Truck className="h-3.5 w-3.5 text-[#818CF8]" />}
+                    label={`Proveedor: ${group.name}`}
+                    count={group.accounts.length}
+                    color="#818CF8"
+                >
+                    {/* Summary header */}
+                    <div className="flex items-center gap-4 px-4 py-2 rounded-lg bg-[#818CF8]/5 border border-[#818CF8]/20">
+                        <Truck className="h-4 w-4 text-[#818CF8] flex-shrink-0" />
+                        <div className="flex-1">
+                            <p className="text-sm font-semibold text-[#818CF8]">{group.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                                {group.accounts.length} cuenta{group.accounts.length !== 1 ? 's' : ''} · {' '}
+                                {group.accounts.reduce((s, a) => s + (a.availableSlots || 0), 0)} libres · {' '}
+                                {group.accounts.reduce((s, a) => s + (a.soldSlots || 0), 0)} vendidos
+                            </p>
+                        </div>
+                    </div>
+                    {/* Accounts list (no slots visible) */}
+                    {group.accounts
+                        .sort((a, b) => (a.platform || '').localeCompare(b.platform || ''))
+                        .map(a => (
+                            <SupplierAccountRow key={a.id} account={a} onRefresh={fetchResults} />
+                        ))}
+                </Section>
+            ))}
+
+            {/* ── SUPPLIERS from table (basic cards) ── */}
+            {rawSuppliers.length > 0 && (
+                <Section icon={<Truck className="h-3.5 w-3.5 text-[#818CF8]" />} label="Proveedores" count={rawSuppliers.length} color="#818CF8">
+                    {rawSuppliers.map(s => (
                         <Card key={s.id} className="border-border bg-card hover:border-[#818CF8]/30 transition-colors">
                             <CardContent className="p-4">
                                 <div className="flex items-center gap-3">

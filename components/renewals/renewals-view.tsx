@@ -13,13 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
     ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search,
-    MessageSquare, MessageSquareOff
+    MessageSquare, MessageSquareOff, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions } from '@/lib/actions/renewals';
+import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice } from '@/lib/actions/renewals';
+import { BatchSendModal } from "./batch-send-modal";
 
-type FilterType = 'all' | 'expired' | 'today' | 'week';
-type ClientFilterType = 'all' | 'expired' | 'today' | 'week';
+type FilterType = 'all' | 'expired' | 'today' | '3days';
+type ClientFilterType = 'all' | 'expired' | 'today' | '3days';
 
 function getDaysUntil(dateStr: string | null): number {
     if (!dateStr) return 999;
@@ -38,8 +39,8 @@ function getExpiryDate(startDate: string | null): string | null {
 }
 
 function getStatusBadge(days: number) {
-    if (days < 0) return { label: `Vencido (${Math.abs(days)}d)`, color: 'bg-red-500/20 text-red-400', dot: 'bg-red-500' };
-    if (days === 0) return { label: 'Hoy', color: 'bg-orange-500/20 text-orange-400', dot: 'bg-orange-500 animate-pulse' };
+    if (days < 0) return { label: `Vencido (${Math.abs(days)}d)`, color: 'bg-red-600/30 text-red-300 ring-1 ring-red-500/50', dot: 'bg-red-400 animate-pulse' };
+    if (days === 0) return { label: 'Vence Hoy', color: 'bg-orange-500/25 text-orange-300 ring-1 ring-orange-500/40', dot: 'bg-orange-400 animate-pulse' };
     if (days <= 3) return { label: `${days}d`, color: 'bg-yellow-500/20 text-yellow-400', dot: 'bg-yellow-500' };
     if (days <= 7) return { label: `${days}d`, color: 'bg-blue-500/20 text-blue-400', dot: 'bg-blue-500' };
     return { label: `${days}d`, color: 'bg-green-500/20 text-green-400', dot: 'bg-green-500' };
@@ -77,6 +78,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [clientPageSize, setClientPageSize] = useState<number>(30);
     const [clientCurrentPage, setClientCurrentPage] = useState(1);
     const [showReleaseModal, setShowReleaseModal] = useState(false);
+    const [showBatchSendModal, setShowBatchSendModal] = useState(false);
+    const [sendingNotice, setSendingNotice] = useState<Set<string>>(new Set());
 
     // Enrich subscriptions with expiry info
     const enrichedSubs = useMemo(() => {
@@ -93,7 +96,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         return enrichedSubs.filter((sub: any) => {
             if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= 0) return false; }
             else if (clientFilter === 'today') { if (sub.daysUntilExpiry !== 0) return false; }
-            else if (clientFilter === 'week') { if (sub.daysUntilExpiry < 0 || sub.daysUntilExpiry > 7) return false; }
+            else if (clientFilter === '3days') { if (sub.daysUntilExpiry < 1 || sub.daysUntilExpiry > 3) return false; }
             if (clientSearch.trim()) {
                 const q = clientSearch.toLowerCase();
                 const c = sub.customer;
@@ -106,7 +109,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Client stats
     const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < 0).length;
     const clientTodayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 0).length;
-    const clientWeekCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 0 && s.daysUntilExpiry <= 7).length;
+    const clientThreeDayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 1 && s.daysUntilExpiry <= 3).length;
+    const clientUrgentTotal = clientExpiredCount + clientTodayCount + clientThreeDayCount;
 
     // Accounts filtered by status+search only (no platform filter)
     // Used to compute correct per-platform counts and unique platforms for the chips
@@ -115,7 +119,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             const days = getDaysUntil(a.renewal_date);
             if (provFilter === 'expired') { if (days >= 0) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
-            else if (provFilter === 'week') { if (days < 0 || days > 7) return false; }
+            else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
             if (provSearch.trim()) {
                 const q = provSearch.toLowerCase();
                 return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
@@ -137,7 +141,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             const days = getDaysUntil(a.renewal_date);
             if (provFilter === 'expired') { if (days >= 0) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
-            else if (provFilter === 'week') { if (days < 0 || days > 7) return false; }
+            else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
             if (provPlatformFilter !== 'all') {
                 if (a.platform !== provPlatformFilter) return false;
             }
@@ -172,7 +176,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Stats
     const expiredCount = accounts.filter(a => getDaysUntil(a.renewal_date) < 0).length;
     const todayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === 0).length;
-    const weekCount = accounts.filter(a => getDaysUntil(a.renewal_date) >= 0 && getDaysUntil(a.renewal_date) <= 7).length;
+    const provThreeDayCount = accounts.filter(a => { const d = getDaysUntil(a.renewal_date); return d >= 1 && d <= 3; }).length;
+    const provUrgentTotal = expiredCount + todayCount + provThreeDayCount;
 
     // Toggle selection
     const toggleProv = (id: string) => {
@@ -238,14 +243,16 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
     const handleBulkRenewProviders = () => {
         const cost = parseFloat(provCost);
         const days = parseInt(provDays);
+        const usdt = parseFloat(provUsdt) || undefined;
         if (isNaN(cost) || cost <= 0 || isNaN(days) || days <= 0) return;
 
         startTransition(async () => {
-            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days);
+            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days, usdt);
             if (result.success) {
                 setShowProvModal(false);
                 setProvSelected(new Set());
                 setProvCost('');
+                setProvUsdt('');
                 router.refresh();
             }
         });
@@ -268,6 +275,22 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         });
     };
 
+    // Send WhatsApp notice for a single sale
+    const handleSendNotice = async (saleId: string) => {
+        setSendingNotice(prev => new Set(prev).add(saleId));
+        try {
+            const result = await sendRenewalNotice(saleId);
+            if (result.success) {
+                toast.success('Aviso enviado por WhatsApp ✅');
+                router.refresh();
+            } else {
+                toast.error('Error al enviar', { description: result.error });
+            }
+        } finally {
+            setSendingNotice(prev => { const n = new Set(prev); n.delete(saleId); return n; });
+        }
+    };
+
     // Bulk release (liberar) unpaid clients
     const handleBulkRelease = () => {
         startTransition(async () => {
@@ -284,27 +307,27 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         { key: 'all', label: 'Todos' },
         { key: 'expired', label: 'Vencidos', count: expiredCount },
         { key: 'today', label: 'Hoy', count: todayCount },
-        { key: 'week', label: 'Próx. 7d', count: weekCount },
+        { key: '3days', label: 'Próx. 3d', count: provThreeDayCount },
     ];
 
     const clientFilterButtons: { key: ClientFilterType; label: string; count?: number }[] = [
         { key: 'all', label: 'Todos' },
         { key: 'expired', label: 'Vencidos', count: clientExpiredCount },
         { key: 'today', label: 'Hoy', count: clientTodayCount },
-        { key: 'week', label: 'Próx. 7d', count: clientWeekCount },
+        { key: '3days', label: 'Próx. 3d', count: clientThreeDayCount },
     ];
 
     return (
         <>
-            <Tabs defaultValue="providers" className="space-y-4">
+            <Tabs defaultValue="clients" className="space-y-4">
                 <TabsList className="bg-[#1a1a1a] border border-border">
                     <TabsTrigger value="providers" className="gap-2 data-[state=active]:bg-[#86EFAC] data-[state=active]:text-black">
                         <Package className="h-4 w-4" />
-                        Proveedores ({accounts.length})
+                        Proveedores <span className="ml-1 rounded-full bg-red-500/20 text-red-400 text-[11px] font-bold px-1.5 py-0.5">{provUrgentTotal}</span>
                     </TabsTrigger>
                     <TabsTrigger value="clients" className="gap-2 data-[state=active]:bg-[#86EFAC] data-[state=active]:text-black">
                         <Users className="h-4 w-4" />
-                        Clientes ({subscriptions.length})
+                        Clientes <span className="ml-1 rounded-full bg-red-500/20 text-red-400 text-[11px] font-bold px-1.5 py-0.5">{clientUrgentTotal}</span>
                     </TabsTrigger>
                 </TabsList>
 
@@ -312,6 +335,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 <TabsContent value="providers" className="space-y-4">
                     {/* Stats Row — clickable filters */}
                     <div className="grid grid-cols-4 gap-3">
+                        {/* TOTAL urgente */}
                         <button
                             onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -320,9 +344,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     : 'border-border bg-[#1a1a1a] hover:border-border/80'
                             }`}
                         >
-                            <p className="text-xs text-muted-foreground">Total Cuentas</p>
-                            <p className="text-2xl font-bold">{accounts.length}</p>
+                            <p className="text-xs text-muted-foreground">Total urgente</p>
+                            <p className="text-2xl font-bold">{provUrgentTotal}</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">venc. + hoy + 3d</p>
                         </button>
+                        {/* Vencidas */}
                         <button
                             onClick={() => { setProvFilter('expired'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -334,6 +360,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{expiredCount}</p>
                         </button>
+                        {/* Vencen Hoy */}
                         <button
                             onClick={() => { setProvFilter('today'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -342,19 +369,20 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
                             }`}
                         >
-                            <p className="text-xs text-orange-400">🟠 Vencen Hoy</p>
+                            <p className="text-xs text-orange-400">🟠 Vence Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{todayCount}</p>
                         </button>
+                        {/* Próx. 3 días */}
                         <button
-                            onClick={() => { setProvFilter('week'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            onClick={() => { setProvFilter('3days'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                                provFilter === 'week'
-                                    ? 'border-blue-400 bg-blue-500/15 ring-1 ring-blue-400/50'
-                                    : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50'
+                                provFilter === '3days'
+                                    ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
+                                    : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
                             }`}
                         >
-                            <p className="text-xs text-blue-400">🔵 Próx. 7 días</p>
-                            <p className="text-2xl font-bold text-blue-400">{weekCount}</p>
+                            <p className="text-xs text-yellow-400">🟡 Próx. 3 días</p>
+                            <p className="text-2xl font-bold text-yellow-400">{provThreeDayCount}</p>
                         </button>
                     </div>
 
@@ -550,8 +578,9 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                 {/* ─── CLIENTS TAB ─── */}
                 <TabsContent value="clients" className="space-y-4">
-                    {/* Stats Row — clickable filters */}
+                                    {/* Stats Row — clickable filters */}
                     <div className="grid grid-cols-4 gap-3">
+                        {/* TOTAL urgente */}
                         <button
                             onClick={() => { setClientFilter('all'); setClientSelected(new Set()); setClientCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -560,9 +589,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     : 'border-border bg-[#1a1a1a] hover:border-border/80'
                             }`}
                         >
-                            <p className="text-xs text-muted-foreground">Total Suscripciones</p>
-                            <p className="text-2xl font-bold">{enrichedSubs.length}</p>
+                            <p className="text-xs text-muted-foreground">Total urgente</p>
+                            <p className="text-2xl font-bold">{clientUrgentTotal}</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">venc. + hoy + 3d</p>
                         </button>
+                        {/* Vencidos */}
                         <button
                             onClick={() => { setClientFilter('expired'); setClientSelected(new Set()); setClientCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -574,6 +605,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{clientExpiredCount}</p>
                         </button>
+                        {/* Vence Hoy */}
                         <button
                             onClick={() => { setClientFilter('today'); setClientSelected(new Set()); setClientCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
@@ -582,19 +614,20 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
                             }`}
                         >
-                            <p className="text-xs text-orange-400">🟠 Vencen Hoy</p>
+                            <p className="text-xs text-orange-400">🟠 Vence Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{clientTodayCount}</p>
                         </button>
+                        {/* Próx. 3 días */}
                         <button
-                            onClick={() => { setClientFilter('week'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            onClick={() => { setClientFilter('3days'); setClientSelected(new Set()); setClientCurrentPage(1); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                                clientFilter === 'week'
-                                    ? 'border-blue-400 bg-blue-500/15 ring-1 ring-blue-400/50'
-                                    : 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/50'
+                                clientFilter === '3days'
+                                    ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
+                                    : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
                             }`}
                         >
-                            <p className="text-xs text-blue-400">🔵 Próx. 7 días</p>
-                            <p className="text-2xl font-bold text-blue-400">{clientWeekCount}</p>
+                            <p className="text-xs text-yellow-400">🟡 Próx. 3 días</p>
+                            <p className="text-2xl font-bold text-yellow-400">{clientThreeDayCount}</p>
                         </button>
                     </div>
 
@@ -635,6 +668,13 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         Renovar ({clientSelected.size})
                                     </Button>
                                     <Button
+                                        onClick={() => setShowBatchSendModal(true)}
+                                        className="bg-[#818CF8] hover:bg-[#818CF8]/90 text-white gap-2"
+                                    >
+                                        <Send className="h-4 w-4" />
+                                        Avisar ({clientSelected.size})
+                                    </Button>
+                                    <Button
                                         onClick={() => setShowReleaseModal(true)}
                                         variant="outline"
                                         className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
@@ -648,7 +688,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
-                            <div className="grid grid-cols-[40px_1fr_1fr_120px_100px_100px_90px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                            <div className="grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
                                 <div className="flex items-center">
                                     <Checkbox
                                         checked={clientSelected.size === paginatedSubs.length && paginatedSubs.length > 0}
@@ -656,11 +696,12 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     />
                                 </div>
                                 <div>Cliente</div>
-                                <div>Plataforma / Cuenta</div>
+                                <div>Plataforma / Perfil</div>
                                 <div>Vencimiento</div>
                                 <div>Estado</div>
-                                <div>Aviso WA</div>
                                 <div>Monto</div>
+                                <div>Aviso WA</div>
+                                <div></div>
                             </div>
                             {paginatedSubs.length === 0 && (
                                 <div className="py-12 text-center text-muted-foreground">
@@ -672,11 +713,12 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 const slot = sub.slot;
                                 const account = slot?.mother_account;
                                 const badge = getStatusBadge(sub.daysUntilExpiry);
+                                const isSending = sendingNotice.has(sub.id);
 
                                 return (
                                     <div
                                         key={sub.id}
-                                        className={`grid grid-cols-[40px_1fr_1fr_120px_100px_100px_90px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                        className={`grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
                                             }`}
                                     >
                                         <div>
@@ -685,6 +727,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 onCheckedChange={() => toggleClient(sub.id)}
                                             />
                                         </div>
+                                        {/* Cliente */}
                                         <div>
                                             <p className="font-medium text-foreground flex items-center gap-1.5">
                                                 {customer?.full_name || 'N/A'}
@@ -694,26 +737,32 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                             </p>
                                             <p className="text-xs text-muted-foreground">{customer?.phone || ''}</p>
                                         </div>
+                                        {/* Plataforma + Perfil del cliente */}
                                         <div>
                                             <p className="text-sm font-medium">{account?.platform || 'N/A'}</p>
-                                            <p className="text-xs text-muted-foreground truncate">{account?.email || ''}</p>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {slot?.slot_identifier || account?.email || ''}
+                                            </p>
                                         </div>
+                                        {/* Vencimiento */}
                                         <div className="text-sm">
                                             {sub.expiryDate ? new Date(sub.expiryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
                                         </div>
+                                        {/* Estado */}
                                         <div>
-                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}>
+                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${badge.color}`}>
                                                 <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
                                                 {badge.label}
                                             </span>
                                         </div>
+                                        {/* Monto */}
                                         <div className="text-sm font-medium">
                                             {sub.is_canje ? (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[11px] font-semibold">
                                                     🎬 Canje
                                                 </span>
                                             ) : (
-                                                <span className="text-[#86EFAC]">
+                                                <span className="text-[#86EFAC] font-semibold">
                                                     {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
                                                 </span>
                                             )}
@@ -739,6 +788,23 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                     <span>Sin aviso</span>
                                                 </div>
                                             )}
+                                        </div>
+                                        {/* Botón Enviar Aviso WA */}
+                                        <div>
+                                            <button
+                                                onClick={() => handleSendNotice(sub.id)}
+                                                disabled={isSending || !customer?.phone}
+                                                title={!customer?.phone ? 'Sin teléfono registrado' : 'Enviar aviso por WhatsApp'}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all
+                                                    bg-green-600/20 text-green-300 hover:bg-green-600/40 hover:text-green-200
+                                                    disabled:opacity-40 disabled:cursor-not-allowed"
+                                            >
+                                                {isSending
+                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                    : <Send className="h-3 w-3" />
+                                                }
+                                                {isSending ? '...' : 'Enviar'}
+                                            </button>
                                         </div>
                                     </div>
                                 );
@@ -956,6 +1022,26 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Batch Send WhatsApp Modal */}
+            <BatchSendModal
+                isOpen={showBatchSendModal}
+                onClose={() => {
+                    setShowBatchSendModal(false);
+                    setClientSelected(new Set());
+                }}
+                clients={enrichedSubs
+                    .filter((s: any) => clientSelected.has(s.id))
+                    .map((s: any) => ({
+                        sale_id: s.id,
+                        phone: s.customer?.phone || '',
+                        customer_name: s.customer?.full_name || s.customer?.phone || '',
+                        platform: s.slot?.mother_account?.platform || 'Plataforma',
+                        end_date: s.expiryDate,
+                        amount: s.amount_gs,
+                        days: s.daysUntilExpiry,
+                    }))}
+            />
         </>
     );
 }

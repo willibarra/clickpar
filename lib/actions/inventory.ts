@@ -41,6 +41,8 @@ export async function createMotherAccount(formData: FormData) {
         send_instructions: formData.get('send_instructions') === 'true',
         is_autopay: isAutopay,
         autopay_last_checked: isAutopay ? new Date().toISOString().split('T')[0] : null,
+        invitation_url: (formData.get('invitation_url') as string) || null,
+        invite_address: (formData.get('invite_address') as string) || null,
     };
 
     // Upsert owned email if checkbox was checked

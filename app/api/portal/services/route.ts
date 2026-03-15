@@ -83,7 +83,7 @@ export async function GET() {
             if (accountIds.length > 0) {
                 const { data: accounts } = await admin
                     .from('mother_accounts')
-                    .select('id, platform, email, password, renewal_date, status')
+                    .select('id, platform, email, password, renewal_date, status, supplier_name')
                     .in('id', accountIds);
 
                 (accounts || []).forEach((a: any) => accountMap.set(a.id, a));
@@ -98,10 +98,31 @@ export async function GET() {
         }
     }
 
+    // Fetch provider support config for all platforms/suppliers
+    const providerConfigs = new Map<string, any>();
+    const configKeys = new Set<string>();
+    for (const [, slot] of slotMap) {
+        const acct = slot?.mother_account;
+        if (acct?.platform && acct?.supplier_name) {
+            configKeys.add(`${acct.platform}||${acct.supplier_name}`);
+        }
+    }
+    if (configKeys.size > 0) {
+        const { data: configs } = await (admin.from('provider_support_config') as any)
+            .select('platform, supplier_name, code_url, needs_code, support_instructions');
+        if (configs) {
+            configs.forEach((c: any) => {
+                providerConfigs.set(`${c.platform}||${c.supplier_name}`, c);
+            });
+        }
+    }
+
     // Build services array
     const services = sales.map((sale: any) => {
         const slot = slotMap.get(sale.slot_id);
         const account = slot?.mother_account;
+        const configKey = `${account?.platform}||${account?.supplier_name}`;
+        const providerConfig = providerConfigs.get(configKey);
         return {
             saleId: sale.id,
             platform: account?.platform || 'Desconocido',
@@ -113,6 +134,9 @@ export async function GET() {
             expiresAt: sale.end_date,
             renewalDate: account?.renewal_date || null,
             amount: sale.amount_gs,
+            supplierName: account?.supplier_name || null,
+            needsCode: providerConfig?.needs_code || false,
+            codeUrl: providerConfig?.code_url || null,
         };
     }).filter((s: any) => s.email);
 

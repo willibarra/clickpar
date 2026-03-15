@@ -14,6 +14,7 @@ interface Customer {
     full_name: string | null;
     phone_number: string | null;
     customer_type?: string;
+    whatsapp_instance?: string | null;
 }
 
 export function EditCustomerModal({ customer }: { customer: Customer }) {
@@ -105,6 +106,20 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                                 <SelectContent>
                                     <SelectItem value="cliente">👤 Cliente</SelectItem>
                                     <SelectItem value="creador">🎬 Creador (Canje)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>WhatsApp preferido</Label>
+                            <Select name="whatsapp_instance" defaultValue={customer.whatsapp_instance || 'auto'}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="auto">🔄 Automático (round-robin)</SelectItem>
+                                    <SelectItem value="clickpar-1">📱 WhatsApp 1</SelectItem>
+                                    <SelectItem value="clickpar-2">📱 WhatsApp 2</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

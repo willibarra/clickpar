@@ -2,7 +2,7 @@
 
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { AuditLogPanel } from '@/components/settings/audit-log-panel';
 import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
 import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
+import { useUsdtRate } from '@/lib/usdt-rate';
 
 // ==========================================
 // Collapsible Section Component
@@ -75,6 +76,24 @@ export default function SettingsPage() {
     const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    // USDT Exchange Rate
+    const { rate, setRate, loaded: rateLoaded } = useUsdtRate();
+    const [rateInputValue, setRateInputValue] = useState('');
+    const [rateSaved, setRateSaved] = useState(false);
+
+    useEffect(() => {
+        if (rateLoaded) setRateInputValue(rate > 0 ? String(rate) : '');
+    }, [rateLoaded, rate]);
+
+    function handleSaveRate() {
+        const parsed = parseFloat(rateInputValue);
+        if (!isNaN(parsed) && parsed > 0) {
+            setRate(parsed);
+            setRateSaved(true);
+            setTimeout(() => setRateSaved(false), 2000);
+        }
+    }
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -229,7 +248,51 @@ export default function SettingsPage() {
                 </CardContent>
             </CollapsibleSection>
 
-            {/* 2. Seguridad */}
+            {/* 2. Tipo de Cambio USDT */}
+            <CollapsibleSection
+                icon={<TrendingUp className="h-5 w-5" />}
+                iconColor="text-yellow-400"
+                title="💱 Tipo de Cambio USDT"
+                description="Cambio del día para calcular costos en Gs. automáticamente"
+                defaultOpen={true}
+            >
+                <CardContent className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        Al configurar el cambio del día, al ingresar el costo en USDT en una nueva cuenta, el campo en Gs. se calculará automáticamente.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">1 USDT =</span>
+                        <Input
+                            type="number"
+                            value={rateInputValue}
+                            onChange={(e) => setRateInputValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRate(); }}
+                            placeholder="7800"
+                            className="max-w-[160px]"
+                        />
+                        <span className="text-sm text-muted-foreground">Gs.</span>
+                        <Button
+                            onClick={handleSaveRate}
+                            className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                            size="sm"
+                        >
+                            {rateSaved ? (
+                                <><Check className="mr-1 h-4 w-4" /> Guardado</>
+                            ) : (
+                                <><Save className="mr-1 h-4 w-4" /> Guardar</>
+                            )}
+                        </Button>
+                    </div>
+                    {rate > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                            Cambio actual: <span className="text-[#86EFAC] font-medium">1 USDT = {rate.toLocaleString('es-PY')} Gs.</span>
+                            <span className="ml-2 text-muted-foreground/60">(guardado en este dispositivo)</span>
+                        </p>
+                    )}
+                </CardContent>
+            </CollapsibleSection>
+
+            {/* 3. Seguridad */}
             <CollapsibleSection
                 icon={<Shield className="h-5 w-5" />}
                 title="Seguridad"

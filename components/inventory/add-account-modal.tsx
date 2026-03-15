@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Loader2, User, Lock } from 'lucide-react';
 import { createMotherAccount } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
+import { useUsdtRate } from '@/lib/usdt-rate';
 
 const fallbackPlatforms = ['Netflix', 'Spotify', 'HBO Max', 'Disney+', 'Amazon Prime', 'YouTube Premium', 'Apple TV+', 'Crunchyroll', 'Paramount+', 'Star+'];
 
@@ -58,6 +59,15 @@ export function AddAccountModal() {
     const [instructions, setInstructions] = useState('');
     const [sendInstructions, setSendInstructions] = useState(false);
     const [isAutopay, setIsAutopay] = useState(false);
+    const [invitationUrl, setInvitationUrl] = useState('');
+    const [inviteAddress, setInviteAddress] = useState('');
+
+    // USDT exchange rate
+    const { rate, setRate, convertToGs, loaded: rateLoaded } = useUsdtRate();
+    const [usdtCost, setUsdtCost] = useState('');
+    const [gsCost, setGsCost] = useState('');
+    const [editingRate, setEditingRate] = useState(false);
+    const [rateInput, setRateInput] = useState('');
 
 
     useEffect(() => {
@@ -72,6 +82,11 @@ export function AddAccountModal() {
             setInstructions('');
             setSendInstructions(false);
             setIsAutopay(false);
+            setInvitationUrl('');
+            setInviteAddress('');
+            setUsdtCost('');
+            setGsCost('');
+            setEditingRate(false);
             setServiceDays(getDaysInCurrentMonth());
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
@@ -127,6 +142,29 @@ export function AddAccountModal() {
         });
     }
 
+    function handleUsdtChange(value: string) {
+        setUsdtCost(value);
+        const usdt = parseFloat(value);
+        if (!isNaN(usdt) && usdt > 0 && rate > 0) {
+            setGsCost(String(convertToGs(usdt)));
+        } else if (value === '') {
+            setGsCost('');
+        }
+    }
+
+    function handleSaveRate() {
+        const parsed = parseFloat(rateInput);
+        if (!isNaN(parsed) && parsed > 0) {
+            setRate(parsed);
+            // Recalculate Gs if USDT is set
+            const usdt = parseFloat(usdtCost);
+            if (!isNaN(usdt) && usdt > 0) {
+                setGsCost(String(Math.round(usdt * parsed)));
+            }
+        }
+        setEditingRate(false);
+    }
+
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setLoading(true);
@@ -168,6 +206,14 @@ export function AddAccountModal() {
         }
         formData.set('send_instructions', sendInstructions ? 'true' : 'false');
         formData.set('is_autopay', isAutopay ? 'true' : 'false');
+
+        // Family account fields
+        if (invitationUrl.trim()) {
+            formData.set('invitation_url', invitationUrl.trim());
+        }
+        if (inviteAddress.trim()) {
+            formData.set('invite_address', inviteAddress.trim());
+        }
 
         const result = await createMotherAccount(formData);
 
@@ -306,6 +352,48 @@ export function AddAccountModal() {
                         </div>
 
                         {/* Row 3: Cost USDT + Cost GS */}
+                        {/* USDT Rate Banner */}
+                        {rateLoaded && (
+                            <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 flex items-center justify-between gap-3">
+                                <span className="text-xs text-muted-foreground">💱 Cambio del día:</span>
+                                {editingRate ? (
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <span className="text-xs text-muted-foreground whitespace-nowrap">1 USDT =</span>
+                                        <Input
+                                            type="number"
+                                            value={rateInput}
+                                            onChange={(e) => setRateInput(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveRate(); } if (e.key === 'Escape') setEditingRate(false); }}
+                                            placeholder="7800"
+                                            className="h-7 text-sm w-28"
+                                            autoFocus
+                                        />
+                                        <span className="text-xs text-muted-foreground">Gs.</span>
+                                        <button type="button" onClick={handleSaveRate} className="text-[#86EFAC] hover:text-[#86EFAC]/80">
+                                            <Check className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        {rate > 0 ? (
+                                            <span className="text-sm font-medium text-foreground">
+                                                1 USDT = <span className="text-[#86EFAC]">{rate.toLocaleString('es-PY')}</span> Gs.
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-orange-400">⚠ Sin cambio configurado</span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setRateInput(rate > 0 ? String(rate) : ''); setEditingRate(true); }}
+                                            className="text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="purchase_cost_usdt">Costo (USDT)</Label>
@@ -315,18 +403,28 @@ export function AddAccountModal() {
                                     type="number"
                                     step="0.01"
                                     placeholder="0.00"
+                                    value={usdtCost}
+                                    onChange={(e) => handleUsdtChange(e.target.value)}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="purchase_cost_gs">Costo (Gs.)</Label>
+                                <Label htmlFor="purchase_cost_gs">
+                                    Costo (Gs.)
+                                    {rate > 0 && usdtCost && (
+                                        <span className="ml-1 text-xs text-[#86EFAC] font-normal">auto</span>
+                                    )}
+                                </Label>
                                 <Input
                                     id="purchase_cost_gs"
                                     name="purchase_cost_gs"
                                     type="number"
                                     placeholder="0"
+                                    value={gsCost}
+                                    onChange={(e) => setGsCost(e.target.value)}
                                 />
                             </div>
                         </div>
+
 
                         {/* Row 4: Purchase Date + Service Days + Sale Price */}
                         <div className="grid grid-cols-3 gap-4">
@@ -377,6 +475,33 @@ export function AddAccountModal() {
                                 🔄 Cuenta autopagable <span className="text-muted-foreground">(sin fecha de vencimiento fija, revisión cada 15 días)</span>
                             </Label>
                         </div>
+
+                        {/* Family account: Invitation fields */}
+                        {selectedPlatform?.business_type === 'family_account' && (
+                            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-3">
+                                <p className="text-xs font-medium text-yellow-400">🔗 Cuenta Familiar — Datos de Invitación</p>
+                                <div className="space-y-2">
+                                    <Label htmlFor="invitation_url" className="text-sm">Link de Invitación</Label>
+                                    <Input
+                                        id="invitation_url"
+                                        value={invitationUrl}
+                                        onChange={(e) => setInvitationUrl(e.target.value)}
+                                        placeholder="https://www.spotify.com/py/family/join/invite/..."
+                                        className="text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="invite_address" className="text-sm">Dirección de la Invitación <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                                    <Input
+                                        id="invite_address"
+                                        value={inviteAddress}
+                                        onChange={(e) => setInviteAddress(e.target.value)}
+                                        placeholder="Egyptian National Railways, Mersa Matruh..."
+                                        className="text-sm"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* Row 5: Supplier Name + Supplier Phone */}
                         <div className="grid grid-cols-2 gap-4">

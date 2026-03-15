@@ -15,6 +15,9 @@ interface Service {
     expiresAt: string | null;
     renewalDate: string | null;
     amount: number;
+    supplierName: string | null;
+    needsCode: boolean;
+    codeUrl: string | null;
 }
 
 export default function PortalDashboard() {
@@ -106,6 +109,9 @@ export default function PortalDashboard() {
                             pin={service.pin}
                             profile={service.profile}
                             expiresAt={service.expiresAt}
+                            supplierName={service.supplierName}
+                            needsCode={service.needsCode}
+                            codeUrl={service.codeUrl}
                         />
                     ))}
                 </div>

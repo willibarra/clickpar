@@ -51,6 +51,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     // Individual mode state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [customerName, setCustomerName] = useState('');
     const [price, setPrice] = useState<number>(25000);
     const [isOverridePrice, setIsOverridePrice] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +104,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         setSelectedPlatform(platform.name);
         setPrice(platform.price || 25000);
         setStep('customer');
+        if (waInstances.length === 0) loadWaInstances();
     };
 
     const handleComboNext = () => {
@@ -112,15 +114,12 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
             setComboPrice(suggestedComboPrice);
         }
         setStep('customer');
+        if (waInstances.length === 0) loadWaInstances();
     };
 
     const handleCustomerNext = () => {
         if (customerPhone.length >= 10) {
             setStep('confirm');
-            // Load WhatsApp instances when entering confirm step
-            if (waInstances.length === 0) {
-                loadWaInstances();
-            }
         }
     };
 
@@ -151,6 +150,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                 const result = await processComboSale({
                     items: comboItems.map(ci => ({ platform: ci.platform, quantity: ci.quantity })),
                     customerPhone,
+                    customerName: customerName || undefined,
                     totalPrice: comboPrice,
                     deliveryDate: deliveryDate || undefined,
                     whatsappInstance: selectedInstance || undefined,
@@ -166,6 +166,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                 const result = await createQuickSale({
                     platform: selectedPlatform,
                     customerPhone,
+                    customerName: customerName || undefined,
                     price,
                     platformPrice: price,
                     specificSlotId: selectedSlot?.id,
@@ -194,6 +195,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         setStep('select');
         setSelectedPlatform('');
         setCustomerPhone('');
+        setCustomerName('');
         setPrice(25000);
         setIsOverridePrice(false);
         setSaleComplete(false);
@@ -428,7 +430,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                     </div>
                 )}
 
-                {/* Step 2: Customer Phone */}
+                {/* Step 2: Customer Info */}
                 {step === 'customer' && (
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
@@ -463,6 +465,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                             </button>
                         </div>
 
+                        {/* Phone */}
                         <div className="space-y-2">
                             <label className="text-sm text-muted-foreground">WhatsApp del Cliente:</label>
                             <div className="relative">
@@ -474,10 +477,75 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                                     className="pl-10"
                                 />
                             </div>
+                        </div>
+
+                        {/* Name (optional) */}
+                        <div className="space-y-1">
+                            <label className="text-sm text-muted-foreground">
+                                Nombre del Cliente
+                                <span className="ml-1 text-muted-foreground/50">(opcional)</span>
+                            </label>
+                            <Input
+                                placeholder="Ej: Juan Pérez"
+                                value={customerName}
+                                onChange={(e) => setCustomerName(e.target.value)}
+                                className="text-sm"
+                            />
                             <p className="text-xs text-muted-foreground">
                                 Si el cliente no existe, se creará automáticamente
                             </p>
                         </div>
+
+                        {/* Fecha de Entrega (optional) */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Calendar className="h-3 w-3" />
+                                Fecha de Entrega
+                                <span className="text-muted-foreground/50">(opcional)</span>
+                            </label>
+                            <Input
+                                type="date"
+                                value={deliveryDate}
+                                onChange={(e) => setDeliveryDate(e.target.value)}
+                                className="text-sm"
+                            />
+                            {deliveryDate && (
+                                <p className="text-xs text-[#86EFAC]">
+                                    ✓ Vence el {new Date(deliveryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* WhatsApp instance selector */}
+                        {waInstances.length > 0 && (
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                    <MessageSquare className="h-3 w-3 text-[#25D366]" />
+                                    Venta por WhatsApp
+                                </label>
+                                <div className="flex gap-2">
+                                    {waInstances.map(inst => (
+                                        <button
+                                            key={inst.name}
+                                            onClick={() => setSelectedInstance(inst.name === selectedInstance ? '' : inst.name)}
+                                            className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all text-left ${
+                                                selectedInstance === inst.name
+                                                    ? 'border-[#25D366]/60 bg-[#25D366]/10 text-[#25D366]'
+                                                    : 'border-border/50 bg-[#111] text-muted-foreground hover:border-[#25D366]/30 hover:text-foreground'
+                                            }`}
+                                        >
+                                            <span className={`mr-1.5 ${selectedInstance === inst.name ? 'text-[#25D366]' : 'text-muted-foreground/50'}`}>●</span>
+                                            {inst.alias}
+                                        </button>
+                                    ))}
+                                </div>
+                                {selectedInstance && (
+                                    <p className="text-xs text-[#25D366]/80">
+                                        ✓ Se atenderá por: <span className="font-medium">{waInstances.find(i => i.name === selectedInstance)?.alias}</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex gap-2">
                             <Button
@@ -571,56 +639,6 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                                 </div>
                             )}
                         </div>
-
-                        {/* Fecha de Entrega */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                <Calendar className="h-3 w-3" />
-                                Fecha de Entrega
-                                <span className="text-muted-foreground/50">(opcional)</span>
-                            </label>
-                            <Input
-                                type="date"
-                                value={deliveryDate}
-                                onChange={(e) => setDeliveryDate(e.target.value)}
-                                className="text-sm"
-                            />
-                            {deliveryDate && (
-                                <p className="text-xs text-[#86EFAC]">
-                                    ✓ Vence el {new Date(deliveryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Selector de instancia WhatsApp */}
-                        {waInstances.length > 0 && (
-                            <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                    <MessageSquare className="h-3 w-3 text-[#25D366]" />
-                                    Número de WhatsApp usado
-                                </label>
-                                <div className="flex gap-2">
-                                    {waInstances.map(inst => (
-                                        <button
-                                            key={inst.name}
-                                            onClick={() => setSelectedInstance(inst.name === selectedInstance ? '' : inst.name)}
-                                            className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all text-left ${selectedInstance === inst.name
-                                                    ? 'border-[#25D366]/60 bg-[#25D366]/10 text-[#25D366]'
-                                                    : 'border-border/50 bg-[#111] text-muted-foreground hover:border-[#25D366]/30 hover:text-foreground'
-                                                }`}
-                                        >
-                                            <span className={`mr-1.5 ${selectedInstance === inst.name ? 'text-[#25D366]' : 'text-muted-foreground/50'}`}>●</span>
-                                            {inst.alias}
-                                        </button>
-                                    ))}
-                                </div>
-                                {selectedInstance && (
-                                    <p className="text-xs text-[#25D366]/80">
-                                        ✓ Se enviará y atenderá por: <span className="font-medium">{waInstances.find(i => i.name === selectedInstance)?.alias}</span>
-                                    </p>
-                                )}
-                            </div>
-                        )}
 
                         {/* Manual Assignment Toggle (only for individual) */}
                         {saleMode === 'individual' && (

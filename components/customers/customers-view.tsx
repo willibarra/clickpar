@@ -33,6 +33,7 @@ export interface CustomerRow {
     full_name: string;
     phone: string;
     customer_type: 'cliente' | 'creador';
+    whatsapp_instance?: string | null;
     services: CustomerService[];
     history: CustomerHistory[];
     // Computed in server
@@ -408,6 +409,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                         full_name: customer.full_name,
                                                         phone_number: customer.phone,
                                                         customer_type: customer.customer_type,
+                                                        whatsapp_instance: customer.whatsapp_instance,
                                                     }} />
                                                 </div>
                                             </td>

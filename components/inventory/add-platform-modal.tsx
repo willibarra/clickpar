@@ -113,6 +113,12 @@ export function AddPlatformModal() {
 
         const trimmedName = formName.trim();
 
+        // Auto-add any pending nickname text (user may not have pressed Enter)
+        let finalNicknames = [...nicknames];
+        if (nicknameInput.trim() && !finalNicknames.includes(nicknameInput.trim())) {
+            finalNicknames = [...finalNicknames, nicknameInput.trim()];
+        }
+
         // Client-side duplicate check
         const isDuplicate = platforms.some(p =>
             p.name.toLowerCase() === trimmedName.toLowerCase() &&
@@ -131,7 +137,7 @@ export function AddPlatformModal() {
         formData.set('default_max_slots', '5');
         formData.set('default_slot_price_gs', '30000');
         formData.set('slot_label', businessType === 'family_account' ? 'Miembro' : 'Perfil');
-        formData.set('nicknames', JSON.stringify(nicknames));
+        formData.set('nicknames', JSON.stringify(finalNicknames));
 
         let result;
         if (editingPlatform) {
