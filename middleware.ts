@@ -29,7 +29,10 @@ export async function middleware(request: NextRequest) {
                     );
                     supabaseResponse = NextResponse.next({ request });
                     cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
+                        supabaseResponse.cookies.set(name, value, {
+                            ...options,
+                            maxAge: 7 * 24 * 60 * 60, // 7 days session limit
+                        })
                     );
                 },
             },
@@ -38,19 +41,39 @@ export async function middleware(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Root domain: if not logged in → Instagram, if logged in → depends on role
+    // Read role from JWT app_metadata (injected by custom_access_token_hook)
+    let role = user?.app_metadata?.user_role as string | undefined;
+
+    // Fallback: if role is not in JWT, query profiles via REST API with service_role_key (bypasses RLS)
+    if (user && !role) {
+        try {
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+            const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+            const res = await fetch(
+                `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}&select=role`,
+                {
+                    headers: {
+                        'apikey': serviceKey,
+                        'Authorization': `Bearer ${serviceKey}`,
+                    },
+                }
+            );
+            if (res.ok) {
+                const rows = await res.json();
+                if (rows?.[0]?.role) {
+                    role = rows[0].role;
+                }
+            }
+        } catch {
+            // If query fails, role stays undefined
+        }
+    }
+
+    // Root domain: if not logged in → staff login, if logged in → depends on role
     if (pathname === '/') {
         if (!user) {
-            return NextResponse.redirect('https://instagram.com/click.par');
+            return NextResponse.redirect(new URL('/staff/login', request.url));
         }
-        // Logged-in users accessing / → check role
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single();
-
-        const role = (profile as any)?.role;
         if (role === 'super_admin' || role === 'staff') {
             // Admin dashboard — let through to (dashboard)/page.tsx
             return supabaseResponse;
@@ -58,8 +81,8 @@ export async function middleware(request: NextRequest) {
         if (role === 'customer') {
             return NextResponse.redirect(new URL('/cliente', request.url));
         }
-        // Unknown role → Instagram
-        return NextResponse.redirect('https://instagram.com/click.par');
+        // Unknown role → staff login
+        return NextResponse.redirect(new URL('/staff/login', request.url));
     }
 
     // Cliente portal routes — require auth as customer
@@ -74,15 +97,6 @@ export async function middleware(request: NextRequest) {
     if (!user) {
         return NextResponse.redirect(new URL('/staff/login', request.url));
     }
-
-    // Check role for admin routes
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    const role = (profile as any)?.role;
 
     // Block staff from accessing finance and settings
     if (role === 'staff') {

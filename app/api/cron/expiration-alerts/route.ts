@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { addNoteToLead, createVentaLead, refreshKommoToken } from '@/lib/kommo';
-import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification, getWhatsAppSettings, getPlatformDisplayName, sendRenewalToN8N } from '@/lib/whatsapp';
+import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification, getWhatsAppSettings, getPlatformDisplayName, sendRenewalToN8N, isPhoneWhitelisted } from '@/lib/whatsapp';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
-            if (!phone) continue;
+            if (!phone || !isPhoneWhitelisted(phone)) continue;
 
             try {
                 await sendKommoMessage(phone, name,
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
-            if (!phone) continue;
+            if (!phone || !isPhoneWhitelisted(phone)) continue;
 
             try {
                 await sendKommoMessage(phone, name,
@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
-            if (!phone) continue;
+            if (!phone || !isPhoneWhitelisted(phone)) continue;
 
             try {
                 await sendKommoMessage(phone, name,
@@ -333,21 +333,10 @@ export async function GET(request: NextRequest) {
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
-            // Deactivate the sale
-            await supabase
-                .from('sales' as any)
-                .update({ is_active: false })
-                .eq('id', sale.id);
+            // Cancelar venta + liberar slot ATÓMICAMENTE via RPC
+            await supabase.rpc('cancel_sale_atomic', { p_sale_id: sale.id } as any);
 
-            // Free up the slot
-            if (sale.slot_id) {
-                await supabase
-                    .from('sale_slots')
-                    .update({ status: 'available' })
-                    .eq('id', sale.slot_id);
-            }
-
-            if (!phone) continue;
+            if (!phone || !isPhoneWhitelisted(phone)) continue;
 
             try {
                 await sendKommoMessage(phone, name,

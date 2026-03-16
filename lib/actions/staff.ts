@@ -74,6 +74,11 @@ export async function createStaffUser(formData: {
         return { error: `Error creando perfil: ${profileError.message}` };
     }
 
+    // Sync role to app_metadata so JWT reflects the staff role
+    await supabase.auth.admin.updateUserById(authUser.user.id, {
+        app_metadata: { user_role: 'staff' }
+    });
+
     revalidatePath('/settings');
     return { success: true, userId: authUser.user.id };
 }

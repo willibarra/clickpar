@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
+import { encrypt } from '@/lib/utils/encryption';
 import { logAction } from './audit';
 
 // ============================================
@@ -47,7 +48,9 @@ export async function createCustomer(formData: FormData) {
     // Auto-generate portal credentials
     if (phone) {
         try {
-            const password = 'CP-' + Math.random().toString(36).slice(2, 8);
+            const p1 = Math.random().toString(36).slice(2, 6);
+            const p2 = Math.random().toString(36).slice(2, 6);
+            const password = `CP-${p1}-${p2}`;
             const email = `${phone.replace('+', '')}@clickpar.shop`;
 
             // Create Supabase Auth user
@@ -58,6 +61,7 @@ export async function createCustomer(formData: FormData) {
                 email_confirm: true,
                 phone_confirm: true,
                 user_metadata: { full_name: fullName, customer_id: data?.id },
+                app_metadata: { user_role: 'customer' },
             });
 
             if (authUser?.user) {
@@ -70,9 +74,9 @@ export async function createCustomer(formData: FormData) {
                         role: 'customer',
                     });
 
-                // Store generated password in customers table for reference
+                // Store encrypted password in customers table for reference
                 await (supabase.from('customers') as any)
-                    .update({ portal_password: password })
+                    .update({ portal_password: encrypt(password) })
                     .eq('id', data?.id);
             } else if (authError) {
                 console.warn('[createCustomer] Auth user creation failed (non-blocking):', authError.message);

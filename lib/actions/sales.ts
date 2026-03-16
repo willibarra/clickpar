@@ -18,7 +18,6 @@ interface QuickSaleData {
     durationDays?: number;
     deliveryDate?: string;  // fecha de entrega personalizada (YYYY-MM-DD)
     notes?: string;
-    whatsappInstance?: string;
     // Family account fields
     familyAccessType?: 'credentials' | 'invite';
     clientEmail?: string;
@@ -55,6 +54,16 @@ export async function createQuickSale(data: QuickSaleData) {
                 if (createError) throw new Error(`Error creando cliente: ${createError.message}`);
                 customerId = newCustomerData.id;
             }
+        }
+
+        // 1b. Leer whatsapp_instance del cliente
+        let customerWaInstance: string | null = null;
+        {
+            const { data: custWa } = await (supabase.from('customers') as any)
+                .select('whatsapp_instance')
+                .eq('id', customerId)
+                .single();
+            customerWaInstance = custWa?.whatsapp_instance || null;
         }
 
         // 2. Encontrar slot
@@ -112,11 +121,10 @@ export async function createQuickSale(data: QuickSaleData) {
             };
         }
 
-        // 3. Crear venta
+        // 3. Crear venta + marcar slot ATÓMICAMENTE via RPC
         let startDate: Date;
         let endDate: Date;
         if (data.deliveryDate) {
-            // Fecha de entrega = start_date. end_date = start + 30 días automáticamente
             startDate = new Date(data.deliveryDate + 'T12:00:00');
             const durationDays = data.durationDays || 30;
             endDate = new Date(startDate);
@@ -128,31 +136,20 @@ export async function createQuickSale(data: QuickSaleData) {
             endDate.setDate(endDate.getDate() + durationDays);
         }
 
-        const { error: saleError } = await (supabase
-            .from('sales') as any)
-            .insert({
-                customer_id: customerId,
-                slot_id: slotToSell.slot_id || slotToSell.id,
-                amount_gs: data.price,
-                original_price_gs: slotToSell.slot_price_gs || data.price,
-                override_price: data.price !== slotToSell.slot_price_gs,
-                start_date: startDate.toISOString().split('T')[0],
-                end_date: endDate.toISOString().split('T')[0],
-                is_active: true,
-                payment_method: 'cash',
-            });
+        const slotId = slotToSell.slot_id || slotToSell.id;
+        const { data: newSaleId, error: atomicError } = await supabase
+            .rpc('create_sale_atomic', {
+                p_customer_id: customerId,
+                p_slot_id: slotId,
+                p_amount_gs: data.price,
+                p_start_date: startDate.toISOString().split('T')[0],
+                p_end_date: endDate.toISOString().split('T')[0],
+                p_payment_method: 'cash',
+                p_original_price_gs: slotToSell.slot_price_gs || data.price,
+                p_override_price: data.price !== slotToSell.slot_price_gs,
+            } as any);
 
-        if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
-
-        // 4. Actualizar estado del slot
-        const { error: updateSlotError } = await (supabase
-            .from('sale_slots') as any)
-            .update({
-                status: 'sold'
-            })
-            .eq('id', slotToSell.slot_id || slotToSell.id);
-
-        if (updateSlotError) throw new Error(`Error actualizando slot: ${updateSlotError.message}`);
+        if (atomicError) throw new Error(`Error atómico creando venta: ${atomicError.message}`);
 
         // 5. Crear lead en Kommo CRM (sin bloquear la venta si falla)
         try {
@@ -193,7 +190,7 @@ export async function createQuickSale(data: QuickSaleData) {
 
                     if (data.familyAccessType === 'credentials' && data.clientPassword) {
                         // We created the account — send email + password
-                        await sendFamilyCredentials({
+                        const familyCredResult = await sendFamilyCredentials({
                             customerPhone: data.customerPhone,
                             customerName: data.customerName || data.customerPhone,
                             platform: data.platform,
@@ -201,19 +198,33 @@ export async function createQuickSale(data: QuickSaleData) {
                             clientPassword: data.clientPassword,
                             expirationDate: expDateStr,
                             customerId,
-                            instanceName: data.whatsappInstance,
+                            instanceName: customerWaInstance || undefined,
                         });
+                        // Auto-assign WA instance if customer didn't have one
+                        if (!customerWaInstance && familyCredResult?.instanceUsed) {
+                            customerWaInstance = familyCredResult.instanceUsed;
+                            await (supabase.from('customers') as any)
+                                .update({ whatsapp_instance: familyCredResult.instanceUsed })
+                                .eq('id', customerId);
+                        }
                     } else if (data.familyAccessType === 'invite') {
                         // Client uses own account — send invitation notice
-                        await sendFamilyInvite({
+                        const familyInvResult = await sendFamilyInvite({
                             customerPhone: data.customerPhone,
                             customerName: data.customerName || data.customerPhone,
                             platform: data.platform,
                             clientEmail: data.clientEmail,
                             expirationDate: expDateStr,
                             customerId,
-                            instanceName: data.whatsappInstance,
+                            instanceName: customerWaInstance || undefined,
                         });
+                        // Auto-assign WA instance if customer didn't have one
+                        if (!customerWaInstance && familyInvResult?.instanceUsed) {
+                            customerWaInstance = familyInvResult.instanceUsed;
+                            await (supabase.from('customers') as any)
+                                .update({ whatsapp_instance: familyInvResult.instanceUsed })
+                                .eq('id', customerId);
+                        }
                     }
                     console.log('[WhatsApp] Mensaje familiar enviado a', data.customerPhone);
 
@@ -236,7 +247,7 @@ export async function createQuickSale(data: QuickSaleData) {
 
                     if (slotInfo?.mother_accounts) {
                         const acct = slotInfo.mother_accounts;
-                        await sendSaleCredentials({
+                        const credResult = await sendSaleCredentials({
                             customerPhone: data.customerPhone,
                             customerName: data.customerName || data.customerPhone,
                             platform: acct.platform || data.platform,
@@ -246,8 +257,15 @@ export async function createQuickSale(data: QuickSaleData) {
                             pin: slotInfo.pin_code || undefined,
                             expirationDate: expDateStr,
                             customerId,
-                            instanceName: data.whatsappInstance,
+                            instanceName: customerWaInstance || undefined,
                         });
+                        // Auto-assign WA instance if customer didn't have one
+                        if (!customerWaInstance && credResult?.instanceUsed) {
+                            customerWaInstance = credResult.instanceUsed;
+                            await (supabase.from('customers') as any)
+                                .update({ whatsapp_instance: credResult.instanceUsed })
+                                .eq('id', customerId);
+                        }
                         console.log('[WhatsApp] Credenciales enviadas a', data.customerPhone);
 
                         // Send instructions as a second message if enabled
@@ -257,7 +275,7 @@ export async function createQuickSale(data: QuickSaleData) {
                             await sendText(
                                 data.customerPhone,
                                 `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
-                                { instanceName: data.whatsappInstance, customerId }
+                                { instanceName: customerWaInstance || undefined, customerId }
                             );
                             console.log('[WhatsApp] Instrucciones enviadas a', data.customerPhone);
                         }
@@ -295,21 +313,11 @@ export async function createQuickSale(data: QuickSaleData) {
 export async function cancelSubscription(saleId: string, slotId: string) {
     const supabase = await createAdminClient();
     try {
-        // 1. Marcar venta como inactiva
-        const { error: saleError } = await (supabase
-            .from('sales') as any)
-            .update({ is_active: false })
-            .eq('id', saleId);
+        // Cancelar venta + liberar slot ATÓMICAMENTE via RPC
+        const { error: atomicError } = await supabase
+            .rpc('cancel_sale_atomic', { p_sale_id: saleId } as any);
 
-        if (saleError) throw new Error(`Error cancelando venta: ${saleError.message}`);
-
-        // 2. Liberar slot
-        const { error: slotError } = await (supabase
-            .from('sale_slots') as any)
-            .update({ status: 'available' })
-            .eq('id', slotId);
-
-        if (slotError) throw new Error(`Error liberando slot: ${slotError.message}`);
+        if (atomicError) throw new Error(`Error atómico cancelando venta: ${atomicError.message}`);
 
         await logAction('cancel_sale', 'sale', saleId, {
             message: `canceló una suscripción`
@@ -329,27 +337,17 @@ interface SwapServiceData {
     newSlotId?: string; // If specified, use this exact slot; otherwise auto-assign
     targetPlatform?: string; // For auto-assignment: which platform to find a new slot in
     keepPrice?: boolean; // Whether to keep the same price from old sale
-    whatsappInstance?: string; // WhatsApp instance to use for notification
 }
 
 export async function swapService(data: SwapServiceData) {
     const supabase = await createAdminClient();
 
     try {
-        // 1. Get current sale info (to preserve price and dates)
-        const { data: oldSale } = await (supabase.from('sales') as any)
-            .select('amount_gs, customer_id, slot_id, start_date, end_date')
-            .eq('id', data.oldSaleId)
-            .single();
+        // 1. Find new slot (need to resolve before calling atomic RPC)
+        let newSlotId: string;
+        let newPlatform: string = '';
 
-        if (!oldSale) throw new Error('Venta original no encontrada');
-
-        const price = oldSale.amount_gs;
-        // Preservar fechas originales del cliente
-        const originalStartDate = oldSale.start_date || new Date().toISOString().split('T')[0];
-        const originalEndDate = oldSale.end_date || null;
-
-        // Get mother account info from old slot
+        // Get old slot info for platform/mother_account context
         const { data: oldSlotInfo } = await (supabase.from('sale_slots') as any)
             .select('mother_account_id, mother_accounts:mother_account_id(platform)')
             .eq('id', data.oldSlotId)
@@ -358,38 +356,22 @@ export async function swapService(data: SwapServiceData) {
         const motherAccountId = oldSlotInfo?.mother_account_id || '';
         const platform = oldSlotInfo?.mother_accounts?.platform || '';
 
-        // 2. Deactivate old sale
-        const { error: deactivateError } = await (supabase.from('sales') as any)
-            .update({ is_active: false })
-            .eq('id', data.oldSaleId);
-        if (deactivateError) throw new Error(`Error desactivando venta: ${deactivateError.message}`);
-
-        // 3. Free old slot
-        const { error: freeError } = await (supabase.from('sale_slots') as any)
-            .update({ status: 'available' })
-            .eq('id', data.oldSlotId);
-        if (freeError) throw new Error(`Error liberando slot: ${freeError.message}`);
-
-        // 4. Find new slot
-        let newSlotId: string;
-        let newPlatform: string = '';
+        // Get old sale dates for WhatsApp message
+        const { data: oldSale } = await (supabase.from('sales') as any)
+            .select('start_date, end_date')
+            .eq('id', data.oldSaleId)
+            .single();
+        const originalEndDate = oldSale?.end_date || null;
 
         if (data.newSlotId) {
-            // Specific slot selected
-            const { data: newSlot, error: slotError } = await supabase
+            newSlotId = data.newSlotId;
+            const { data: newSlot } = await supabase
                 .from('sale_slots')
-                .select('id, status, mother_accounts:mother_account_id(platform)')
+                .select('id, mother_accounts:mother_account_id(platform)')
                 .eq('id', data.newSlotId)
                 .single();
-
-            if (slotError || !newSlot) throw new Error('Nuevo slot no encontrado');
-            const slot = newSlot as any;
-            if (slot.status !== 'available') throw new Error('El nuevo slot ya no está disponible');
-
-            newSlotId = slot.id;
-            newPlatform = slot.mother_accounts?.platform || '';
+            newPlatform = (newSlot as any)?.mother_accounts?.platform || '';
         } else if (data.targetPlatform) {
-            // Auto-assign: find available slot in target platform
             const { data: availableSlots } = await (supabase.from('sale_slots') as any)
                 .select('id, mother_accounts:mother_account_id(platform, status)')
                 .eq('status', 'available');
@@ -408,26 +390,16 @@ export async function swapService(data: SwapServiceData) {
             throw new Error('Debe especificar un slot o plataforma de destino');
         }
 
-        // 5. Create new sale — preservando las fechas originales del cliente
-        const { error: saleError } = await (supabase.from('sales') as any)
-            .insert({
-                customer_id: data.customerId,
-                slot_id: newSlotId,
-                amount_gs: price,
-                original_price_gs: price,
-                override_price: false,
-                start_date: originalStartDate,
-                end_date: originalEndDate,
-                is_active: true,
-                payment_method: 'cash',
-            });
-        if (saleError) throw new Error(`Error creando nueva venta: ${saleError.message}`);
+        // 2. Swap ATÓMICAMENTE via RPC (deactivate old sale, free old slot, create new sale, mark new slot sold)
+        const { data: swapResult, error: swapError } = await supabase
+            .rpc('swap_sale_atomic', {
+                p_old_sale_id: data.oldSaleId,
+                p_new_slot_id: newSlotId,
+                p_customer_id: data.customerId,
+                p_preserve_dates: true,
+            } as any);
 
-        // 6. Mark new slot as sold
-        const { error: updateError } = await (supabase.from('sale_slots') as any)
-            .update({ status: 'sold' })
-            .eq('id', newSlotId);
-        if (updateError) throw new Error(`Error actualizando nuevo slot: ${updateError.message}`);
+        if (swapError) throw new Error(`Error atómico en swap: ${swapError.message}`);
 
         await logAction('swap_service', 'sale', data.oldSaleId, {
             message: `realizó un cambio de perfil/cuenta a ${newPlatform || 'nuevo slot'}`
@@ -848,7 +820,6 @@ export interface ComboSaleData {
     customerId?: string;
     totalPrice: number;
     deliveryDate?: string; // fecha de entrega personalizada (YYYY-MM-DD)
-    whatsappInstance?: string; // instancia de WhatsApp usada para la venta
 }
 
 export async function processComboSale(data: ComboSaleData) {
@@ -931,6 +902,16 @@ export async function processComboSale(data: ComboSaleData) {
                 if (createError) return { error: `Error creando cliente: ${createError.message}` };
                 customerId = newCustomer.id;
             }
+        }
+
+        // 2b. Leer whatsapp_instance del cliente
+        let customerWaInstance: string | null = null;
+        {
+            const { data: custWa } = await (supabase.from('customers') as any)
+                .select('whatsapp_instance')
+                .eq('id', customerId)
+                .single();
+            customerWaInstance = custWa?.whatsapp_instance || null;
         }
 
         // 3. Generate a shared combo_id for grouping
@@ -1040,7 +1021,7 @@ export async function processComboSale(data: ComboSaleData) {
 
                         if (slotDetail?.mother_accounts) {
                             const acct = slotDetail.mother_accounts;
-                            await sendSaleCredentials({
+                            const comboCredResult = await sendSaleCredentials({
                                 customerPhone: data.customerPhone,
                                 customerName: data.customerName || data.customerPhone,
                                 platform: acct.platform || assigned.platform,
@@ -1049,8 +1030,15 @@ export async function processComboSale(data: ComboSaleData) {
                                 profile: slotDetail.slot_identifier || 'Perfil asignado',
                                 expirationDate: expDateStr,
                                 customerId,
-                                instanceName: data.whatsappInstance,
+                                instanceName: customerWaInstance || undefined,
                             });
+                            // Auto-assign WA instance if customer didn't have one
+                            if (!customerWaInstance && comboCredResult?.instanceUsed) {
+                                customerWaInstance = comboCredResult.instanceUsed;
+                                await (supabase.from('customers') as any)
+                                    .update({ whatsapp_instance: comboCredResult.instanceUsed })
+                                    .eq('id', customerId);
+                            }
                         }
                     } catch (slotWaErr) {
                         console.error(`[WhatsApp] Error sending combo slot ${assigned.slotId}:`, slotWaErr);
@@ -1086,20 +1074,18 @@ export async function processComboSale(data: ComboSaleData) {
  * Sell a complete mother account (all available slots) to a single customer.
  * - Marks ALL slots as 'sold'
  * - Creates one sales record per slot (same customer, same start_date)
- * - Sends WhatsApp credentials if instance provided
+ * - Sends WhatsApp credentials using customer's preferred instance
  */
 export async function createFullAccountSale({
     motherAccountId,
     customerId,
     price,
     durationDays = 30,
-    whatsappInstance,
 }: {
     motherAccountId: string;
     customerId: string;
     price: number;
     durationDays?: number;
-    whatsappInstance?: string;
 }) {
     const supabase = await createAdminClient();
 
@@ -1117,9 +1103,9 @@ export async function createFullAccountSale({
 
         if (availableSlots.length === 0) throw new Error('No hay slots disponibles en esta cuenta');
 
-        // 2. Get customer info
+        // 2. Get customer info (including preferred WhatsApp instance)
         const { data: customer } = await (supabase.from('customers') as any)
-            .select('id, full_name, phone')
+            .select('id, full_name, phone, whatsapp_instance')
             .eq('id', customerId)
             .single();
 
@@ -1146,12 +1132,12 @@ export async function createFullAccountSale({
             .update({ status: 'sold' })
             .in('id', slotIds);
 
-        // 6. Send WhatsApp credentials if instance provided
-        if (whatsappInstance && customer.phone) {
+        // 6. Send WhatsApp credentials using customer's preferred instance
+        if (customer.phone) {
             try {
                 const endDate = new Date();
                 endDate.setDate(endDate.getDate() + durationDays);
-                await sendSaleCredentials({
+                const credResult = await sendSaleCredentials({
                     customerPhone: normalizePhone(customer.phone),
                     customerName: customer.full_name || customer.phone,
                     platform: account.platform,
@@ -1159,8 +1145,15 @@ export async function createFullAccountSale({
                     password: account.password,
                     profile: `Cuenta Completa (${availableSlots.length} perfiles)`,
                     expirationDate: endDate.toLocaleDateString('es-PY'),
-                    instanceName: whatsappInstance,
+                    customerId,
+                    instanceName: customer.whatsapp_instance || undefined,
                 });
+                // Auto-assign WA instance if customer didn't have one
+                if (!customer.whatsapp_instance && credResult?.instanceUsed) {
+                    await (supabase.from('customers') as any)
+                        .update({ whatsapp_instance: credResult.instanceUsed })
+                        .eq('id', customerId);
+                }
             } catch (waErr) {
                 console.warn('WhatsApp send failed (non-critical):', waErr);
             }

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil, Loader2, Trash2 } from 'lucide-react';
+import { Pencil, Loader2, Trash2, Key, Eye, EyeOff } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
 
@@ -22,6 +22,8 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [portalPassword, setPortalPassword] = useState<string | null>(null);
+    const [loadingPassword, setLoadingPassword] = useState(false);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -53,6 +55,29 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
             setOpen(false);
         }
     }
+
+    async function handleShowPassword() {
+        setLoadingPassword(true);
+        try {
+            const res = await fetch('/api/admin/decrypt-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: customer.id }),
+            });
+            const data = await res.json();
+            if (data.password) {
+                setPortalPassword(data.password);
+            } else {
+                setPortalPassword(null);
+                setError(data.error || 'No se pudo obtener la contraseña');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setLoadingPassword(false);
+        }
+    }
+
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -122,6 +147,44 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                                     <SelectItem value="clickpar-2">📱 WhatsApp 2</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+
+                        {/* Portal password reveal */}
+                        <div className="space-y-2">
+                            <Label>Contraseña del Portal</Label>
+                            <div className="flex items-center gap-2">
+                                {portalPassword ? (
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <code className="flex-1 rounded-md bg-muted/50 px-3 py-2 text-sm font-mono text-[#86EFAC]">
+                                            {portalPassword}
+                                        </code>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPortalPassword(null)}
+                                        >
+                                            <EyeOff className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleShowPassword}
+                                        disabled={loadingPassword}
+                                        className="gap-1.5"
+                                    >
+                                        {loadingPassword ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                            <Key className="h-3.5 w-3.5" />
+                                        )}
+                                        Ver contraseña
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </div>
 

@@ -60,27 +60,34 @@ export default function StaffLoginPage() {
         setError(null);
 
         try {
-            // Verify reCAPTCHA (skip in local development)
+            // On localhost, skip reCAPTCHA entirely
             const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const recaptchaToken = isDev ? null : await executeRecaptcha();
-            if (siteKey && recaptchaToken) {
-                const verifyRes = await fetch('/api/auth/verify-recaptcha', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: recaptchaToken }),
-                });
-                const verifyData = await verifyRes.json();
-                if (!verifyData.success || (verifyData.score !== undefined && verifyData.score < 0.3)) {
-                    setError('Verificación de seguridad fallida. Intenta de nuevo.');
-                    setLoading(false);
-                    return;
+            let captchaToken: string | undefined;
+
+            if (!isDev && siteKey) {
+                const token = await executeRecaptcha();
+                if (token) {
+                    // Optionally verify score server-side
+                    const verifyRes = await fetch('/api/auth/verify-recaptcha', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token }),
+                    });
+                    const verifyData = await verifyRes.json();
+                    if (!verifyData.success || (verifyData.score !== undefined && verifyData.score < 0.3)) {
+                        setError('Verificación de seguridad fallida. Intenta de nuevo.');
+                        setLoading(false);
+                        return;
+                    }
+                    captchaToken = token;
                 }
             }
 
-            // Supabase login
+            // Supabase login — pass captchaToken if available
             const { error: authError } = await supabase.auth.signInWithPassword({
                 email,
                 password,
+                options: captchaToken ? { captchaToken } : undefined,
             });
 
             if (authError) {
@@ -93,6 +100,7 @@ export default function StaffLoginPage() {
             router.refresh();
         } catch (err: any) {
             setError(err.message || 'Error inesperado');
+        } finally {
             setLoading(false);
         }
     };

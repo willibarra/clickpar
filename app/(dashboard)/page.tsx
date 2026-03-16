@@ -7,6 +7,7 @@ import { PlatformStats } from '@/components/dashboard/platform-stats';
 import { SearchResults } from '@/components/dashboard/search-results';
 import { QuarantineAlerts } from '@/components/dashboard/quarantine-alerts';
 import { OverdueClientsAlert } from '@/components/dashboard/overdue-clients-alert';
+import { MessageQueueWidget } from '@/components/dashboard/message-queue-widget';
 
 // Utilidad para formatear números en Guaraníes
 function formatGs(amount: number): string {
@@ -258,6 +259,9 @@ export default async function DashboardPage({
 
             {/* Quarantine Alerts */}
             <QuarantineAlerts accounts={quarantinedAccounts} />
+
+            {/* Message Queue Summary */}
+            <MessageQueueWidget />
 
             {/* Overdue Clients — falta liberar */}
             <OverdueClientsAlert clients={overdueClients} />

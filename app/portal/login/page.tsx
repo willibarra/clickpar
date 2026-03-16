@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Phone, Loader2, MessageSquare, Zap, ArrowLeft } from 'lucide-react';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 
 type Step = 'phone' | 'verify';
 
@@ -14,8 +15,12 @@ export default function PortalLoginPage() {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [countdown, setCountdown] = useState(0);
+    const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const captchaRef = useRef<HCaptcha>(null);
     const router = useRouter();
     const supabase = createClient();
+
+    const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || '';
 
     const formatPhone = (p: string) => {
         let formatted = p.trim();
@@ -29,6 +34,35 @@ export default function PortalLoginPage() {
         e.preventDefault();
         setLoading(true);
         setError(null);
+
+        // Verify captcha first
+        if (hcaptchaSiteKey && !captchaToken) {
+            setError('Por favor completá el captcha');
+            setLoading(false);
+            return;
+        }
+
+        if (hcaptchaSiteKey && captchaToken) {
+            try {
+                const captchaRes = await fetch('/api/portal/verify-captcha', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: captchaToken }),
+                });
+                const captchaData = await captchaRes.json();
+                if (!captchaData.success) {
+                    setError('Verificación de captcha fallida. Intentá de nuevo.');
+                    captchaRef.current?.resetCaptcha();
+                    setCaptchaToken(null);
+                    setLoading(false);
+                    return;
+                }
+            } catch {
+                setError('Error al verificar captcha');
+                setLoading(false);
+                return;
+            }
+        }
 
         const { error } = await supabase.auth.signInWithOtp({
             phone: formatPhone(phone),
@@ -58,6 +92,19 @@ export default function PortalLoginPage() {
             setError(error.message);
             setLoading(false);
         } else {
+            // Log successful login
+            try {
+                await fetch('/api/portal/log-access', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        eventType: 'login',
+                        metadata: { phone: formatPhone(phone) },
+                    }),
+                });
+            } catch {
+                // Non-blocking
+            }
             router.push('/portal');
             router.refresh();
         }
@@ -128,6 +175,19 @@ export default function PortalLoginPage() {
                                     Te enviaremos un código de verificación por SMS
                                 </p>
                             </div>
+
+                            {/* hCaptcha */}
+                            {hcaptchaSiteKey && (
+                                <div className="flex justify-center">
+                                    <HCaptcha
+                                        sitekey={hcaptchaSiteKey}
+                                        onVerify={(token) => setCaptchaToken(token)}
+                                        onExpire={() => setCaptchaToken(null)}
+                                        ref={captchaRef}
+                                        theme="dark"
+                                    />
+                                </div>
+                            )}
 
                             <button
                                 type="submit"

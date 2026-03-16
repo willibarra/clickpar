@@ -70,7 +70,8 @@ export async function createUser(data: CreateUserData) {
             email_confirm: true, // Auto-confirmar email (bypass)
             user_metadata: {
                 full_name: data.fullName,
-            }
+            },
+            app_metadata: { user_role: data.role },
         });
 
         if (authError) throw authError;
@@ -130,6 +131,13 @@ export async function updateUser(data: UpdateUserData) {
             .eq('id', data.userId);
 
         if (error) throw error;
+
+        // Sync role to app_metadata so JWT reflects the new role on next refresh
+        if (data.role !== undefined) {
+            await supabase.auth.admin.updateUserById(data.userId, {
+                app_metadata: { user_role: data.role }
+            });
+        }
 
         revalidatePath('/settings');
         return { success: true };

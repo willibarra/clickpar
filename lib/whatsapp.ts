@@ -6,6 +6,22 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
 
+// ==========================================
+// Test Whitelist — only these numbers receive automated messages
+// Set to empty array [] to disable and send to ALL customers
+// ==========================================
+const TEST_WHITELIST: string[] = ['595973442773'];
+
+/**
+ * Check if a phone number is allowed to receive automated messages.
+ * Returns true if whitelist is empty (disabled) or if the phone is in the list.
+ */
+export function isPhoneWhitelisted(phone: string): boolean {
+    if (TEST_WHITELIST.length === 0) return true; // Whitelist disabled
+    const normalized = normalizePhone(phone);
+    return TEST_WHITELIST.some(w => normalizePhone(w) === normalized);
+}
+
 // Untyped supabase client for whatsapp tables (not yet in database.types.ts)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function waSupabase(): Promise<any> {

@@ -98,6 +98,21 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
     const expiryBadge = getExpiryBadge(expiresAt);
     const showVerCode = needsCode && codeUrl;
 
+    const handleShowPassword = () => {
+        if (!showPassword) {
+            // Log credential view
+            fetch('/api/portal/log-access', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    eventType: 'view_credentials',
+                    metadata: { saleId, platform },
+                }),
+            }).catch(() => {}); // Non-blocking
+        }
+        setShowPassword(!showPassword);
+    };
+
     const formattedDate = expiresAt
         ? new Date(expiresAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
         : null;
@@ -143,7 +158,7 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                             {showPassword ? password : '••••••••••'}
                         </span>
                         <button
-                            onClick={() => setShowPassword(!showPassword)}
+                            onClick={handleShowPassword}
                             className="ml-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             title={showPassword ? 'Ocultar' : 'Mostrar'}
                         >
