@@ -121,7 +121,7 @@ export async function createQuickSale(data: QuickSaleData) {
             };
         }
 
-        // 3. Crear venta + marcar slot ATÓMICAMENTE via RPC
+        // 3. Crear venta + marcar slot como vendido
         let startDate: Date;
         let endDate: Date;
         if (data.deliveryDate) {
@@ -137,19 +137,31 @@ export async function createQuickSale(data: QuickSaleData) {
         }
 
         const slotId = slotToSell.slot_id || slotToSell.id;
-        const { data: newSaleId, error: atomicError } = await supabase
-            .rpc('create_sale_atomic', {
-                p_customer_id: customerId,
-                p_slot_id: slotId,
-                p_amount_gs: data.price,
-                p_start_date: startDate.toISOString().split('T')[0],
-                p_end_date: endDate.toISOString().split('T')[0],
-                p_payment_method: 'cash',
-                p_original_price_gs: slotToSell.slot_price_gs || data.price,
-                p_override_price: data.price !== slotToSell.slot_price_gs,
-            } as any);
 
-        if (atomicError) throw new Error(`Error atómico creando venta: ${atomicError.message}`);
+        // Insertar la venta
+        const { data: newSaleData, error: saleError } = await (supabase.from('sales') as any)
+            .insert({
+                customer_id: customerId,
+                slot_id: slotId,
+                amount_gs: data.price,
+                original_price_gs: slotToSell.slot_price_gs || data.price,
+                override_price: data.price !== slotToSell.slot_price_gs,
+                start_date: startDate.toISOString().split('T')[0],
+                end_date: endDate.toISOString().split('T')[0],
+                is_active: true,
+                payment_method: 'cash',
+            })
+            .select('id')
+            .single();
+
+        if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
+
+        // Marcar slot como vendido
+        const { error: slotUpdateError } = await (supabase.from('sale_slots') as any)
+            .update({ status: 'sold' })
+            .eq('id', slotId);
+
+        if (slotUpdateError) throw new Error(`Error actualizando slot: ${slotUpdateError.message}`);
 
         // 5. Crear lead en Kommo CRM (sin bloquear la venta si falla)
         try {
@@ -313,11 +325,19 @@ export async function createQuickSale(data: QuickSaleData) {
 export async function cancelSubscription(saleId: string, slotId: string) {
     const supabase = await createAdminClient();
     try {
-        // Cancelar venta + liberar slot ATÓMICAMENTE via RPC
-        const { error: atomicError } = await supabase
-            .rpc('cancel_sale_atomic', { p_sale_id: saleId } as any);
+        // Desactivar la venta
+        const { error: saleError } = await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', saleId);
 
-        if (atomicError) throw new Error(`Error atómico cancelando venta: ${atomicError.message}`);
+        if (saleError) throw new Error(`Error cancelando venta: ${saleError.message}`);
+
+        // Liberar el slot
+        const { error: slotError } = await (supabase.from('sale_slots') as any)
+            .update({ status: 'available' })
+            .eq('id', slotId);
+
+        if (slotError) throw new Error(`Error liberando slot: ${slotError.message}`);
 
         await logAction('cancel_sale', 'sale', saleId, {
             message: `canceló una suscripción`
@@ -390,16 +410,51 @@ export async function swapService(data: SwapServiceData) {
             throw new Error('Debe especificar un slot o plataforma de destino');
         }
 
-        // 2. Swap ATÓMICAMENTE via RPC (deactivate old sale, free old slot, create new sale, mark new slot sold)
-        const { data: swapResult, error: swapError } = await supabase
-            .rpc('swap_sale_atomic', {
-                p_old_sale_id: data.oldSaleId,
-                p_new_slot_id: newSlotId,
-                p_customer_id: data.customerId,
-                p_preserve_dates: true,
-            } as any);
+        // 2. Swap: desactivar old sale, liberar old slot, crear nueva venta, marcar nuevo slot
+        // Obtener datos de la venta anterior
+        const { data: oldSaleData } = await (supabase.from('sales') as any)
+            .select('amount_gs, start_date, end_date')
+            .eq('id', data.oldSaleId)
+            .single();
 
-        if (swapError) throw new Error(`Error atómico en swap: ${swapError.message}`);
+        // Desactivar venta anterior
+        const { error: deactivateError } = await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', data.oldSaleId);
+
+        if (deactivateError) throw new Error(`Error desactivando venta anterior: ${deactivateError.message}`);
+
+        // Liberar slot anterior
+        const { error: freeSlotError } = await (supabase.from('sale_slots') as any)
+            .update({ status: 'available' })
+            .eq('id', data.oldSlotId);
+
+        if (freeSlotError) throw new Error(`Error liberando slot anterior: ${freeSlotError.message}`);
+
+        // Crear nueva venta preservando fechas
+        const { data: newSaleData, error: newSaleError } = await (supabase.from('sales') as any)
+            .insert({
+                customer_id: data.customerId,
+                slot_id: newSlotId,
+                amount_gs: oldSaleData?.amount_gs || 0,
+                original_price_gs: oldSaleData?.amount_gs || 0,
+                override_price: false,
+                start_date: oldSaleData?.start_date || new Date().toISOString().split('T')[0],
+                end_date: oldSaleData?.end_date || null,
+                is_active: true,
+                payment_method: 'cash',
+            })
+            .select('id')
+            .single();
+
+        if (newSaleError) throw new Error(`Error creando nueva venta: ${newSaleError.message}`);
+
+        // Marcar nuevo slot como vendido
+        const { error: markSoldError } = await (supabase.from('sale_slots') as any)
+            .update({ status: 'sold' })
+            .eq('id', newSlotId);
+
+        if (markSoldError) throw new Error(`Error marcando nuevo slot: ${markSoldError.message}`);
 
         await logAction('swap_service', 'sale', data.oldSaleId, {
             message: `realizó un cambio de perfil/cuenta a ${newPlatform || 'nuevo slot'}`

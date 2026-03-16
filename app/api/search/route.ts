@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { normalizePhone } from '@/lib/utils/phone';
+import { safeNormalizePhone } from '@/lib/utils/phone';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -14,10 +14,13 @@ export async function GET(request: NextRequest) {
     const supabase = await createAdminClient();
     const pattern = `%${q}%`;
 
-    // If the query looks like a phone number, normalize to 595 format
+    // If the query looks like a phone number, try normalizing to 595 format.
+    // If normalization fails (e.g. partial number like last 6 digits), fall back
+    // to a raw digit pattern so partial matches still work.
     const digits = q.replace(/\D/g, '');
-    const isPhoneQuery = digits.length >= 6 && /^\+?\d+$/.test(q);
-    const phonePattern = isPhoneQuery ? `%${normalizePhone(digits)}%` : pattern;
+    const isPhoneQuery = digits.length >= 4 && /^\+?\d+$/.test(q);
+    const normalized = isPhoneQuery ? safeNormalizePhone(digits) : null;
+    const phonePattern = normalized ? `%${normalized}%` : `%${digits}%`;
 
     try {
         // 1. Search customers by name or phone (partial)
