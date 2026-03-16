@@ -85,7 +85,7 @@ export async function createQuickSale(data: QuickSaleData) {
 
             slotToSell = { slot_id: slot.id, slot_price_gs: data.price };
         } else {
-            // Caso: Asignación Automática - buscar slot disponible directamente
+            // Caso: Asignación Automática - buscar slot de la cuenta madre más nueva
             const { data: availableSlots, error: slotError } = await (supabase
                 .from('sale_slots') as any)
                 .select(`
@@ -95,7 +95,8 @@ export async function createQuickSale(data: QuickSaleData) {
                         id,
                         platform,
                         email,
-                        renewal_date
+                        renewal_date,
+                        created_at
                     )
                 `)
                 .eq('status', 'available');
@@ -113,7 +114,15 @@ export async function createQuickSale(data: QuickSaleData) {
                 return { error: `No hay slots disponibles para ${data.platform}` };
             }
 
-            // Seleccionar el primero disponible (simplificación del algoritmo Tetris)
+            // Priorizar: cuenta madre más nueva primero, desempate por renewal_date más lejana
+            platformSlots.sort((a: any, b: any) => {
+                const createdA = a.mother_accounts?.created_at || '';
+                const createdB = b.mother_accounts?.created_at || '';
+                if (createdB !== createdA) return createdB.localeCompare(createdA);
+                const renewA = a.mother_accounts?.renewal_date || '';
+                const renewB = b.mother_accounts?.renewal_date || '';
+                return renewB.localeCompare(renewA);
+            });
             const firstSlot = platformSlots[0];
             slotToSell = {
                 slot_id: firstSlot.id,

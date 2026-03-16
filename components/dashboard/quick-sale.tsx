@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,9 +18,18 @@ import {
     AlertCircle,
     Copy,
     Check,
-    Calendar
+    Calendar,
+    UserPlus,
+    X
 } from 'lucide-react';
 import { SlotSelectorModal } from './slot-selector-modal';
+import { createClient } from '@/lib/supabase/client';
+
+interface SelectedCustomer {
+    id: string;
+    full_name: string;
+    phone: string;
+}
 
 interface Platform {
     id: string;
@@ -48,8 +57,6 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
 
     // Individual mode state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
-    const [customerPhone, setCustomerPhone] = useState('');
-    const [customerName, setCustomerName] = useState('');
     const [price, setPrice] = useState<number>(25000);
     const [isOverridePrice, setIsOverridePrice] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +68,17 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [deliveryDate, setDeliveryDate] = useState('');
+
+    // Customer search state
+    const [customerSearch, setCustomerSearch] = useState('');
+    const [customerResults, setCustomerResults] = useState<SelectedCustomer[]>([]);
+    const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
+    const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+    const [newCustomerName, setNewCustomerName] = useState('');
+    const [newCustomerPhone, setNewCustomerPhone] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+
+    const supabase = createClient();
 
     // Combo mode state
     const [comboItems, setComboItems] = useState<ComboItem[]>([]);
@@ -111,8 +129,58 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         setStep('customer');
     };
 
+    // Debounced customer search
+    useEffect(() => {
+        if (!customerSearch.trim() || customerSearch.trim().length < 2) {
+            setCustomerResults([]);
+            return;
+        }
+        const timeout = setTimeout(async () => {
+            setSearchLoading(true);
+            const q = customerSearch.trim().toLowerCase();
+            const { data } = await (supabase.from('customers') as any)
+                .select('id, full_name, phone')
+                .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%`)
+                .limit(8);
+            setCustomerResults(data || []);
+            setSearchLoading(false);
+        }, 300);
+        return () => clearTimeout(timeout);
+    }, [customerSearch]);
+
+    const handleSelectCustomer = (c: SelectedCustomer) => {
+        setSelectedCustomer(c);
+        setCustomerSearch('');
+        setCustomerResults([]);
+    };
+
+    const handleCreateInlineCustomer = async () => {
+        if (!newCustomerName.trim() || !newCustomerPhone.trim()) return;
+        setSearchLoading(true);
+        try {
+            const { normalizePhone } = await import('@/lib/utils/phone');
+            const phone = normalizePhone(newCustomerPhone);
+            const { data, error } = await (supabase.from('customers') as any)
+                .insert({ full_name: newCustomerName.trim(), phone })
+                .select('id, full_name, phone')
+                .single();
+            if (error) {
+                setErrorMsg(`Error creando cliente: ${error.message}`);
+                setSearchLoading(false);
+                return;
+            }
+            setSelectedCustomer(data);
+            setShowNewCustomerForm(false);
+            setNewCustomerName('');
+            setNewCustomerPhone('');
+        } catch (e: any) {
+            setErrorMsg(e.message || 'Error creando cliente');
+        }
+        setSearchLoading(false);
+    };
+
     const handleCustomerNext = () => {
-        if (customerPhone.length >= 10) {
+        if (selectedCustomer) {
             setStep('confirm');
         }
     };
@@ -122,12 +190,18 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         setErrorMsg(null);
 
         try {
+            if (!selectedCustomer) {
+                setErrorMsg('Selecciona o crea un cliente');
+                setIsLoading(false);
+                return;
+            }
+
             if (saleMode === 'combo') {
                 const { processComboSale } = await import('@/lib/actions/sales');
                 const result = await processComboSale({
                     items: comboItems.map(ci => ({ platform: ci.platform, quantity: ci.quantity })),
-                    customerPhone,
-                    customerName: customerName || undefined,
+                    customerPhone: selectedCustomer.phone,
+                    customerName: selectedCustomer.full_name || undefined,
                     totalPrice: comboPrice,
                     deliveryDate: deliveryDate || undefined,
                 });
@@ -141,8 +215,9 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                 const { createQuickSale } = await import('@/lib/actions/sales');
                 const result = await createQuickSale({
                     platform: selectedPlatform,
-                    customerPhone,
-                    customerName: customerName || undefined,
+                    customerPhone: selectedCustomer.phone,
+                    customerName: selectedCustomer.full_name || undefined,
+                    customerId: selectedCustomer.id,
                     price,
                     platformPrice: price,
                     specificSlotId: selectedSlot?.id,
@@ -169,8 +244,12 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const handleReset = () => {
         setStep('select');
         setSelectedPlatform('');
-        setCustomerPhone('');
-        setCustomerName('');
+        setSelectedCustomer(null);
+        setCustomerSearch('');
+        setCustomerResults([]);
+        setShowNewCustomerForm(false);
+        setNewCustomerName('');
+        setNewCustomerPhone('');
         setPrice(25000);
         setIsOverridePrice(false);
         setSaleComplete(false);
@@ -203,7 +282,8 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
         const text = [
             `✅ *Venta Registrada*`,
             `📦 Servicio: ${getSaleName()}`,
-            `📱 Cliente: ${customerPhone}`,
+            `👤 Cliente: ${selectedCustomer?.full_name || ''}`,
+            `📱 Teléfono: ${selectedCustomer?.phone || ''}`,
             `💰 Precio: Gs. ${getFinalPrice().toLocaleString('es-PY')}`,
             `📅 Fecha: ${fecha}`,
         ].join('\n');
@@ -220,7 +300,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                     <CheckCircle className="h-16 w-16 text-[#86EFAC] animate-pulse" />
                     <h3 className="mt-4 text-xl font-bold text-foreground">¡Venta Registrada!</h3>
                     <p className="mt-2 text-muted-foreground text-center">
-                        {getSaleName()} → {customerPhone}
+                        {getSaleName()} → {selectedCustomer?.full_name || selectedCustomer?.phone || ''}
                     </p>
                     <p className="mt-1 text-lg font-semibold text-[#86EFAC]">
                         Gs. {getFinalPrice().toLocaleString('es-PY')}
@@ -439,35 +519,108 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                             </button>
                         </div>
 
-                        {/* Phone */}
+                        {/* Cliente — buscador unificado */}
                         <div className="space-y-2">
-                            <label className="text-sm text-muted-foreground">WhatsApp del Cliente:</label>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                    placeholder="+595 981 123 456"
-                                    value={customerPhone}
-                                    onChange={(e) => setCustomerPhone(e.target.value)}
-                                    className="pl-10"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Name (optional) */}
-                        <div className="space-y-1">
-                            <label className="text-sm text-muted-foreground">
-                                Nombre del Cliente
-                                <span className="ml-1 text-muted-foreground/50">(opcional)</span>
+                            <label className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">Cliente</span>
+                                {!showNewCustomerForm && !selectedCustomer && (
+                                    <button
+                                        onClick={() => setShowNewCustomerForm(true)}
+                                        className="flex items-center gap-1 text-xs text-[#86EFAC] hover:text-[#86EFAC]/80"
+                                    >
+                                        <UserPlus className="h-3 w-3" />
+                                        Nuevo Cliente
+                                    </button>
+                                )}
                             </label>
-                            <Input
-                                placeholder="Ej: Juan Pérez"
-                                value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
-                                className="text-sm"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Si el cliente no existe, se creará automáticamente
-                            </p>
+
+                            {showNewCustomerForm ? (
+                                <div className="space-y-2 p-3 rounded-lg border border-border bg-muted/30">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium">Nuevo Cliente</span>
+                                        <button onClick={() => setShowNewCustomerForm(false)}>
+                                            <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                                        </button>
+                                    </div>
+                                    <Input
+                                        placeholder="Nombre completo"
+                                        value={newCustomerName}
+                                        onChange={(e) => setNewCustomerName(e.target.value)}
+                                        className="text-sm"
+                                    />
+                                    <Input
+                                        placeholder="Teléfono (ej: 981123456)"
+                                        value={newCustomerPhone}
+                                        onChange={(e) => setNewCustomerPhone(e.target.value)}
+                                        className="text-sm"
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        className="w-full bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                                        onClick={handleCreateInlineCustomer}
+                                        disabled={searchLoading || !newCustomerName.trim() || !newCustomerPhone.trim()}
+                                    >
+                                        {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Crear Cliente'}
+                                    </Button>
+                                </div>
+                            ) : selectedCustomer ? (
+                                <div className="flex items-center justify-between p-3 rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5">
+                                    <div>
+                                        <p className="font-medium text-foreground text-sm">{selectedCustomer.full_name}</p>
+                                        <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                                    </div>
+                                    <button onClick={() => { setSelectedCustomer(null); setCustomerSearch(''); }}>
+                                        <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Buscar por nombre o teléfono..."
+                                        value={customerSearch}
+                                        onChange={(e) => setCustomerSearch(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                    {customerSearch.trim().length >= 2 && (
+                                        <div className="absolute z-10 w-full mt-1 rounded-lg border border-border bg-card shadow-lg max-h-48 overflow-y-auto">
+                                            {searchLoading ? (
+                                                <div className="px-3 py-3 text-center">
+                                                    <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />
+                                                </div>
+                                            ) : customerResults.length > 0 ? (
+                                                customerResults.map((c) => (
+                                                    <button
+                                                        key={c.id}
+                                                        type="button"
+                                                        className="w-full px-3 py-2 text-left hover:bg-muted/50 flex justify-between items-center"
+                                                        onClick={() => handleSelectCustomer(c)}
+                                                    >
+                                                        <span className="font-medium text-sm">{c.full_name}</span>
+                                                        <span className="text-xs text-muted-foreground">{c.phone}</span>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="px-3 py-3 text-center text-muted-foreground">
+                                                    <p className="text-sm">No se encontraron clientes</p>
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs text-[#86EFAC] mt-1 hover:underline flex items-center gap-1 mx-auto"
+                                                        onClick={() => {
+                                                            setShowNewCustomerForm(true);
+                                                            setNewCustomerName(customerSearch);
+                                                        }}
+                                                    >
+                                                        <UserPlus className="h-3 w-3" />
+                                                        Crear nuevo cliente
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Fecha de Entrega (optional) */}
@@ -500,7 +653,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                             </Button>
                             <Button
                                 onClick={handleCustomerNext}
-                                disabled={customerPhone.length < 10}
+                                disabled={!selectedCustomer}
                                 className={`flex-1 ${saleMode === 'combo' ? 'bg-[#F97316] hover:bg-[#F97316]/80' : 'bg-[#86EFAC] hover:bg-[#86EFAC]/80'} text-black`}
                             >
                                 Siguiente
@@ -529,7 +682,7 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
                                     )}
                                     <div>
                                         <p className="font-medium text-foreground">{getSaleName()}</p>
-                                        <p className="text-sm text-muted-foreground">{customerPhone}</p>
+                                        <p className="text-sm text-muted-foreground">{selectedCustomer?.full_name || ''} · {selectedCustomer?.phone || ''}</p>
                                     </div>
                                 </div>
                             </div>

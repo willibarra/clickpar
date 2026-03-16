@@ -20,7 +20,10 @@ export async function GET(request: NextRequest) {
     const digits = q.replace(/\D/g, '');
     const isPhoneQuery = digits.length >= 4 && /^\+?\d+$/.test(q);
     const normalized = isPhoneQuery ? safeNormalizePhone(digits) : null;
-    const phonePattern = normalized ? `%${normalized}%` : `%${digits}%`;
+    // For phone queries: use normalized or raw digits. For non-phone (emails, names): use the full pattern.
+    const phonePattern = isPhoneQuery
+        ? (normalized ? `%${normalized}%` : `%${digits}%`)
+        : pattern;
 
     try {
         // 1. Search customers by name or phone (partial)
