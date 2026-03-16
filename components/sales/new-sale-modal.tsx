@@ -12,7 +12,7 @@ import { createQuickSale, createFullAccountSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
 import { SlotWithAccount } from '@/lib/utils/tetris-algorithm';
-import { normalizePhone } from '@/lib/utils/phone';
+import { normalizePhone, safeNormalizePhone } from '@/lib/utils/phone';
 
 /**
  * Returns the number of days from today until the same calendar day next month.
@@ -158,13 +158,14 @@ export function NewSaleModal() {
         if (!customerSearch.trim()) return [];
         const search = customerSearch.toLowerCase();
         const searchDigits = search.replace(/\D/g, '');
-        const normalizedSearch = searchDigits.length >= 6 ? normalizePhone(searchDigits) : '';
+        const normalizedSearch = searchDigits.length >= 4 ? safeNormalizePhone(searchDigits) : null;
         return customers.filter(c => {
             if (c.full_name?.toLowerCase().includes(search)) return true;
             if (c.phone?.includes(search)) return true;
+            if (searchDigits.length >= 4 && c.phone?.includes(searchDigits)) return true;
             if (normalizedSearch && c.phone) {
-                const normalizedPhone = normalizePhone(c.phone);
-                return normalizedPhone.includes(normalizedSearch);
+                const normalizedPhone = safeNormalizePhone(c.phone);
+                return normalizedPhone ? normalizedPhone.includes(normalizedSearch) : false;
             }
             return false;
         }).slice(0, 8);
