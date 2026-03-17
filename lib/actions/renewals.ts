@@ -339,19 +339,42 @@ export async function bulkReleaseSubscriptions(saleIds: string[]) {
     const motherAccountIds = new Set<string>();
 
     for (const saleId of saleIds) {
-        // Cancelar venta + liberar slot ATÓMICAMENTE via RPC
-        const { data: result, error: atomicError } = await supabase
-            .rpc('cancel_sale_atomic', { p_sale_id: saleId } as any);
+        // 1. Get the sale to find the slot_id
+        const { data: sale, error: saleError } = await (supabase.from('sales') as any)
+            .select('id, slot_id')
+            .eq('id', saleId)
+            .single();
 
-        if (atomicError) {
-            errors.push(`Error atómico liberando venta ${saleId}: ${atomicError.message}`);
+        if (saleError || !sale) {
+            errors.push(`Venta ${saleId} no encontrada`);
             continue;
         }
 
-        // The RPC returns slot_id and mother_account_id
-        const row = Array.isArray(result) ? result[0] : result;
-        if (row?.mother_account_id) {
-            motherAccountIds.add(row.mother_account_id);
+        // 2. Deactivate the sale
+        const { error: cancelError } = await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', saleId);
+
+        if (cancelError) {
+            errors.push(`Error desactivando venta ${saleId}: ${cancelError.message}`);
+            continue;
+        }
+
+        // 3. Free the slot
+        if (sale.slot_id) {
+            // Get the mother_account_id before updating
+            const { data: slot } = await (supabase.from('sale_slots') as any)
+                .select('mother_account_id')
+                .eq('id', sale.slot_id)
+                .single();
+
+            await (supabase.from('sale_slots') as any)
+                .update({ status: 'available' })
+                .eq('id', sale.slot_id);
+
+            if (slot?.mother_account_id) {
+                motherAccountIds.add(slot.mother_account_id);
+            }
         }
     }
 
@@ -378,7 +401,7 @@ export async function bulkReleaseSubscriptions(saleIds: string[]) {
 export async function expireSlot(slotId: string, motherAccountId: string) {
     const supabase = await createAdminClient();
 
-    // Find the active sale for this slot and cancel atomically
+    // Find the active sale for this slot
     const { data: activeSale } = await (supabase.from('sales') as any)
         .select('id')
         .eq('slot_id', slotId)
@@ -386,14 +409,16 @@ export async function expireSlot(slotId: string, motherAccountId: string) {
         .single();
 
     if (activeSale) {
-        // Cancel sale + free slot ATÓMICAMENTE via RPC
-        await supabase.rpc('cancel_sale_atomic', { p_sale_id: activeSale.id } as any);
-    } else {
-        // No active sale found — just free the slot directly
-        await (supabase.from('sale_slots') as any)
-            .update({ status: 'available' })
-            .eq('id', slotId);
+        // Deactivate the sale
+        await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', activeSale.id);
     }
+
+    // Free the slot
+    await (supabase.from('sale_slots') as any)
+        .update({ status: 'available' })
+        .eq('id', slotId);
 
     // Trigger password rotation security check
     await checkPasswordRotation(motherAccountId);

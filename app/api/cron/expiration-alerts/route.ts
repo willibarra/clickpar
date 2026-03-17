@@ -333,8 +333,18 @@ export async function GET(request: NextRequest) {
             const phone = customer?.phone;
             const name = customer?.full_name || 'Cliente';
 
-            // Cancelar venta + liberar slot ATÓMICAMENTE via RPC
-            await supabase.rpc('cancel_sale_atomic', { p_sale_id: sale.id } as any);
+            // Cancelar venta + liberar slot directamente
+            await supabase
+                .from('sales' as any)
+                .update({ is_active: false })
+                .eq('id', sale.id);
+
+            if (sale.slot_id) {
+                await supabase
+                    .from('sale_slots' as any)
+                    .update({ status: 'available' })
+                    .eq('id', sale.slot_id);
+            }
 
             if (!phone || !isPhoneWhitelisted(phone)) continue;
 
