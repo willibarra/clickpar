@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Users,
   Wallet,
+  BarChart3,
   Settings,
   LogOut,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ const allNavItems = [
   { href: '/customers', label: 'Clientes', icon: Users, adminOnly: false },
   { href: '/emails', label: 'Correos', icon: Mail, adminOnly: false },
   { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
+  { href: '/statistics', label: 'Estadísticas', icon: BarChart3, adminOnly: true },
   { href: '/settings', label: 'Ajustes', icon: Settings, adminOnly: true },
 ];
 

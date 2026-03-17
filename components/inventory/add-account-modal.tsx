@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, EyeOff, Pencil, Check } from 'lucide-react';
+import { Eye, EyeOff, Pencil, Check, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Loader2, User, Lock } from 'lucide-react';
-import { createMotherAccount } from '@/lib/actions/inventory';
+import { createMotherAccount, bulkCreateMotherAccounts } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
 import { useUsdtRate } from '@/lib/usdt-rate';
 
@@ -42,6 +42,43 @@ function getDaysInCurrentMonth(): number {
     return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 }
 
+function parseAccountLines(text: string): { email: string; password: string }[] {
+    if (!text.trim()) return [];
+    return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+            // Split only on the FIRST occurrence of : or tab
+            // Priority: colon first, then tab, then space
+            let email = '';
+            let password = '';
+            const colonIdx = line.indexOf(':');
+            const tabIdx = line.indexOf('\t');
+
+            if (colonIdx > 0) {
+                email = line.substring(0, colonIdx).trim();
+                password = line.substring(colonIdx + 1).trim();
+            } else if (tabIdx > 0) {
+                email = line.substring(0, tabIdx).trim();
+                password = line.substring(tabIdx + 1).trim();
+            } else {
+                // Fallback: split on first space
+                const spaceIdx = line.indexOf(' ');
+                if (spaceIdx > 0) {
+                    email = line.substring(0, spaceIdx).trim();
+                    password = line.substring(spaceIdx + 1).trim();
+                } else {
+                    email = line;
+                    password = '';
+                }
+            }
+
+            return { email, password };
+        })
+        .filter(entry => entry.email && entry.password);
+}
+
 export function AddAccountModal() {
     const router = useRouter();
     const [open, setOpen] = useState(false);
@@ -62,6 +99,12 @@ export function AddAccountModal() {
     const [invitationUrl, setInvitationUrl] = useState('');
     const [inviteAddress, setInviteAddress] = useState('');
 
+    // Bulk mode
+    const [bulkMode, setBulkMode] = useState(false);
+    const [bulkText, setBulkText] = useState('');
+    const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+    const [bulkResult, setBulkResult] = useState<{ created: number; errors: { email: string; error: string }[] } | null>(null);
+
     // USDT exchange rate
     const { rate, setRate, convertToGs, loaded: rateLoaded } = useUsdtRate();
     const [usdtCost, setUsdtCost] = useState('');
@@ -69,6 +112,12 @@ export function AddAccountModal() {
     const [editingRate, setEditingRate] = useState(false);
     const [rateInput, setRateInput] = useState('');
 
+    // Parse bulk text in real-time
+    const bulkAccounts = useMemo(() => parseAccountLines(bulkText), [bulkText]);
+    const bulkDuplicates = useMemo(() => {
+        const emails = bulkAccounts.map(a => a.email.toLowerCase());
+        return emails.filter((e, i) => emails.indexOf(e) !== i);
+    }, [bulkAccounts]);
 
     useEffect(() => {
         if (open) {
@@ -88,6 +137,10 @@ export function AddAccountModal() {
             setGsCost('');
             setEditingRate(false);
             setServiceDays(getDaysInCurrentMonth());
+            setBulkMode(false);
+            setBulkText('');
+            setBulkProgress(null);
+            setBulkResult(null);
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
             setCustomSlots(Array.from({ length: defaultSlots }, () => ({ name: '', pin: '' })));
@@ -165,65 +218,140 @@ export function AddAccountModal() {
         setEditingRate(false);
     }
 
-    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-
-        const formData = new FormData(e.currentTarget);
-
-        // Compute renewal_date = purchase_date + service_days
+    // Build shared data from the form for bulk mode
+    function getSharedDataFromForm(form: HTMLFormElement) {
+        const formData = new FormData(form);
         const purchaseDate = formData.get('purchase_date') as string;
+        let renewalDate = purchaseDate || getToday();
         if (purchaseDate && serviceDays > 0) {
             const expDate = new Date(purchaseDate + 'T12:00:00');
             expDate.setDate(expDate.getDate() + serviceDays);
             const y = expDate.getFullYear();
             const m = String(expDate.getMonth() + 1).padStart(2, '0');
             const d = String(expDate.getDate()).padStart(2, '0');
-            formData.set('renewal_date', `${y}-${m}-${d}`);
-        } else {
-            formData.set('renewal_date', purchaseDate || getToday());
+            renewalDate = `${y}-${m}-${d}`;
         }
-        formData.delete('purchase_date');
 
-        // Inject custom slots as JSON if enabled
+        let parsedCustomSlots: { name: string; pin: string }[] | null = null;
         if (customizeSlots && customSlots.some(s => s.name || s.pin)) {
-            formData.set('custom_slots', JSON.stringify(customSlots));
+            parsedCustomSlots = customSlots;
         }
 
-        // Owned email data
-        if (isOwnedEmail) {
-            formData.set('is_owned_email', 'true');
-            formData.set('email_password', emailPassword);
-        }
+        return {
+            platform: formData.get('platform') as string,
+            max_slots: maxSlots,
+            purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,
+            purchase_cost_gs: parseFloat(formData.get('purchase_cost_gs') as string) || 0,
+            renewal_date: renewalDate,
+            service_days: serviceDays,
+            sale_price_gs: parseFloat(formData.get('sale_price_gs') as string) || null,
+            supplier_name: (formData.get('supplier_name') as string) || null,
+            supplier_phone: (formData.get('supplier_phone') as string) || null,
+            sale_type: 'profile',
+            instructions: instructions.trim() || null,
+            send_instructions: sendInstructions,
+            is_autopay: isAutopay,
+            is_owned_email: isOwnedEmail,
+            email_password_shared: emailPassword || null,
+            invitation_url: invitationUrl.trim() || null,
+            invite_address: inviteAddress.trim() || null,
+            custom_slots: parsedCustomSlots,
+        };
+    }
 
-        // Always profile type — Cuenta Completa is auto-detected by slot availability
-        formData.set('sale_type', 'profile');
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
 
-        // Instructions
-        if (instructions.trim()) {
-            formData.set('instructions', instructions.trim());
-        }
-        formData.set('send_instructions', sendInstructions ? 'true' : 'false');
-        formData.set('is_autopay', isAutopay ? 'true' : 'false');
+        if (bulkMode) {
+            // --- BULK MODE ---
+            if (bulkAccounts.length === 0) {
+                setError('No se detectaron cuentas válidas. Usa el formato email:contraseña (una por línea).');
+                setLoading(false);
+                return;
+            }
 
-        // Family account fields
-        if (invitationUrl.trim()) {
-            formData.set('invitation_url', invitationUrl.trim());
-        }
-        if (inviteAddress.trim()) {
-            formData.set('invite_address', inviteAddress.trim());
-        }
+            if (bulkDuplicates.length > 0) {
+                setError(`Emails duplicados detectados: ${bulkDuplicates.join(', ')}`);
+                setLoading(false);
+                return;
+            }
 
-        const result = await createMotherAccount(formData);
+            const sharedData = getSharedDataFromForm(e.currentTarget);
+            setBulkProgress({ current: 0, total: bulkAccounts.length });
 
-        if (result.error) {
-            setError(result.error);
+            const result = await bulkCreateMotherAccounts(sharedData, bulkAccounts);
+            setBulkProgress(null);
+            setBulkResult(result);
             setLoading(false);
+
+            if (result.errors.length === 0) {
+                // Auto-close after a short delay on full success
+                setTimeout(() => {
+                    setOpen(false);
+                    router.refresh();
+                }, 2000);
+            } else {
+                router.refresh();
+            }
         } else {
-            setOpen(false);
-            setLoading(false);
-            router.refresh();
+            // --- INDIVIDUAL MODE (original) ---
+            const formData = new FormData(e.currentTarget);
+
+            // Compute renewal_date = purchase_date + service_days
+            const purchaseDate = formData.get('purchase_date') as string;
+            if (purchaseDate && serviceDays > 0) {
+                const expDate = new Date(purchaseDate + 'T12:00:00');
+                expDate.setDate(expDate.getDate() + serviceDays);
+                const y = expDate.getFullYear();
+                const m = String(expDate.getMonth() + 1).padStart(2, '0');
+                const d = String(expDate.getDate()).padStart(2, '0');
+                formData.set('renewal_date', `${y}-${m}-${d}`);
+            } else {
+                formData.set('renewal_date', purchaseDate || getToday());
+            }
+            formData.delete('purchase_date');
+
+            // Inject custom slots as JSON if enabled
+            if (customizeSlots && customSlots.some(s => s.name || s.pin)) {
+                formData.set('custom_slots', JSON.stringify(customSlots));
+            }
+
+            // Owned email data
+            if (isOwnedEmail) {
+                formData.set('is_owned_email', 'true');
+                formData.set('email_password', emailPassword);
+            }
+
+            // Always profile type — Cuenta Completa is auto-detected by slot availability
+            formData.set('sale_type', 'profile');
+
+            // Instructions
+            if (instructions.trim()) {
+                formData.set('instructions', instructions.trim());
+            }
+            formData.set('send_instructions', sendInstructions ? 'true' : 'false');
+            formData.set('is_autopay', isAutopay ? 'true' : 'false');
+
+            // Family account fields
+            if (invitationUrl.trim()) {
+                formData.set('invitation_url', invitationUrl.trim());
+            }
+            if (inviteAddress.trim()) {
+                formData.set('invite_address', inviteAddress.trim());
+            }
+
+            const result = await createMotherAccount(formData);
+
+            if (result.error) {
+                setError(result.error);
+                setLoading(false);
+            } else {
+                setOpen(false);
+                setLoading(false);
+                router.refresh();
+            }
         }
     }
 
@@ -244,6 +372,35 @@ export function AddAccountModal() {
                         Ingresa los datos de la nueva cuenta de streaming
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* Mode Toggle */}
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border/50">
+                    <button
+                        type="button"
+                        onClick={() => { setBulkMode(false); setBulkResult(null); }}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                            !bulkMode
+                                ? 'bg-background text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                        Individual
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setBulkMode(true); setBulkResult(null); }}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                            bulkMode
+                                ? 'bg-background text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        Carga Masiva
+                    </button>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     {error && (
                         <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
@@ -291,29 +448,107 @@ export function AddAccountModal() {
                             />
                         </div>
 
-                        {/* Row 2: Email + Password */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email de la cuenta</Label>
-                                <Input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    placeholder="cuenta@gmail.com"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="password">Contraseña</Label>
-                                <Input
-                                    id="password"
-                                    name="password"
-                                    type="text"
-                                    placeholder="Contraseña"
-                                    required
-                                />
-                            </div>
-                        </div>
+                        {/* ==================== */}
+                        {/* EMAIL/PASSWORD AREA  */}
+                        {/* ==================== */}
+                        {bulkMode ? (
+                            <>
+                                {/* Bulk textarea */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="bulk_accounts">
+                                        Lista de Cuentas
+                                        {bulkAccounts.length > 0 && (
+                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#86EFAC]/20 text-[#86EFAC]">
+                                                {bulkAccounts.length} cuenta{bulkAccounts.length !== 1 ? 's' : ''} detectada{bulkAccounts.length !== 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </Label>
+                                    <textarea
+                                        id="bulk_accounts"
+                                        value={bulkText}
+                                        onChange={(e) => setBulkText(e.target.value)}
+                                        placeholder={`Pega las cuentas aquí, una por línea:\ncuenta1@gmail.com:contraseña123\ncuenta2@gmail.com:contraseña456\ncuenta3@gmail.com contraseña789`}
+                                        rows={6}
+                                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/50 placeholder:text-muted-foreground"
+                                    />
+                                    {bulkDuplicates.length > 0 && (
+                                        <div className="flex items-start gap-2 rounded-md bg-orange-500/10 p-2 text-xs text-orange-400">
+                                            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                            <span>Emails duplicados: {[...new Set(bulkDuplicates)].join(', ')}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Bulk Result */}
+                                {bulkResult && (
+                                    <div className="rounded-lg border border-border p-3 space-y-2">
+                                        {bulkResult.created > 0 && (
+                                            <div className="flex items-center gap-2 text-sm text-[#86EFAC]">
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                <span>{bulkResult.created} cuenta{bulkResult.created !== 1 ? 's' : ''} creada{bulkResult.created !== 1 ? 's' : ''} exitosamente</span>
+                                            </div>
+                                        )}
+                                        {bulkResult.errors.length > 0 && (
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 text-sm text-red-400">
+                                                    <AlertCircle className="h-4 w-4" />
+                                                    <span>{bulkResult.errors.length} error{bulkResult.errors.length !== 1 ? 'es' : ''}</span>
+                                                </div>
+                                                <div className="max-h-24 overflow-y-auto space-y-1 pl-6">
+                                                    {bulkResult.errors.map((err, i) => (
+                                                        <p key={i} className="text-xs text-red-400/80">
+                                                            <span className="font-mono">{err.email}</span>: {err.error}
+                                                        </p>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Loading progress */}
+                                {bulkProgress && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span>Creando cuentas...</span>
+                                            <span>{bulkProgress.current} de {bulkProgress.total}</span>
+                                        </div>
+                                        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-[#86EFAC] transition-all duration-300"
+                                                style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                {/* Row 2: Email + Password (individual) */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="email">Email de la cuenta</Label>
+                                        <Input
+                                            id="email"
+                                            name="email"
+                                            type="email"
+                                            placeholder="cuenta@gmail.com"
+                                            required={!bulkMode}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="password">Contraseña</Label>
+                                        <Input
+                                            id="password"
+                                            name="password"
+                                            type="text"
+                                            placeholder="Contraseña"
+                                            required={!bulkMode}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         {/* Owned Email Checkbox */}
                         <div className="rounded-lg border border-border/40 bg-[#0d0d0d] p-3 space-y-3">
@@ -611,13 +846,15 @@ export function AddAccountModal() {
                         <Button
                             type="submit"
                             className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
-                            disabled={loading}
+                            disabled={loading || (bulkResult !== null && bulkResult.errors.length === 0)}
                         >
                             {loading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Guardando...
+                                    {bulkMode ? 'Creando...' : 'Guardando...'}
                                 </>
+                            ) : bulkMode ? (
+                                `Crear ${bulkAccounts.length || ''} Cuenta${bulkAccounts.length !== 1 ? 's' : ''}`
                             ) : (
                                 'Guardar'
                             )}

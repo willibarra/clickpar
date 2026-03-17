@@ -200,7 +200,7 @@ const DEFAULT_SETTINGS: WhatsAppSettings = {
     auto_send_expiry: true,
     auto_send_credential_change: true,
     pre_expiry_days: 3,
-    batch_send_interval_seconds: 30,
+    batch_send_interval_seconds: 25,
 };
 
 /**

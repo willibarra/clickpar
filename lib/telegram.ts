@@ -69,28 +69,39 @@ export async function sendMessage(
     chatId: number,
     text: string,
     options?: {
-        parseMode?: 'Markdown' | 'HTML';
+        parseMode?: 'Markdown' | 'HTML' | 'none';
         buttons?: InlineButton[][];
         disablePreview?: boolean;
     }
 ): Promise<boolean> {
     try {
+        const useParseMode = options?.parseMode !== 'none'
+            ? (options?.parseMode ?? 'Markdown')
+            : undefined;
+
         const body: Record<string, unknown> = {
             chat_id: chatId,
             text,
-            parse_mode: options?.parseMode ?? 'Markdown',
             disable_web_page_preview: options?.disablePreview ?? true,
         };
 
-        if (options?.buttons && options.buttons.length > 0) {
-            body.reply_markup = {
+        if (useParseMode) {
+            body.parse_mode = useParseMode;
+        }
+
+        const replyMarkup = options?.buttons && options.buttons.length > 0
+            ? {
                 inline_keyboard: options.buttons.map(row =>
                     row.map(btn => ({
                         text: btn.text,
                         callback_data: btn.callback_data,
                     }))
                 ),
-            };
+            }
+            : undefined;
+
+        if (replyMarkup) {
+            body.reply_markup = replyMarkup;
         }
 
         const res = await fetch(`${TG_API}/sendMessage`, {
@@ -99,7 +110,41 @@ export async function sendMessage(
             body: JSON.stringify(body),
         });
 
-        return res.ok;
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            console.error('[Telegram] sendMessage API error:', {
+                status: res.status,
+                description: (errorData as any)?.description,
+                chatId,
+                textPreview: text.substring(0, 100),
+            });
+
+            // If Markdown parsing failed, retry without parse_mode (plain text)
+            if (useParseMode && (errorData as any)?.description?.includes("parse")) {
+                console.warn('[Telegram] Retrying without Markdown...');
+                const plainBody: Record<string, unknown> = {
+                    chat_id: chatId,
+                    text: text.replace(/[*_`\[\]]/g, ''), // strip markdown chars
+                    disable_web_page_preview: true,
+                };
+                if (replyMarkup) {
+                    plainBody.reply_markup = replyMarkup;
+                }
+                const retryRes = await fetch(`${TG_API}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(plainBody),
+                });
+                if (!retryRes.ok) {
+                    const retryErr = await retryRes.json().catch(() => ({}));
+                    console.error('[Telegram] Plain text retry also failed:', (retryErr as any)?.description);
+                }
+                return retryRes.ok;
+            }
+            return false;
+        }
+
+        return true;
     } catch (err) {
         console.error('[Telegram] sendMessage error:', err);
         return false;

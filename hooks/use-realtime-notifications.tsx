@@ -49,6 +49,15 @@ export function useRealtimeNotifications() {
                             description: newNotification.message,
                             duration: 5000,
                         });
+                    } else if (newNotification.type === 'new_account') {
+                        toast('📦 Nueva Cuenta', {
+                            description: newNotification.message,
+                            duration: 8000,
+                            action: {
+                                label: 'Ver',
+                                onClick: () => router.push('/inventory'),
+                            },
+                        });
                     }
                 }
             )

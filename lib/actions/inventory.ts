@@ -77,6 +77,15 @@ export async function createMotherAccount(formData: FormData) {
         message: `agregó una nueva cuenta de ${data.platform} (${data.email})`
     });
 
+    // Notificar a staff/super_admin: nueva cuenta agregada (visible en campanita)
+    const { createNotification } = await import('@/lib/actions/notifications');
+    await createNotification({
+        type: 'new_account',
+        message: `📦 Nueva cuenta agregada: ${data.platform} (${data.email})`,
+        related_resource_id: newAccount.id,
+        related_resource_type: 'mother_account',
+    });
+
     // Skip slot creation for complete accounts
     if (saleType === 'complete' || maxSlots === 0) {
         revalidatePath('/inventory');
@@ -110,6 +119,149 @@ export async function createMotherAccount(formData: FormData) {
 
     revalidatePath('/inventory');
     return { success: true };
+}
+
+interface BulkAccountEntry {
+    email: string;
+    password: string;
+}
+
+interface BulkAccountSharedData {
+    platform: string;
+    max_slots: number;
+    purchase_cost_usdt: number;
+    purchase_cost_gs: number;
+    renewal_date: string;
+    service_days: number;
+    sale_price_gs: number | null;
+    supplier_name: string | null;
+    supplier_phone: string | null;
+    sale_type: string;
+    instructions: string | null;
+    send_instructions: boolean;
+    is_autopay: boolean;
+    is_owned_email: boolean;
+    email_password_shared: string | null;
+    invitation_url: string | null;
+    invite_address: string | null;
+    custom_slots: { name: string; pin: string }[] | null;
+}
+
+export async function bulkCreateMotherAccounts(
+    sharedData: BulkAccountSharedData,
+    accounts: BulkAccountEntry[]
+) {
+    const supabase = await createClient();
+
+    const billingDay = sharedData.renewal_date
+        ? new Date(sharedData.renewal_date + 'T12:00:00').getDate()
+        : new Date().getDate();
+
+    const isAutopay = sharedData.is_autopay;
+    const renewalDate = isAutopay && !sharedData.renewal_date
+        ? new Date(new Date().getFullYear() + 1, new Date().getMonth(), new Date().getDate()).toISOString().split('T')[0]
+        : sharedData.renewal_date;
+
+    const results: { created: number; errors: { email: string; error: string }[] } = {
+        created: 0,
+        errors: [],
+    };
+
+    for (const account of accounts) {
+        try {
+            const email = account.email.trim();
+            const password = account.password.trim();
+
+            if (!email || !password) {
+                results.errors.push({ email: email || '(vacío)', error: 'Email o contraseña vacíos' });
+                continue;
+            }
+
+            // Upsert owned email if checkbox was checked
+            if (sharedData.is_owned_email) {
+                const emailNorm = email.toLowerCase();
+                let provider = 'otro';
+                if (emailNorm.includes('@gmail')) provider = 'gmail';
+                else if (emailNorm.includes('@hotmail')) provider = 'hotmail';
+                else if (emailNorm.includes('@outlook')) provider = 'outlook';
+                else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
+
+                await (supabase.from('owned_emails') as any).upsert(
+                    { email: emailNorm, password: sharedData.email_password_shared || null, provider },
+                    { onConflict: 'email' }
+                );
+            }
+
+            const data = {
+                platform: sharedData.platform,
+                email,
+                password,
+                purchase_cost_usdt: sharedData.purchase_cost_usdt,
+                purchase_cost_gs: sharedData.purchase_cost_gs,
+                renewal_date: renewalDate,
+                target_billing_day: billingDay,
+                max_slots: sharedData.max_slots,
+                status: 'active',
+                supplier_name: sharedData.supplier_name,
+                supplier_phone: sharedData.supplier_phone,
+                sale_price_gs: sharedData.sale_price_gs,
+                sale_type: sharedData.sale_type,
+                instructions: sharedData.instructions,
+                send_instructions: sharedData.send_instructions,
+                is_autopay: isAutopay,
+                autopay_last_checked: isAutopay ? new Date().toISOString().split('T')[0] : null,
+                invitation_url: sharedData.invitation_url,
+                invite_address: sharedData.invite_address,
+            };
+
+            const { data: newAccount, error } = await (supabase.from('mother_accounts') as any)
+                .insert(data)
+                .select()
+                .single();
+
+            if (error) {
+                results.errors.push({ email, error: error.message });
+                continue;
+            }
+
+            await logAction('create_account', 'mother_account', newAccount.id, {
+                message: `agregó una nueva cuenta de ${data.platform} (${email}) [carga masiva]`
+            });
+
+            // Create slots if needed
+            if (sharedData.sale_type !== 'complete' && sharedData.max_slots > 0) {
+                const slots = [];
+                for (let i = 1; i <= sharedData.max_slots; i++) {
+                    const custom = sharedData.custom_slots?.[i - 1];
+                    slots.push({
+                        mother_account_id: newAccount.id,
+                        slot_identifier: custom?.name || `Perfil ${i}`,
+                        pin_code: custom?.pin || null,
+                        status: 'available',
+                    });
+                }
+
+                await (supabase.from('sale_slots') as any).insert(slots);
+            }
+
+            results.created++;
+        } catch (err: any) {
+            results.errors.push({ email: account.email, error: err.message || 'Error desconocido' });
+        }
+    }
+
+    // Single bulk notification
+    if (results.created > 0) {
+        const { createNotification } = await import('@/lib/actions/notifications');
+        await createNotification({
+            type: 'new_account',
+            message: `📦 Carga masiva: ${results.created} cuentas de ${sharedData.platform} agregadas`,
+            related_resource_type: 'mother_account',
+        });
+    }
+
+    revalidatePath('/inventory');
+    return results;
 }
 
 export async function updateMotherAccount(id: string, formData: FormData) {

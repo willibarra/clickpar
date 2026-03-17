@@ -98,9 +98,9 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/staff/login', request.url));
     }
 
-    // Block staff from accessing finance and settings
+    // Block staff from accessing finance, statistics and settings
     if (role === 'staff') {
-        if (pathname.startsWith('/finance') || pathname.startsWith('/settings')) {
+        if (pathname.startsWith('/finance') || pathname.startsWith('/statistics') || pathname.startsWith('/settings')) {
             return NextResponse.redirect(new URL('/sales', request.url));
         }
     }
