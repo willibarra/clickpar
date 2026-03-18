@@ -280,4 +280,7 @@ export const MAIN_MENU_BUTTONS: InlineButton[][] = [
         { text: '💰 Vender', callback_data: 'cmd:vender' },
         { text: '📊 Resumen del día', callback_data: 'cmd:ventas' },
     ],
+    [
+        { text: '📦 Nueva cuenta', callback_data: 'cmd:nueva_cuenta' },
+    ],
 ];

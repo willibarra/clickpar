@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, LayoutGrid, List, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Users, Tv, Filter } from 'lucide-react';
+import { Package, LayoutGrid, List, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Copy, Check, Filter, Edit3, X } from 'lucide-react';
 import { EditAccountModal } from '@/components/inventory/edit-account-modal';
 import { SlotDetailsModal } from '@/components/inventory/slot-details-modal';
 import { AddAccountModal } from '@/components/inventory/add-account-modal';
+import { PlatformIcon } from '@/components/ui/platform-icon';
+import { BulkEditModal } from '@/components/inventory/bulk-edit-modal';
 
 interface Slot {
     id: string;
@@ -30,6 +32,7 @@ interface Account {
     password: string;
     max_slots: number;
     renewal_date: string;
+    created_at: string;
     sale_slots: Slot[];
     // Optional fields for EditAccountModal compatibility
     purchase_cost_usdt?: number;
@@ -51,8 +54,72 @@ interface InventoryViewProps {
     statusColors: Record<string, string>;
 }
 
-type SortField = 'platform' | 'email' | 'available' | 'renewal_date';
+type SortField = 'platform' | 'email' | 'available' | 'renewal_date' | 'created_at';
 type SortDirection = 'asc' | 'desc';
+
+// ── Date helpers ─────────────────────────────────
+
+function daysBetween(from: Date, to: Date) {
+    const msDay = 86_400_000;
+    return Math.ceil((to.getTime() - from.getTime()) / msDay);
+}
+
+/** Creative relative + absolute format: "hace 12d · 6 mar" or "en 30d · 17 abr" */
+function formatRelativeDate(dateStr: string, label: 'past' | 'future') {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T12:00:00');
+    const diff = daysBetween(today, d);
+    const abs = d.toLocaleDateString('es-PY', { day: 'numeric', month: 'short' });
+
+    if (label === 'past') {
+        if (diff === 0) return `hoy · ${abs}`;
+        if (diff < 0) return `hace ${Math.abs(diff)}d · ${abs}`;
+        return `en ${diff}d · ${abs}`;
+    }
+    // future / renewal
+    if (diff < 0) return `venció hace ${Math.abs(diff)}d · ${abs}`;
+    if (diff === 0) return `vence hoy · ${abs}`;
+    return `en ${diff}d · ${abs}`;
+}
+
+/** Returns tailwind text colour class based on expiry proximity */
+function expiryColor(dateStr: string): string {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T12:00:00');
+    const diff = daysBetween(today, d);
+    if (diff < 0) return 'text-red-400'; // expired
+    if (diff === 0) return 'text-orange-400'; // today
+    return 'text-[#86EFAC]'; // future – green
+}
+
+// ── Copy-to-clipboard hook ───────────────────────
+
+function CopyableEmail({ email }: { email: string }) {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(email);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+    };
+    return (
+        <button
+            onClick={handleCopy}
+            className="group flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title="Click para copiar email"
+        >
+            <span className="truncate max-w-[220px]">{email}</span>
+            {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-400 flex-shrink-0" />
+            ) : (
+                <Copy className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 flex-shrink-0 transition-opacity" />
+            )}
+        </button>
+    );
+}
+
+// ── Main component ───────────────────────────────
 
 export function InventoryView({ accounts, platformColors, statusColors }: InventoryViewProps) {
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
@@ -62,6 +129,31 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [pageSize, setPageSize] = useState<number>(30);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // ── Bulk selection state ──────────────────────
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkEditOpen, setBulkEditOpen] = useState(false);
+
+    function toggleSelect(id: string) {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    }
+
+    function toggleSelectAll() {
+        const pageIds = paginatedAccounts.map(a => a.id);
+        const allSelected = pageIds.every(id => selectedIds.has(id));
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (allSelected) { pageIds.forEach(id => next.delete(id)); }
+            else { pageIds.forEach(id => next.add(id)); }
+            return next;
+        });
+    }
+
+    function clearSelection() { setSelectedIds(new Set()); }
 
     // Extract unique platforms for filter pills
     const platforms = useMemo(() => {
@@ -103,6 +195,9 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                     break;
                 case 'renewal_date':
                     comparison = new Date(a.renewal_date + 'T12:00:00').getTime() - new Date(b.renewal_date + 'T12:00:00').getTime();
+                    break;
+                case 'created_at':
+                    comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
                     break;
             }
             return sortDirection === 'asc' ? comparison : -comparison;
@@ -220,27 +315,19 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                             const colors = platformColors[account.platform] || platformColors.default;
                             const slots = account.sale_slots || [];
                             const available = getAvailable(account);
+                            const isQuarantine = account.status === 'quarantine';
 
                             return (
                                 <Card
                                     key={account.id}
-                                    className={`border-border bg-gradient-to-br ${colors.gradient} to-[#1a1a1a]`}
+                                    className={`border-border bg-gradient-to-br ${colors.gradient} to-[#1a1a1a] ${isQuarantine ? 'opacity-70 border-purple-500/40' : ''}`}
                                 >
                                     <CardHeader className="pb-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${colors.bg}`}>
-                                                    <span className={`font-bold ${colors.text}`}>
-                                                        {account.platform.charAt(0)}
-                                                    </span>
-                                                </div>
+                                                <PlatformIcon platform={account.platform} size={36} />
                                                 <div>
-                                                    <CardTitle className="text-base text-foreground">
-                                                        {account.platform}
-                                                    </CardTitle>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {account.email}
-                                                    </p>
+                                                    <CopyableEmail email={account.email} />
                                                 </div>
                                             </div>
                                             <EditAccountModal account={account} />
@@ -248,6 +335,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                         {account.status === 'frozen' && (
                                             <div className="mx-4 mb-1">
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-300">❄️ Cuenta Congelada</span>
+                                            </div>
+                                        )}
+                                        {isQuarantine && (
+                                            <div className="mx-4 mb-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300">⚠️ Cuenta Reportada</span>
                                             </div>
                                         )}
                                         {account.notes && (
@@ -271,6 +363,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                         email: account.email,
                                                         password: account.password,
                                                     }}
+                                                    accountStatus={account.status}
                                                 />
                                             ))}
                                         </div>
@@ -279,10 +372,12 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                 <span className="text-[#86EFAC] font-medium">{available}</span>
                                                 <span className="text-muted-foreground"> / {slots.length} disponibles</span>
                                             </div>
-                                            <div className="text-xs text-muted-foreground">
+                                            <div className="text-xs">
                                                 {account.is_autopay
                                                     ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
-                                                    : <>Vence: {new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}</>}
+                                                    : <span className={expiryColor(account.renewal_date)}>
+                                                        {formatRelativeDate(account.renewal_date, 'future')}
+                                                    </span>}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -296,12 +391,21 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                         <table className="w-full">
                             <thead className="bg-card/80">
                                 <tr>
+                                    {/* Select-all checkbox */}
+                                    <th className="px-3 py-3 w-10">
+                                        <input
+                                            type="checkbox"
+                                            aria-label="Seleccionar todo"
+                                            checked={paginatedAccounts.length > 0 && paginatedAccounts.every(a => selectedIds.has(a.id))}
+                                            onChange={toggleSelectAll}
+                                            className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer"
+                                        />
+                                    </th>
                                     <th
-                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors w-12"
                                         onClick={() => handleSort('platform')}
                                     >
                                         <div className="flex items-center gap-1">
-                                            Plataforma
                                             <SortIcon field="platform" />
                                         </div>
                                     </th>
@@ -328,6 +432,15 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                     </th>
                                     <th
                                         className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                        onClick={() => handleSort('created_at')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            Compra
+                                            <SortIcon field="created_at" />
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
                                         onClick={() => handleSort('renewal_date')}
                                     >
                                         <div className="flex items-center gap-1">
@@ -342,29 +455,36 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {paginatedAccounts.map((account) => {
-                                    const colors = platformColors[account.platform] || platformColors.default;
                                     const slots = account.sale_slots || [];
                                     const available = getAvailable(account);
+                                    const isQuarantine = account.status === 'quarantine';
+                                    const isSelected = selectedIds.has(account.id);
 
                                     return (
-                                        <tr key={account.id} className="bg-card hover:bg-card/80 transition-colors">
+                                        <tr key={account.id} className={`transition-colors ${isSelected ? 'bg-[#86EFAC]/10 border-l-2 border-l-[#86EFAC]' : 'bg-card hover:bg-card/80'} ${isQuarantine ? 'opacity-70' : ''}`}>
+                                            {/* Row checkbox */}
+                                            <td className="px-3 py-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleSelect(account.id)}
+                                                    aria-label={`Seleccionar ${account.email}`}
+                                                    className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer"
+                                                />
+                                            </td>
                                             <td className="px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div
-                                                        className={`flex h-8 w-8 items-center justify-center rounded-full ${colors.bg}`}
-                                                    >
-                                                        <span className={`text-sm font-bold ${colors.text}`}>
-                                                            {account.platform.charAt(0)}
-                                                        </span>
-                                                    </div>
-                                                    <span className="font-medium text-foreground">{account.platform}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <PlatformIcon platform={account.platform} size={28} />
                                                     {account.status === 'frozen' && (
                                                         <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-1.5 py-0.5 text-xs font-medium text-blue-300">❄️</span>
                                                     )}
+                                                    {isQuarantine && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-1.5 py-0.5 text-xs font-medium text-purple-300">⚠️</span>
+                                                    )}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-muted-foreground">
-                                                {account.email}
+                                            <td className="px-4 py-3">
+                                                <CopyableEmail email={account.email} />
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1 max-w-[200px]">
@@ -381,6 +501,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                                 email: account.email,
                                                                 password: account.password,
                                                             }}
+                                                            accountStatus={account.status}
                                                         />
                                                     ))}
                                                 </div>
@@ -391,10 +512,17 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                     <span className="text-muted-foreground">/ {slots.length}</span>
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-muted-foreground">
+                                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                                                {account.created_at
+                                                    ? formatRelativeDate(account.created_at.split('T')[0], 'past')
+                                                    : '—'}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm">
                                                 {account.is_autopay
-                                                    ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium">🔄 Autopay</span>
-                                                    : new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium text-xs">🔄 Autopay</span>
+                                                    : <span className={`text-xs font-medium ${expiryColor(account.renewal_date)}`}>
+                                                        {formatRelativeDate(account.renewal_date, 'future')}
+                                                    </span>}
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <EditAccountModal account={account} />
@@ -421,6 +549,40 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                     </CardContent>
                 </Card>
             )}
+
+            {/* ── Floating bulk action bar ─────────────────── */}
+            {selectedIds.size > 0 && (
+                <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border border-[#86EFAC]/30 bg-[#0d1117]/95 px-5 py-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
+                    <span className="text-sm font-medium text-[#86EFAC]">
+                        {selectedIds.size} cuenta{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}
+                    </span>
+                    <div className="h-4 w-px bg-border" />
+                    <Button
+                        size="sm"
+                        className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90 font-medium"
+                        onClick={() => setBulkEditOpen(true)}
+                    >
+                        <Edit3 className="mr-1.5 h-3.5 w-3.5" />
+                        Editar selección
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={clearSelection}
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
+
+            {/* BulkEdit Modal */}
+            <BulkEditModal
+                open={bulkEditOpen}
+                onClose={() => setBulkEditOpen(false)}
+                selectedIds={Array.from(selectedIds)}
+                onSuccess={() => { clearSelection(); }}
+            />
 
             {/* Pagination */}
             {sortedAccounts.length > 0 && (

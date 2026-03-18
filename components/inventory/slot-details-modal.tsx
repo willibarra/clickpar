@@ -7,8 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle, ShoppingCart, ExternalLink } from 'lucide-react';
 import { updateSlot, deleteSlot } from '@/lib/actions/inventory';
+
+interface SlotSale {
+    id: string;
+    end_date: string | null;
+    is_active: boolean;
+    customers: { id: string; full_name: string | null; phone: string | null } | null;
+}
 
 interface SlotDetailsModalProps {
     slot: {
@@ -16,12 +23,14 @@ interface SlotDetailsModalProps {
         slot_identifier: string | null;
         status: string;
         pin_code: string | null;
+        sales?: SlotSale[];
     };
     account: {
         platform: string;
         email: string;
         password: string;
     };
+    accountStatus?: string;
 }
 
 const statusOptions = [
@@ -31,7 +40,20 @@ const statusOptions = [
     { value: 'warranty_claim', label: 'En Garantía', color: 'bg-red-500 text-white' },
 ];
 
-export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
+/** Get the active customer from inline sales data if available */
+function getActiveCustomerFromSales(sales?: SlotSale[]): { id: string; full_name: string | null; phone: string | null; end_date: string | null } | null {
+    if (!sales || sales.length === 0) return null;
+    const activeSale = sales.find(s => s.is_active && s.customers);
+    if (!activeSale || !activeSale.customers) return null;
+    return {
+        id: activeSale.customers.id,
+        full_name: activeSale.customers.full_name,
+        phone: activeSale.customers.phone,
+        end_date: activeSale.end_date,
+    };
+}
+
+export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsModalProps) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -45,9 +67,21 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
     const [slotCustomer, setSlotCustomer] = useState<{ id: string; full_name: string | null; phone: string | null; end_date: string | null } | null>(null);
     const [loadingCustomer, setLoadingCustomer] = useState(false);
 
+    // Try to get customer from inline sales data first
+    const inlineCustomer = getActiveCustomerFromSales(slot.sales);
+
     useEffect(() => {
         if (!open) return;
         setConfirmDelete(false);
+
+        // If we already have inline customer data, use it directly
+        if (inlineCustomer) {
+            setSlotCustomer(inlineCustomer);
+            setLoadingCustomer(false);
+            return;
+        }
+
+        // Fallback: fetch from API
         setLoadingCustomer(true);
         setSlotCustomer(null);
         fetch(`/api/search/slot-customer?slotId=${slot.id}`)
@@ -57,7 +91,23 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
             .finally(() => setLoadingCustomer(false));
     }, [open, slot.id]);
 
-    const statusColor = statusOptions.find(s => s.value === slot.status)?.color || 'bg-gray-500';
+    const isQuarantine = accountStatus === 'quarantine';
+
+    // Determine slot button color based on account status
+    const getSlotButtonColor = () => {
+        if (isQuarantine) {
+            if (slot.status === 'sold') return 'bg-purple-500 text-white';
+            if (slot.status === 'available') return 'bg-gray-500/30 text-gray-400 cursor-not-allowed';
+        }
+        return statusOptions.find(s => s.value === slot.status)?.color || 'bg-gray-500';
+    };
+
+    const statusColor = getSlotButtonColor();
+
+    // Get customer name for tooltip on the slot button
+    const customerNameTooltip = inlineCustomer?.full_name
+        ? `${slot.slot_identifier || 'Slot'} — ${inlineCustomer.full_name}`
+        : `Click para ver detalles`;
 
     async function handleSave() {
         setLoading(true);
@@ -91,17 +141,39 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
         setTimeout(() => setCopied(null), 2000);
     }
 
+    /** Open the quick-sale page with this slot pre-selected (in a new tab) */
+    function handleSellFromSlot() {
+        const url = `/?sell=1&platform=${encodeURIComponent(account.platform)}&slotId=${slot.id}`;
+        window.open(url, '_blank');
+        setOpen(false);
+    }
+
+    /** Navigate to the customers view and auto-open the edit modal for this customer */
+    function handleGoToCustomer() {
+        if (!slotCustomer) return;
+        router.push(`/customers?edit=${slotCustomer.id}`);
+        setOpen(false);
+    }
+
     // Whether this slot can be deleted (no active customer)
     const canDelete = !slotCustomer && !loadingCustomer;
+    // Can sell from this slot?
+    const canSell = slot.status === 'available' && !isQuarantine;
 
     return (
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setConfirmDelete(false); }}>
             <DialogTrigger asChild>
                 <button
                     className={`rounded px-2 py-1 text-xs font-medium transition-all hover:scale-105 hover:ring-2 hover:ring-white/30 ${statusColor}`}
-                    title="Click para ver detalles"
+                    title={customerNameTooltip}
+                    disabled={isQuarantine && slot.status === 'available'}
                 >
                     {slot.slot_identifier?.replace('Perfil ', 'P').replace('Miembro ', 'M') || 'S'}
+                    {inlineCustomer?.full_name && slot.status === 'sold' && (
+                        <span className="ml-1 opacity-70 text-[10px]">
+                            · {inlineCustomer.full_name.split(' ')[0]}
+                        </span>
+                    )}
                 </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[450px] bg-card border-border">
@@ -142,6 +214,14 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
                     </div>
                 ) : (
                     <div className="space-y-4 py-4">
+                        {/* ── Quarantine warning ── */}
+                        {isQuarantine && (
+                            <div className="rounded-lg border border-purple-500/40 bg-purple-500/10 p-3 flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                                <span className="text-xs text-purple-300 font-medium">⚠️ Cuenta reportada — los slots libres no se pueden vender</span>
+                            </div>
+                        )}
+
                         {/* ── Cliente asignado (arriba) ── */}
                         {loadingCustomer ? (
                             <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center gap-2">
@@ -185,36 +265,62 @@ export function SlotDetailsModal({ slot, account }: SlotDetailsModalProps) {
                                                 )}
                                             </div>
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className={`flex-shrink-0 gap-1 text-xs h-8 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
-                                            onClick={() => {
-                                                setOpen(false);
-                                                router.push(`/?q=${encodeURIComponent(slotCustomer.phone || slotCustomer.full_name || '')}`);
-                                            }}
-                                        >
-                                            <Search className="h-3 w-3" />
-                                            Buscar
-                                        </Button>
+                                        <div className="flex flex-col gap-1 flex-shrink-0">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className={`gap-1 text-xs h-7 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
+                                                onClick={handleGoToCustomer}
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                Ver Cliente
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             );
                         })() : (
                             <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center justify-between">
                                 <p className="text-xs text-muted-foreground">Slot sin cliente asignado</p>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 gap-1"
-                                    onClick={() => setConfirmDelete(true)}
-                                >
-                                    <Trash2 className="h-3 w-3" />
-                                    Eliminar Slot
-                                </Button>
+                                <div className="flex gap-1">
+                                    {canSell && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs text-[#86EFAC] hover:text-[#86EFAC]/80 hover:bg-[#86EFAC]/10 h-7 gap-1"
+                                            onClick={handleSellFromSlot}
+                                        >
+                                            <ShoppingCart className="h-3 w-3" />
+                                            Vender
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 gap-1"
+                                        onClick={() => setConfirmDelete(true)}
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                        Eliminar Slot
+                                    </Button>
+                                </div>
                             </div>
+                        )}
+
+                        {/* ── Sell button for available slot with no customer ── */}
+                        {canSell && !slotCustomer && !loadingCustomer && (
+                            <Button
+                                type="button"
+                                className="w-full bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90 gap-2"
+                                onClick={handleSellFromSlot}
+                            >
+                                <ShoppingCart className="h-4 w-4" />
+                                Vender este Perfil
+                                <ExternalLink className="h-3 w-3 ml-1 opacity-60" />
+                            </Button>
                         )}
 
                         {/* ── Cuenta madre (read-only) ── */}

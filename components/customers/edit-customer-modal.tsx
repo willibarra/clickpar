@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil, Loader2, Trash2, Key, Eye, EyeOff } from 'lucide-react';
+import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
 
@@ -17,13 +17,21 @@ interface Customer {
     whatsapp_instance?: string | null;
 }
 
-export function EditCustomerModal({ customer }: { customer: Customer }) {
-    const [open, setOpen] = useState(false);
+interface EditCustomerModalProps {
+    customer: Customer;
+    defaultOpen?: boolean;
+    onOpenChange?: (open: boolean) => void;
+}
+
+export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange: onOpenChangeProp }: EditCustomerModalProps) {
+    const [open, setOpen] = useState(defaultOpen);
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [portalPassword, setPortalPassword] = useState<string | null>(null);
     const [loadingPassword, setLoadingPassword] = useState(false);
+    const [regenerating, setRegenerating] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -78,9 +86,66 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
         }
     }
 
+    async function handleRegeneratePassword() {
+        if (!confirm('¿Regenerar la contraseña? La contraseña anterior dejará de funcionar.')) return;
+
+        setRegenerating(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/admin/regenerate-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: customer.id }),
+            });
+            const data = await res.json();
+            if (data.password) {
+                setPortalPassword(data.password);
+            } else {
+                setError(data.error || 'No se pudo regenerar la contraseña');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setRegenerating(false);
+        }
+    }
+
+    function formatPhoneDisplay(phone: string | null) {
+        if (!phone) return '';
+        const clean = phone.replace(/^\+?595/, '0');
+        return clean;
+    }
+
+    async function handleCopyCredentials() {
+        if (!portalPassword) {
+            // Need to fetch password first
+            await handleShowPassword();
+            return;
+        }
+
+        const phoneDisplay = formatPhoneDisplay(customer.phone_number);
+        const text = [
+            `🔐 Datos de acceso a ClickPar`,
+            `📱 Teléfono: ${phoneDisplay}`,
+            `🔑 Contraseña: ${portalPassword}`,
+            `🌐 Portal: clickpar.shop/cliente/login`,
+        ].join('\n');
+
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            setError('No se pudo copiar al portapapeles');
+        }
+    }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) { setPortalPassword(null); setCopied(false); }
+            onOpenChangeProp?.(v);
+        }}>
             <DialogTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8">
                     <Pencil className="h-4 w-4 mr-1" />
@@ -149,12 +214,12 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                             </Select>
                         </div>
 
-                        {/* Portal password reveal */}
+                        {/* Portal password section */}
                         <div className="space-y-2">
                             <Label>Contraseña del Portal</Label>
-                            <div className="flex items-center gap-2">
+                            <div className="space-y-2">
                                 {portalPassword ? (
-                                    <div className="flex items-center gap-2 flex-1">
+                                    <div className="flex items-center gap-2">
                                         <code className="flex-1 rounded-md bg-muted/50 px-3 py-2 text-sm font-mono text-[#86EFAC]">
                                             {portalPassword}
                                         </code>
@@ -163,6 +228,7 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => setPortalPassword(null)}
+                                            title="Ocultar"
                                         >
                                             <EyeOff className="h-4 w-4" />
                                         </Button>
@@ -184,6 +250,42 @@ export function EditCustomerModal({ customer }: { customer: Customer }) {
                                         Ver contraseña
                                     </Button>
                                 )}
+
+                                {/* Action buttons */}
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleRegeneratePassword}
+                                        disabled={regenerating}
+                                        className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300"
+                                    >
+                                        {regenerating ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        )}
+                                        Regenerar contraseña
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleCopyCredentials}
+                                        className={`gap-1.5 transition-colors ${copied
+                                            ? 'text-[#86EFAC] border-[#86EFAC]/30 bg-[#86EFAC]/10'
+                                            : 'text-blue-400 border-blue-400/30 hover:bg-blue-400/10 hover:text-blue-300'
+                                        }`}
+                                    >
+                                        {copied ? (
+                                            <Check className="h-3.5 w-3.5" />
+                                        ) : (
+                                            <Copy className="h-3.5 w-3.5" />
+                                        )}
+                                        {copied ? '¡Copiado!' : 'Copiar datos'}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>

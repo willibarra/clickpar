@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -100,13 +101,37 @@ const statusOrder = { active: 1, expired: 2, inactive: 3 };
 /* ── Component ───────────────────────────────────────────────── */
 
 export function CustomersView({ customers }: CustomersViewProps) {
-    const [searchQuery, setSearchQuery] = useState('');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [sortField, setSortField] = useState<SortField>('nextExpiry');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [pageSize, setPageSize] = useState<number>(30);
     const [currentPage, setCurrentPage] = useState(1);
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
+    // Customer ID to auto-open for editing (comes from ?edit= URL param)
+    const [autoEditId, setAutoEditId] = useState<string | null>(() => searchParams.get('edit'));
+
+    // Clear the ?edit= param from the URL once we've consumed it
+    // (to avoid re-triggering on re-renders)
+    useEffect(() => {
+        const editId = searchParams.get('edit');
+        if (editId) {
+            setAutoEditId(editId);
+            // Remove the edit param from the URL without a page reload
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('edit');
+            const newUrl = params.toString() ? `/customers?${params.toString()}` : '/customers';
+            router.replace(newUrl, { scroll: false });
+        }
+    }, [searchParams]);
+
+    // Reset autoEditId after modal has been opened once
+    function clearAutoEdit() {
+        setAutoEditId(null);
+    }
 
     // Counts per status
     const counts = useMemo(() => {
@@ -404,13 +429,17 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                         <RefreshCw className="h-3 w-3" />
                                                         Gestionar
                                                     </a>
-                                                    <EditCustomerModal customer={{
-                                                        id: customer.id,
-                                                        full_name: customer.full_name,
-                                                        phone_number: customer.phone,
-                                                        customer_type: customer.customer_type,
-                                                        whatsapp_instance: customer.whatsapp_instance,
-                                                    }} />
+                                                    <EditCustomerModal
+                                                        customer={{
+                                                            id: customer.id,
+                                                            full_name: customer.full_name,
+                                                            phone_number: customer.phone,
+                                                            customer_type: customer.customer_type,
+                                                            whatsapp_instance: customer.whatsapp_instance,
+                                                        }}
+                                                        defaultOpen={autoEditId === customer.id}
+                                                        onOpenChange={(open: boolean) => { if (!open && autoEditId === customer.id) clearAutoEdit(); }}
+                                                    />
                                                 </div>
                                             </td>
                                         </tr>

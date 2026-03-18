@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, EyeOff, Pencil, Check, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Pencil, Check, FileSpreadsheet, AlertCircle, CheckCircle2, ClipboardCopy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -99,6 +99,10 @@ export function AddAccountModal() {
     const [invitationUrl, setInvitationUrl] = useState('');
     const [inviteAddress, setInviteAddress] = useState('');
 
+    // Copy last record
+    const [copyingLast, setCopyingLast] = useState(false);
+    const [copiedFlash, setCopiedFlash] = useState(false);
+
     // Bulk mode
     const [bulkMode, setBulkMode] = useState(false);
     const [bulkText, setBulkText] = useState('');
@@ -111,6 +115,11 @@ export function AddAccountModal() {
     const [gsCost, setGsCost] = useState('');
     const [editingRate, setEditingRate] = useState(false);
     const [rateInput, setRateInput] = useState('');
+
+    // Controlled supplier + sale price (needed for copy last record)
+    const [supplierName, setSupplierName] = useState('');
+    const [supplierPhone, setSupplierPhone] = useState('');
+    const [salePriceGs, setSalePriceGs] = useState('');
 
     // Parse bulk text in real-time
     const bulkAccounts = useMemo(() => parseAccountLines(bulkText), [bulkText]);
@@ -141,6 +150,10 @@ export function AddAccountModal() {
             setBulkText('');
             setBulkProgress(null);
             setBulkResult(null);
+            setSupplierName('');
+            setSupplierPhone('');
+            setSalePriceGs('');
+            setCopiedFlash(false);
             const defaultSlots = 5;
             setMaxSlots(defaultSlots);
             setCustomSlots(Array.from({ length: defaultSlots }, () => ({ name: '', pin: '' })));
@@ -176,6 +189,90 @@ export function AddAccountModal() {
             })));
         } else {
             setPlatforms(data);
+        }
+    }
+
+    async function handleCopyLastRecord() {
+        setCopyingLast(true);
+        try {
+            const supabase = createClient();
+            type LastRecord = {
+                platform: string | null;
+                max_slots: number | null;
+                purchase_cost_usdt: number | null;
+                purchase_cost_gs: number | null;
+                sale_price_gs: number | null;
+                supplier_name: string | null;
+                supplier_phone: string | null;
+                service_days: number | null;
+                instructions: string | null;
+                send_instructions: boolean | null;
+                is_autopay: boolean | null;
+                is_owned_email: boolean | null;
+                invitation_url: string | null;
+                invite_address: string | null;
+            };
+            const { data: rawData, error } = await supabase
+                .from('mother_accounts')
+                .select('platform, max_slots, purchase_cost_usdt, purchase_cost_gs, sale_price_gs, supplier_name, supplier_phone, service_days, instructions, send_instructions, is_autopay, is_owned_email, invitation_url, invite_address')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+            const data = rawData as LastRecord | null;
+
+            if (error || !data) {
+                setError('No se encontró ningún registro anterior.');
+                return;
+            }
+
+            // Apply platform
+            if (data.platform) {
+                handlePlatformChange(data.platform);
+            }
+
+            // Apply slots
+            if (data.max_slots) setMaxSlots(data.max_slots);
+
+            // Apply costs
+            if (data.purchase_cost_usdt) {
+                setUsdtCost(String(data.purchase_cost_usdt));
+                if (rate > 0) setGsCost(String(convertToGs(data.purchase_cost_usdt)));
+                else if (data.purchase_cost_gs) setGsCost(String(data.purchase_cost_gs));
+            } else if (data.purchase_cost_gs) {
+                setGsCost(String(data.purchase_cost_gs));
+            }
+
+            // Apply service days
+            if (data.service_days) setServiceDays(data.service_days);
+
+            // Apply supplier
+            setSupplierName(data.supplier_name || '');
+            setSupplierPhone(data.supplier_phone || '');
+
+            // Apply instructions
+            if (data.instructions) {
+                setInstructions(data.instructions);
+                setSendInstructions(data.send_instructions || false);
+            }
+
+            // Apply checkboxes
+            setIsAutopay(data.is_autopay || false);
+            setIsOwnedEmail(data.is_owned_email || false);
+
+            // Apply family account fields
+            if (data.invitation_url) setInvitationUrl(data.invitation_url);
+            if (data.invite_address) setInviteAddress(data.invite_address);
+
+            // Apply sale price gs
+            if (data.sale_price_gs) setSalePriceGs(String(data.sale_price_gs));
+
+            // Flash feedback
+            setCopiedFlash(true);
+            setTimeout(() => setCopiedFlash(false), 2000);
+        } catch {
+            setError('Error al obtener el último registro.');
+        } finally {
+            setCopyingLast(false);
         }
     }
 
@@ -367,10 +464,36 @@ export function AddAccountModal() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Agregar Cuenta Madre</DialogTitle>
-                    <DialogDescription>
-                        Ingresa los datos de la nueva cuenta de streaming
-                    </DialogDescription>
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <DialogTitle>Agregar Cuenta Madre</DialogTitle>
+                            <DialogDescription>
+                                Ingresa los datos de la nueva cuenta de streaming
+                            </DialogDescription>
+                        </div>
+                        {!bulkMode && (
+                            <button
+                                type="button"
+                                onClick={handleCopyLastRecord}
+                                disabled={copyingLast}
+                                title="Copiar datos del último registro (sin email ni contraseña)"
+                                className={`flex items-center gap-1.5 shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                    copiedFlash
+                                        ? 'border-[#86EFAC]/60 bg-[#86EFAC]/10 text-[#86EFAC]'
+                                        : 'border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:border-border/80'
+                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                                {copyingLast ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : copiedFlash ? (
+                                    <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                    <ClipboardCopy className="h-3.5 w-3.5" />
+                                )}
+                                {copiedFlash ? '¡Copiado!' : 'Copiar Último'}
+                            </button>
+                        )}
+                    </div>
                 </DialogHeader>
 
                 {/* Mode Toggle */}
@@ -693,6 +816,8 @@ export function AddAccountModal() {
                                     name="sale_price_gs"
                                     type="number"
                                     placeholder="0"
+                                    value={salePriceGs}
+                                    onChange={(e) => setSalePriceGs(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -747,6 +872,8 @@ export function AddAccountModal() {
                                     name="supplier_name"
                                     type="text"
                                     placeholder="Nombre del proveedor"
+                                    value={supplierName}
+                                    onChange={(e) => setSupplierName(e.target.value)}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -756,6 +883,8 @@ export function AddAccountModal() {
                                     name="supplier_phone"
                                     type="text"
                                     placeholder="+595 ..."
+                                    value={supplierPhone}
+                                    onChange={(e) => setSupplierPhone(e.target.value)}
                                 />
                             </div>
                         </div>

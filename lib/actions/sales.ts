@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { createKommoLead, addNoteToLead } from '@/lib/kommo';
 import { sendSaleCredentials, sendFamilyCredentials, sendFamilyInvite, getWhatsAppSettings } from '@/lib/whatsapp';
 import { normalizePhone } from '@/lib/utils/phone';
+import { ensurePortalAccount } from '@/lib/utils/portal-account';
 import { logAction } from './audit';
 
 interface QuickSaleData {
@@ -54,6 +55,18 @@ export async function createQuickSale(data: QuickSaleData) {
                 if (createError) throw new Error(`Error creando cliente: ${createError.message}`);
                 customerId = newCustomerData.id;
             }
+        }
+
+        // Auto-create portal account if customer doesn't have one
+        let portalCredentials: { password: string | null; isNew: boolean } = { password: null, isNew: false };
+        try {
+            portalCredentials = await ensurePortalAccount(
+                customerId,
+                normalizePhone(data.customerPhone),
+                data.customerName || data.customerPhone
+            );
+        } catch (e) {
+            console.warn('[QuickSale] Portal account creation failed (non-blocking):', e);
         }
 
         // 1b. Leer whatsapp_instance del cliente
@@ -301,6 +314,18 @@ export async function createQuickSale(data: QuickSaleData) {
                             console.log('[WhatsApp] Instrucciones enviadas a', data.customerPhone);
                         }
                     }
+                }
+
+                // Send portal credentials if newly created
+                if (portalCredentials.isNew && portalCredentials.password) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    const { sendText } = await import('@/lib/whatsapp');
+                    await sendText(
+                        data.customerPhone,
+                        `🔐 *Tu Panel ClickPar*\n\nYa podés consultar tus servicios, credenciales y ayuda desde tu panel:\n\n🌐 *clickpar.shop/cliente*\n📱 *Usuario:* ${data.customerPhone}\n🔑 *Contraseña:* ${portalCredentials.password}\n\n_Guardá estos datos, los vas a necesitar para acceder._`,
+                        { instanceName: customerWaInstance || undefined, customerId }
+                    );
+                    console.log('[WhatsApp] Credenciales de portal enviadas a', data.customerPhone);
                 }
             }
         } catch (waError) {
@@ -744,6 +769,17 @@ export async function createBundleSale(data: BundleSaleData) {
             }
         }
 
+        // Auto-create portal account if customer doesn't have one
+        try {
+            await ensurePortalAccount(
+                customerId,
+                normalizePhone(data.customerPhone),
+                data.customerName || data.customerPhone
+            );
+        } catch (e) {
+            console.warn('[BundleSale] Portal account creation failed (non-blocking):', e);
+        }
+
         // 3. Para cada item del bundle, asignar un slot
         const bundleItems = bundleData.bundle_items || [];
         const assignedSlots: { slotId: string; platform: string }[] = [];
@@ -966,6 +1002,17 @@ export async function processComboSale(data: ComboSaleData) {
                 if (createError) return { error: `Error creando cliente: ${createError.message}` };
                 customerId = newCustomer.id;
             }
+        }
+
+        // Auto-create portal account if customer doesn't have one
+        try {
+            await ensurePortalAccount(
+                customerId,
+                normalizePhone(data.customerPhone),
+                data.customerName || data.customerPhone
+            );
+        } catch (e) {
+            console.warn('[ComboSale] Portal account creation failed (non-blocking):', e);
         }
 
         // 2b. Leer whatsapp_instance del cliente

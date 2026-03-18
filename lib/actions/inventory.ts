@@ -604,6 +604,57 @@ export async function reactivateAccount(accountId: string) {
 }
 
 /**
+ * Mass-update multiple mother accounts with partial data.
+ * Only fields present (non-undefined) in `fields` will be updated.
+ */
+export async function bulkUpdateMotherAccounts(
+    ids: string[],
+    fields: {
+        status?: string;
+        renewal_date?: string;
+        supplier_name?: string | null;
+        supplier_phone?: string | null;
+        purchase_cost_usdt?: number | null;
+        purchase_cost_gs?: number | null;
+        sale_price_gs?: number | null;
+        notes?: string | null;
+    }
+) {
+    if (!ids || ids.length === 0) return { error: 'No hay IDs seleccionados' };
+
+    const supabase = await createClient();
+
+    // Build update payload — only keys explicitly set
+    const update: Record<string, any> = {};
+    if (fields.status !== undefined) update.status = fields.status;
+    if (fields.renewal_date !== undefined) {
+        update.renewal_date = fields.renewal_date;
+        update.target_billing_day = new Date(fields.renewal_date + 'T12:00:00').getDate();
+    }
+    if (fields.supplier_name !== undefined) update.supplier_name = fields.supplier_name || null;
+    if (fields.supplier_phone !== undefined) update.supplier_phone = fields.supplier_phone || null;
+    if (fields.purchase_cost_usdt !== undefined) update.purchase_cost_usdt = fields.purchase_cost_usdt ?? 0;
+    if (fields.purchase_cost_gs !== undefined) update.purchase_cost_gs = fields.purchase_cost_gs ?? 0;
+    if (fields.sale_price_gs !== undefined) update.sale_price_gs = fields.sale_price_gs ?? null;
+    if (fields.notes !== undefined) update.notes = fields.notes || null;
+
+    if (Object.keys(update).length === 0) return { error: 'No hay campos para actualizar' };
+
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .update(update)
+        .in('id', ids);
+
+    if (error) return { error: error.message };
+
+    await logAction('bulk_update_accounts', 'mother_account', ids[0], {
+        message: `editó masivamente ${ids.length} cuentas (campos: ${Object.keys(update).join(', ')})`
+    });
+
+    revalidatePath('/inventory');
+    return { success: true, updated: ids.length };
+}
+
+/**
  * Returns mother accounts where ALL slots are currently available.
  * These are the "Cuentas Completas" that can be sold as a whole.
  */

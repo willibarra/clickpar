@@ -286,7 +286,7 @@ export default function SettingsPage() {
                     {rate > 0 && (
                         <p className="text-xs text-muted-foreground">
                             Cambio actual: <span className="text-[#86EFAC] font-medium">1 USDT = {rate.toLocaleString('es-PY')} Gs.</span>
-                            <span className="ml-2 text-muted-foreground/60">(guardado en este dispositivo)</span>
+                            <span className="ml-2 text-muted-foreground/60">✓ guardado en la base de datos</span>
                         </p>
                     )}
                 </CardContent>

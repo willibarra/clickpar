@@ -39,8 +39,7 @@ export async function GET() {
     const { data: sales, error } = await (admin.from('sales') as any)
         .select('id, amount_gs, start_date, end_date, is_active, slot_id')
         .eq('customer_id', customer.id)
-        .order('start_date', { ascending: false })
-        .limit(50);
+        .order('start_date', { ascending: false });
 
     if (error) {
         console.error('[Portal] Error fetching history:', error);

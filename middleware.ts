@@ -4,6 +4,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
 
+    // Redirect legacy/removed routes
+    if (pathname === '/register' || pathname === '/portal/login') {
+        return NextResponse.redirect(new URL('/cliente/login', request.url));
+    }
+    if (pathname.startsWith('/portal')) {
+        return NextResponse.redirect(new URL(pathname.replace('/portal', '/cliente'), request.url));
+    }
+
     // Skip auth for login pages and API routes
     if (
         pathname === '/cliente/login' ||

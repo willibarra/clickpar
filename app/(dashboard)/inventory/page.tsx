@@ -39,12 +39,18 @@ const statusLabels: Record<string, string> = {
 export default async function InventoryPage() {
     const supabase = await createAdminClient();
 
-    // Fetch mother accounts with their slots
+    // Fetch mother accounts with their slots (simplified query to avoid timeout)
+    // Sales/customer details are fetched on-demand by SlotDetailsModal
     const { data: accounts } = await supabase
         .from('mother_accounts')
         .select(`
       *,
-      sale_slots (*)
+      sale_slots (
+        id,
+        status,
+        slot_identifier,
+        pin_code
+      )
     `)
         .order('platform');
 

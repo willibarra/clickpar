@@ -47,11 +47,12 @@ interface ComboItem {
 
 interface QuickSaleWidgetProps {
     platforms: Platform[];
+    preselect?: { platform: string; slotId: string } | null;
 }
 
 type SaleMode = 'individual' | 'combo';
 
-export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
+export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) {
     // Mode toggle
     const [saleMode, setSaleMode] = useState<SaleMode>('individual');
 
@@ -79,6 +80,22 @@ export function QuickSaleWidget({ platforms }: QuickSaleWidgetProps) {
     const [searchLoading, setSearchLoading] = useState(false);
 
     const supabase = createClient();
+
+    // Handle preselect from sell-from-slot
+    useEffect(() => {
+        if (!preselect || !preselect.platform) return;
+        const platform = platforms.find(p => p.name === preselect.platform);
+        if (platform) {
+            setSelectedPlatform(platform.name);
+            setPrice(platform.price || 25000);
+            setStep('customer');
+            // If we have a slotId, pre-assign the slot
+            if (preselect.slotId) {
+                setShowManualAssign(true);
+                setSelectedSlot({ id: preselect.slotId, mother_account: { email: '(prellenado)' }, slot_identifier: 'Asignado desde inventario' });
+            }
+        }
+    }, [preselect, platforms]);
 
     // Combo mode state
     const [comboItems, setComboItems] = useState<ComboItem[]>([]);

@@ -22,10 +22,8 @@ export default async function PortalLayout({
         .eq('id', user.id)
         .single();
 
-    // If admin/employee, redirect to admin dashboard
-    if (profile?.role === 'admin' || profile?.role === 'employee') {
-        redirect('/');
-    }
+    // Note: we no longer redirect staff/admin away from /portal.
+    // The portal API filters services by phone number, so it works for any role.
 
     const userName = profile?.full_name || user.email || 'Cliente';
 

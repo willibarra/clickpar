@@ -20,10 +20,11 @@ function formatGs(amount: number): string {
 export default async function DashboardPage({
     searchParams,
 }: {
-    searchParams: Promise<{ q?: string }>;
+    searchParams: Promise<{ q?: string; sell?: string; platform?: string; slotId?: string }>;
 }) {
     const params = await searchParams;
     const searchQuery = params.q?.trim() || '';
+    const sellFromSlot = params.sell === '1' ? { platform: params.platform || '', slotId: params.slotId || '' } : null;
 
     // If there's a search query, render search results instead of dashboard
     if (searchQuery.length >= 2) {
@@ -251,7 +252,7 @@ export default async function DashboardPage({
             {/* Quick Sale + Alerts Row */}
             <div className="grid gap-4 lg:grid-cols-2">
                 {/* Quick Sale Widget */}
-                <QuickSaleWidget platforms={platforms || []} />
+                <QuickSaleWidget platforms={platforms || []} preselect={sellFromSlot} />
 
                 {/* Expiration Alerts */}
                 <ExpirationAlerts accounts={expiringAccounts || []} expiringSales={expiringSales || []} />

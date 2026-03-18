@@ -21,10 +21,8 @@ export default async function ClienteLayout({
         .eq('id', user.id)
         .single();
 
-    // If admin/staff, redirect to admin dashboard
-    if (profile?.role === 'super_admin' || profile?.role === 'staff') {
-        redirect('/');
-    }
+    // Note: we no longer redirect staff/admin away from /cliente.
+    // The portal API filters services by phone number, so it works for any role.
 
     const userName = profile?.full_name || user.email || 'Cliente';
 

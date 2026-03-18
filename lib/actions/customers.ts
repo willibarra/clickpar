@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
-import { encrypt } from '@/lib/utils/encryption';
+import { ensurePortalAccount } from '@/lib/utils/portal-account';
 import { logAction } from './audit';
 
 // ============================================
@@ -45,42 +45,10 @@ export async function createCustomer(formData: FormData) {
         return { error: error.message };
     }
 
-    // Auto-generate portal credentials
-    if (phone) {
+    // Auto-generate portal credentials using shared helper
+    if (phone && data?.id) {
         try {
-            const p1 = Math.random().toString(36).slice(2, 6);
-            const p2 = Math.random().toString(36).slice(2, 6);
-            const password = `CP-${p1}-${p2}`;
-            const email = `${phone.replace('+', '')}@clickpar.shop`;
-
-            // Create Supabase Auth user
-            const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-                email,
-                phone: phone.startsWith('+') ? phone : `+${phone}`,
-                password,
-                email_confirm: true,
-                phone_confirm: true,
-                user_metadata: { full_name: fullName, customer_id: data?.id },
-                app_metadata: { user_role: 'customer' },
-            });
-
-            if (authUser?.user) {
-                // Create profile with customer role
-                await (supabase.from('profiles') as any)
-                    .upsert({
-                        id: authUser.user.id,
-                        full_name: fullName,
-                        phone_number: phone,
-                        role: 'customer',
-                    });
-
-                // Store encrypted password in customers table for reference
-                await (supabase.from('customers') as any)
-                    .update({ portal_password: encrypt(password) })
-                    .eq('id', data?.id);
-            } else if (authError) {
-                console.warn('[createCustomer] Auth user creation failed (non-blocking):', authError.message);
-            }
+            await ensurePortalAccount(data.id, phone, fullName);
         } catch (err) {
             console.warn('[createCustomer] Portal credential generation failed (non-blocking):', err);
         }

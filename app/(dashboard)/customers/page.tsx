@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server';
+import { Suspense } from 'react';
 import { Users, TrendingUp, AlertTriangle, UserX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AddCustomerModal } from '@/components/customers/add-customer-modal';
@@ -197,7 +198,9 @@ export default async function CustomersPage() {
             </div>
 
             {/* Customers Table View */}
-            <CustomersView customers={enrichedCustomers} />
+            <Suspense fallback={<div className="text-muted-foreground text-sm py-8 text-center">Cargando clientes...</div>}>
+                <CustomersView customers={enrichedCustomers} />
+            </Suspense>
         </div>
     );
 }
