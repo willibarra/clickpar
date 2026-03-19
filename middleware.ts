@@ -3,6 +3,74 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
+    const hostname = request.headers.get('host') ?? '';
+    const isClickparNet = hostname.startsWith('clickpar.net');
+    const isClickparShop = hostname.startsWith('clickpar.shop');
+
+    // ─────────────────────────────────────────────────────────────────
+    // DOMAIN: clickpar.net → solo portal de clientes
+    // ─────────────────────────────────────────────────────────────────
+    if (isClickparNet) {
+        // API routes always pass through
+        if (pathname.startsWith('/api/')) {
+            return NextResponse.next({ request });
+        }
+
+        // Customer login page — allow without auth
+        if (pathname === '/cliente/login') {
+            return NextResponse.next({ request });
+        }
+
+        // Any non-cliente route → redirect to customer portal
+        if (!pathname.startsWith('/cliente')) {
+            return NextResponse.redirect(new URL('/cliente', request.url));
+        }
+
+        // /cliente/* routes → check auth
+        const supabaseNet = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    getAll() { return request.cookies.getAll(); },
+                    setAll(cookiesToSet) {
+                        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+                    },
+                },
+            }
+        );
+        const { data: { user: netUser } } = await supabaseNet.auth.getUser();
+        if (!netUser) {
+            return NextResponse.redirect(new URL('/cliente/login', request.url));
+        }
+        return NextResponse.next({ request });
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // DOMAIN: clickpar.shop → solo panel admin (/staff)
+    // ─────────────────────────────────────────────────────────────────
+    if (isClickparShop) {
+        // API routes always pass through
+        if (pathname.startsWith('/api/')) {
+            return NextResponse.next({ request });
+        }
+
+        // Staff login — allow without auth
+        if (pathname === '/staff/login') {
+            return NextResponse.next({ request });
+        }
+
+        // Root (/) or any non-staff route → redirect to clickpar.net
+        if (pathname === '/' || pathname.startsWith('/cliente')) {
+            return NextResponse.redirect('https://clickpar.net');
+        }
+
+        // /staff/* and admin routes — fall through to normal auth below
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // LEGACY / COMMON ROUTES (clickpar.shop admin & local dev)
+    // ─────────────────────────────────────────────────────────────────
 
     // Redirect legacy/removed routes
     if (pathname === '/register' || pathname === '/portal/login') {
@@ -83,13 +151,11 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/staff/login', request.url));
         }
         if (role === 'super_admin' || role === 'staff') {
-            // Admin dashboard — let through to (dashboard)/page.tsx
             return supabaseResponse;
         }
         if (role === 'customer') {
             return NextResponse.redirect(new URL('/cliente', request.url));
         }
-        // Unknown role → staff login
         return NextResponse.redirect(new URL('/staff/login', request.url));
     }
 
