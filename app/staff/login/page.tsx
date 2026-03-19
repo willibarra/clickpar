@@ -96,8 +96,14 @@ export default function StaffLoginPage() {
                 return;
             }
 
-            router.push('/');
-            router.refresh();
+            // Redirect to admin dashboard — use absolute URL to ensure correct domain
+            const isProd = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            if (isProd) {
+                window.location.href = 'https://clickpar.shop/';
+            } else {
+                router.push('/');
+                router.refresh();
+            }
         } catch (err: any) {
             setError(err.message || 'Error inesperado');
         } finally {
