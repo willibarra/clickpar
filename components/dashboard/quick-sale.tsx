@@ -155,9 +155,13 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         const timeout = setTimeout(async () => {
             setSearchLoading(true);
             const q = customerSearch.trim().toLowerCase();
+            // If query looks like a phone (digits, spaces, +), normalize for DB search
+            const digits = q.replace(/\D/g, '');
+            const isPhoneQuery = digits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
+            const phoneQ = isPhoneQuery ? digits : q;
             const { data } = await (supabase.from('customers') as any)
                 .select('id, full_name, phone')
-                .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%`)
+                .or(`full_name.ilike.%${q}%,phone.ilike.%${phoneQ}%`)
                 .limit(8);
             setCustomerResults(data || []);
             setSearchLoading(false);

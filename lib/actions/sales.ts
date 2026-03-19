@@ -45,7 +45,7 @@ export async function createQuickSale(data: QuickSaleData) {
                 const { data: newCustomerData, error: createError } = await (supabase
                     .from('customers') as any)
                     .insert({
-                        phone: data.customerPhone,
+                        phone: normalizePhone(data.customerPhone),
                         full_name: data.customerName || data.customerPhone, // Usar nombre provisto o el teléfono
                         notes: 'Creado desde Venta Rápida'
                     })
@@ -317,16 +317,17 @@ export async function createQuickSale(data: QuickSaleData) {
                 }
 
                 // Send portal credentials if newly created
-                if (portalCredentials.isNew && portalCredentials.password) {
-                    await new Promise(r => setTimeout(r, 1500));
-                    const { sendText } = await import('@/lib/whatsapp');
-                    await sendText(
-                        data.customerPhone,
-                        `🔐 *Tu Panel ClickPar*\n\nYa podés consultar tus servicios, credenciales y ayuda desde tu panel:\n\n🌐 *clickpar.shop/cliente*\n📱 *Usuario:* ${data.customerPhone}\n🔑 *Contraseña:* ${portalCredentials.password}\n\n_Guardá estos datos, los vas a necesitar para acceder._`,
-                        { instanceName: customerWaInstance || undefined, customerId }
-                    );
-                    console.log('[WhatsApp] Credenciales de portal enviadas a', data.customerPhone);
-                }
+                // SUSPENDED: Temporalmente desactivado el envío del mensaje del panel
+                // if (portalCredentials.isNew && portalCredentials.password) {
+                //     await new Promise(r => setTimeout(r, 1500));
+                //     const { sendText } = await import('@/lib/whatsapp');
+                //     await sendText(
+                //         data.customerPhone,
+                //         `🔐 *Tu Panel ClickPar*\n\nYa podés consultar tus servicios, credenciales y ayuda desde tu panel:\n\n🌐 *clickpar.shop/cliente*\n📱 *Usuario:* ${data.customerPhone}\n🔑 *Contraseña:* ${portalCredentials.password}\n\n_Guardá estos datos, los vas a necesitar para acceder._`,
+                //         { instanceName: customerWaInstance || undefined, customerId }
+                //     );
+                //     console.log('[WhatsApp] Credenciales de portal enviadas a', data.customerPhone);
+                // }
             }
         } catch (waError) {
             console.error('[WhatsApp] Error (non-blocking):', waError);
@@ -757,7 +758,7 @@ export async function createBundleSale(data: BundleSaleData) {
                 const { data: newCustomer, error: createError } = await (supabase
                     .from('customers') as any)
                     .insert({
-                        phone: data.customerPhone,
+                        phone: normalizePhone(data.customerPhone),
                         full_name: data.customerName || data.customerPhone,
                         notes: 'Creado desde Venta de Bundle'
                     })
@@ -992,7 +993,7 @@ export async function processComboSale(data: ComboSaleData) {
                 const { data: newCustomer, error: createError } = await (supabase
                     .from('customers') as any)
                     .insert({
-                        phone: data.customerPhone,
+                        phone: normalizePhone(data.customerPhone),
                         full_name: data.customerName || data.customerPhone,
                         notes: 'Creado desde Venta Rápida (Combo)'
                     })

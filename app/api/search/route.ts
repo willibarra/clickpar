@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
     const pattern = `%${q}%`;
 
     // If the query looks like a phone number, try normalizing to 595 format.
-    // If normalization fails (e.g. partial number like last 6 digits), fall back
-    // to a raw digit pattern so partial matches still work.
+    // Strip all non-digit characters first so formats like "+595 994 480158" or
+    // "0994 480 158" are detected and normalized correctly.
     const digits = q.replace(/\D/g, '');
-    const isPhoneQuery = digits.length >= 4 && /^\+?\d+$/.test(q);
+    // A query is phone-like if removing non-digits leaves >= 4 digits and the
+    // original string contains only digits, spaces, +, -, (, ) characters.
+    const isPhoneQuery = digits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
     const normalized = isPhoneQuery ? safeNormalizePhone(digits) : null;
     // For phone queries: use normalized or raw digits. For non-phone (emails, names): use the full pattern.
     const phonePattern = isPhoneQuery

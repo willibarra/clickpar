@@ -1,6 +1,5 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, Package, Users, DollarSign, AlertTriangle, Bell, ShoppingCart } from 'lucide-react';
+import { TrendingUp, Package, Users, DollarSign, Bell, ShoppingCart } from 'lucide-react';
 import { QuickSaleWidget } from '@/components/dashboard/quick-sale';
 import { ExpirationAlerts } from '@/components/dashboard/expiration-alerts';
 import { PlatformStats } from '@/components/dashboard/platform-stats';
@@ -233,16 +232,23 @@ export default async function DashboardPage({
             {/* Page Title */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-                    <p className="text-muted-foreground">
+                    <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+                    <p className="text-sm mt-0.5" style={{ color: '#8b8ba7' }}>
                         Bienvenido al panel de gestión de ClickPar
                     </p>
                 </div>
                 {/* Expiration Alert Badge */}
                 {((expiringAccounts && expiringAccounts.length > 0) || (expiringSales && expiringSales.length > 0)) && (
-                    <div className="flex items-center gap-2 rounded-lg bg-[#F97316]/20 px-4 py-2 text-[#F97316]">
-                        <Bell className="h-5 w-5 animate-pulse" />
-                        <span className="font-medium">
+                    <div
+                        className="flex items-center gap-2 rounded-xl px-4 py-2"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(232,121,249,0.15), rgba(168,85,247,0.10))',
+                            border: '1px solid rgba(232,121,249,0.25)',
+                            color: '#e879f9',
+                        }}
+                    >
+                        <Bell className="h-4 w-4 animate-pulse" />
+                        <span className="text-sm font-medium">
                             {(expiringAccounts?.length || 0) + (expiringSales?.length || 0)} vencimientos próximos
                         </span>
                     </div>
@@ -251,10 +257,7 @@ export default async function DashboardPage({
 
             {/* Quick Sale + Alerts Row */}
             <div className="grid gap-4 lg:grid-cols-2">
-                {/* Quick Sale Widget */}
                 <QuickSaleWidget platforms={platforms || []} preselect={sellFromSlot} />
-
-                {/* Expiration Alerts */}
                 <ExpirationAlerts accounts={expiringAccounts || []} expiringSales={expiringSales || []} />
             </div>
 
@@ -264,119 +267,109 @@ export default async function DashboardPage({
             {/* Message Queue Summary */}
             <MessageQueueWidget />
 
-            {/* Overdue Clients — falta liberar */}
+            {/* Overdue Clients */}
             <OverdueClientsAlert clients={overdueClients} />
 
             {/* Stock Low Alerts */}
             {stockAlerts.length > 0 && (
-                <Card className="border-red-500/30 bg-gradient-to-br from-red-500/5 to-[#1a1a1a]">
-                    <CardContent className="py-4 px-5">
-                        <div className="flex items-center gap-3 mb-3">
-                            <Package className="h-5 w-5 text-red-400" />
-                            <span className="text-sm font-semibold text-foreground">Stock Bajo</span>
+                <div
+                    className="glass-card rounded-2xl py-4 px-5"
+                >
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                            <Package className="h-4 w-4 text-red-400" />
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            {stockAlerts.map(a => (
-                                <div key={a.name} className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5">
-                                    <span className="text-sm font-medium text-foreground">{a.name}</span>
-                                    <span className="text-xs text-red-400 font-bold">{a.available}/{a.threshold}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                        <span className="text-sm font-semibold text-white">Stock Bajo</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {stockAlerts.map(a => (
+                            <div key={a.name} className="flex items-center gap-2 rounded-xl px-3 py-1.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                <span className="text-sm font-medium text-white">{a.name}</span>
+                                <span className="text-xs font-bold text-red-400">{a.available}/{a.threshold}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             )}
 
             {/* Total Balance Card — solo visible para super_admin */}
             {!isStaff && (
-                <Card className="border-border bg-card">
-                    <CardHeader className="pb-2">
-                        <p className="text-sm text-muted-foreground">BALANCE TOTAL DEL MES</p>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex items-baseline gap-1">
-                            <span className="text-4xl font-bold text-foreground">{formatGs(totalBalance)}</span>
-                        </div>
-                        <div className="mt-2 flex items-center gap-1 text-sm text-[#86EFAC]">
-                            <TrendingUp className="h-4 w-4" />
-                            <span>Ingresos del mes actual</span>
-                        </div>
-                    </CardContent>
-                </Card>
+                <div
+                    className="glass-card rounded-2xl p-6 relative overflow-hidden"
+                >
+                    {/* Decorative gradient orb */}
+                    <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full opacity-20 blur-2xl" style={{ background: 'radial-gradient(circle, #a855f7, transparent)' }} />
+                    <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#8b8ba7' }}>BALANCE TOTAL DEL MES</p>
+                    <div className="mt-3 flex items-baseline gap-1">
+                        <span className="text-4xl font-bold text-white">{formatGs(totalBalance)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5 text-sm" style={{ color: '#a855f7' }}>
+                        <TrendingUp className="h-4 w-4" />
+                        <span>Ingresos del mes actual</span>
+                    </div>
+                </div>
             )}
 
             {/* Stats Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {/* Active Accounts */}
-                <Card className="border-border bg-[#1a1a1a]">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                            Cuentas Madre
-                        </CardTitle>
-                        <div className="rounded-lg bg-[#86EFAC]/20 p-2">
-                            <Package className="h-4 w-4 text-[#86EFAC]" />
+                <div className="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-purple-500/30 transition-all duration-300">
+                    <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full opacity-15 blur-xl group-hover:opacity-25 transition-opacity" style={{ background: 'radial-gradient(circle, #a855f7, transparent)' }} />
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-medium uppercase tracking-wide" style={{ color: '#8b8ba7' }}>Cuentas Madre</p>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                            <Package className="h-4 w-4" style={{ color: '#a855f7' }} />
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">{activeAccountsCount || 0}</div>
-                        <p className="mt-1 text-xs text-muted-foreground">Activas en inventario</p>
-                    </CardContent>
-                </Card>
+                    </div>
+                    <div className="text-3xl font-bold text-white">{activeAccountsCount || 0}</div>
+                    <p className="mt-1 text-xs" style={{ color: '#8b8ba7' }}>Activas en inventario</p>
+                </div>
 
                 {/* Total Slots */}
-                <Card className="border-border bg-[#1a1a1a]">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                            Total Slots
-                        </CardTitle>
-                        <div className="rounded-lg bg-[#0063e5]/20 p-2">
-                            <ShoppingCart className="h-4 w-4 text-[#0063e5]" />
+                <div className="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
+                    <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full opacity-15 blur-xl group-hover:opacity-25 transition-opacity" style={{ background: 'radial-gradient(circle, #3b82f6, transparent)' }} />
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-medium uppercase tracking-wide" style={{ color: '#8b8ba7' }}>Total Slots</p>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                            <ShoppingCart className="h-4 w-4 text-blue-400" />
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-bold text-[#86EFAC]">{availableSlotsCount || 0}</span>
-                            <span className="text-muted-foreground">/</span>
-                            <span className="text-lg text-muted-foreground">{totalSlotsCount || 0}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">Disponibles / Total</p>
-                    </CardContent>
-                </Card>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                        <span className="text-3xl font-bold" style={{ color: '#a855f7' }}>{availableSlotsCount || 0}</span>
+                        <span style={{ color: '#8b8ba7' }}>/</span>
+                        <span className="text-xl text-white">{totalSlotsCount || 0}</span>
+                    </div>
+                    <p className="mt-1 text-xs" style={{ color: '#8b8ba7' }}>Disponibles / Total</p>
+                </div>
 
                 {/* Total Customers */}
-                <Card className="border-border bg-[#1a1a1a]">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                            Clientes Registrados
-                        </CardTitle>
-                        <div className="rounded-lg bg-[#F97316]/20 p-2">
-                            <Users className="h-4 w-4 text-[#F97316]" />
+                <div className="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-pink-500/30 transition-all duration-300">
+                    <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full opacity-15 blur-xl group-hover:opacity-25 transition-opacity" style={{ background: 'radial-gradient(circle, #e879f9, transparent)' }} />
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-medium uppercase tracking-wide" style={{ color: '#8b8ba7' }}>Clientes Registrados</p>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.25)' }}>
+                            <Users className="h-4 w-4" style={{ color: '#e879f9' }} />
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">{totalCustomersCount || 0}</div>
-                        <p className="mt-1 text-xs text-muted-foreground">En la base de datos</p>
-                    </CardContent>
-                </Card>
+                    </div>
+                    <div className="text-3xl font-bold text-white">{totalCustomersCount || 0}</div>
+                    <p className="mt-1 text-xs" style={{ color: '#8b8ba7' }}>En la base de datos</p>
+                </div>
 
                 {/* Monthly Revenue — solo visible para super_admin */}
                 {!isStaff && (
-                    <Card className="border-border bg-[#1a1a1a]">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Ingresos del Mes
-                            </CardTitle>
-                            <div className="rounded-lg bg-[#86EFAC]/20 p-2">
-                                <DollarSign className="h-4 w-4 text-[#86EFAC]" />
+                    <div className="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-purple-500/30 transition-all duration-300">
+                        <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full opacity-15 blur-xl group-hover:opacity-25 transition-opacity" style={{ background: 'radial-gradient(circle, #a855f7, transparent)' }} />
+                        <div className="flex items-center justify-between mb-3">
+                            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: '#8b8ba7' }}>Ingresos del Mes</p>
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                                <DollarSign className="h-4 w-4" style={{ color: '#a855f7' }} />
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-foreground">{formatGs(monthIncome)}</div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                {new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
-                            </p>
-                        </CardContent>
-                    </Card>
+                        </div>
+                        <div className="text-3xl font-bold text-white">{formatGs(monthIncome)}</div>
+                        <p className="mt-1 text-xs" style={{ color: '#8b8ba7' }}>
+                            {new Date().toLocaleDateString('es-PY', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
+                        </p>
+                    </div>
                 )}
             </div>
 

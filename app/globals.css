@@ -44,49 +44,49 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
-  
-  /* Custom ClickPar Colors */
-  --color-clickpar-green: #86EFAC;
-  --color-clickpar-orange: #F97316;
-  --color-clickpar-beige: #E7DFD4;
-  --color-clickpar-dark: #1a1a1a;
-  --color-clickpar-card: #2a2a2a;
+
+  /* ClickPar Neon Palette */
+  --color-cp-pink: #e879f9;
+  --color-cp-lilac: #a855f7;
+  --color-cp-blue: #3b82f6;
+  --color-cp-dark: #09090b;
+  --color-cp-card: #111116;
 }
 
-/* ClickPar uses dark theme by default */
+/* ─── ClickPar — Dark Neon Theme ─── */
 :root {
   --radius: 0.75rem;
-  --background: #0f0f0f;
+  --background: #09090b;
   --foreground: #fafafa;
-  --card: #1a1a1a;
+  --card: #111116;
   --card-foreground: #fafafa;
-  --popover: #1a1a1a;
+  --popover: #111116;
   --popover-foreground: #fafafa;
-  --primary: #86EFAC;
-  --primary-foreground: #0f0f0f;
-  --secondary: #2a2a2a;
+  --primary: #a855f7;
+  --primary-foreground: #fafafa;
+  --secondary: #1a1a2e;
   --secondary-foreground: #fafafa;
-  --muted: #2a2a2a;
-  --muted-foreground: #9ca3af;
-  --accent: #F97316;
+  --muted: #1a1a2e;
+  --muted-foreground: #8b8ba7;
+  --accent: #e879f9;
   --accent-foreground: #fafafa;
   --destructive: #ef4444;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: #86EFAC;
-  --chart-1: #86EFAC;
-  --chart-2: #F97316;
-  --chart-3: #E7DFD4;
-  --chart-4: #8b5cf6;
-  --chart-5: #ec4899;
-  --sidebar: #0f0f0f;
+  --border: rgba(168, 85, 247, 0.18);
+  --input: rgba(168, 85, 247, 0.12);
+  --ring: #a855f7;
+  --chart-1: #a855f7;
+  --chart-2: #3b82f6;
+  --chart-3: #e879f9;
+  --chart-4: #06b6d4;
+  --chart-5: #f472b6;
+  --sidebar: #09090b;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #86EFAC;
-  --sidebar-primary-foreground: #0f0f0f;
-  --sidebar-accent: #1a1a1a;
+  --sidebar-primary: #a855f7;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #111116;
   --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #86EFAC;
+  --sidebar-border: rgba(168, 85, 247, 0.18);
+  --sidebar-ring: #a855f7;
 }
 
 @layer base {
@@ -98,21 +98,76 @@
   }
 }
 
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ─── Neon Search Glow ─── */
+.neon-search-wrapper {
+  position: relative;
 }
 
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
+.neon-search-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #a855f7, #3b82f6, #e879f9);
+  opacity: 0.45;
+  filter: blur(6px);
+  z-index: 0;
+  transition: opacity 0.35s ease, filter 0.35s ease;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
-  border-radius: 4px;
+.neon-search-wrapper:focus-within::before {
+  opacity: 0.85;
+  filter: blur(10px);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4a;
+.neon-search-inner {
+  position: relative;
+  z-index: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0d0d14;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
+
+/* Glass Card */
+.glass-card {
+  background: rgba(17, 17, 28, 0.65);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(168, 85, 247, 0.18);
+  box-shadow:
+    0 4px 32px rgba(168, 85, 247, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+/* ─── Notification Animations ─── */
+@keyframes notif-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.notif-item {
+  animation: notif-slide-in 0.28s ease forwards;
+}
+
+.notif-security { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(232,121,249,0.06)); border-left: 3px solid #ef4444; }
+.notif-warning  { background: linear-gradient(135deg, rgba(232,121,249,0.14), rgba(168,85,247,0.08)); border-left: 3px solid #e879f9; }
+.notif-info     { background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(168,85,247,0.08)); border-left: 3px solid #3b82f6; }
+.notif-unread   { background: linear-gradient(135deg, rgba(168,85,247,0.10), rgba(59,130,246,0.05)); }
+
+/* ─── Neon badge glow ─── */
+@keyframes badge-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(232,121,249,0.8); }
+  50%       { box-shadow: 0 0 14px rgba(232,121,249,1), 0 0 24px rgba(168,85,247,0.4); }
+}
+
+.badge-glow {
+  animation: badge-glow 2s ease-in-out infinite;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: #09090b; }
+::-webkit-scrollbar-thumb    { background: rgba(168, 85, 247, 0.35); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.6); }

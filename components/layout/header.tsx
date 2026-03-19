@@ -6,7 +6,15 @@ import { NotificationBell } from '@/components/notifications/notification-bell';
 
 export function Header() {
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-sm">
+        <header
+            className="sticky top-0 z-30 flex h-16 items-center justify-between px-6"
+            style={{
+                background: 'rgba(9,9,11,0.75)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                borderBottom: '1px solid rgba(168,85,247,0.15)',
+            }}
+        >
             {/* OmniSearch */}
             <OmniSearch />
 

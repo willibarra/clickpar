@@ -21,7 +21,15 @@ export async function GET() {
         .eq('id', user.id)
         .single();
 
-    if (!profile?.phone_number) {
+    // Resolve phone: prefer profile.phone_number, fallback to extracting from
+    // the email when auth user was created as "{phone}@clickpar.shop"
+    let resolvedPhone: string | null = profile?.phone_number || null;
+    if (!resolvedPhone && user.email?.endsWith('@clickpar.shop')) {
+        const extracted = user.email.replace('@clickpar.shop', '');
+        if (extracted) resolvedPhone = `+${extracted}`;
+    }
+
+    if (!resolvedPhone) {
         return NextResponse.json({
             success: true,
             customer: { name: profile?.full_name || user.email, phone: null },
@@ -30,16 +38,25 @@ export async function GET() {
         });
     }
 
-    // Find customer by phone
-    const { data: customer } = await (admin.from('customers') as any)
-        .select('id, full_name')
-        .eq('phone', normalizePhone(profile.phone_number))
-        .single();
+    // Find customer by phone — try normalized first, then raw fallbacks
+    let customer: any = null;
+    const phonesToTry = [
+        normalizePhone(resolvedPhone),
+        resolvedPhone,
+        resolvedPhone.replace(/^\+/, ''),
+    ];
+    for (const phone of phonesToTry) {
+        const { data } = await (admin.from('customers') as any)
+            .select('id, full_name')
+            .eq('phone', phone)
+            .maybeSingle();
+        if (data) { customer = data; break; }
+    }
 
     if (!customer) {
         return NextResponse.json({
             success: true,
-            customer: { name: profile.full_name || user.email, phone: profile.phone_number },
+            customer: { name: profile?.full_name || user.email, phone: resolvedPhone },
             services: [],
             totalActive: 0,
         });
@@ -60,7 +77,7 @@ export async function GET() {
     if (!sales || sales.length === 0) {
         return NextResponse.json({
             success: true,
-            customer: { name: profile.full_name || customer.full_name, phone: profile.phone_number },
+            customer: { name: profile?.full_name || customer.full_name, phone: resolvedPhone },
             services: [],
             totalActive: 0,
         });
@@ -68,7 +85,7 @@ export async function GET() {
 
     // Step 2: Get slot details for each sale
     const slotIds = sales.map((s: any) => s.slot_id).filter(Boolean);
-    let slotMap = new Map<string, any>();
+    const slotMap = new Map<string, any>();
 
     if (slotIds.length > 0) {
         const { data: slots } = await (admin.from('sale_slots') as any)
@@ -78,7 +95,7 @@ export async function GET() {
         if (slots) {
             // Step 3: Get mother account details
             const accountIds = [...new Set(slots.map((s: any) => s.mother_account_id).filter(Boolean))];
-            let accountMap = new Map<string, any>();
+            const accountMap = new Map<string, any>();
 
             if (accountIds.length > 0) {
                 const { data: accounts } = await admin
@@ -117,7 +134,7 @@ export async function GET() {
         }
     }
 
-    // Build services array
+    // Build services array — show ALL active sales, no email filter
     const services = sales.map((sale: any) => {
         const slot = slotMap.get(sale.slot_id);
         const account = slot?.mother_account;
@@ -138,13 +155,13 @@ export async function GET() {
             needsCode: providerConfig?.needs_code || false,
             codeUrl: providerConfig?.code_url || null,
         };
-    }).filter((s: any) => s.email);
+    });
 
     return NextResponse.json({
         success: true,
         customer: {
-            name: profile.full_name || customer.full_name || user.email,
-            phone: profile.phone_number,
+            name: profile?.full_name || customer.full_name || user.email,
+            phone: resolvedPhone,
         },
         services,
         totalActive: services.length,

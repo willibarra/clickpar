@@ -100,6 +100,13 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (clientSearch.trim()) {
                 const q = clientSearch.toLowerCase();
                 const c = sub.customer;
+                // If query looks like a phone number, compare digits only
+                const qDigits = q.replace(/\D/g, '');
+                const isPhoneSearch = qDigits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
+                if (isPhoneSearch) {
+                    const phoneDigits = (c?.phone || '').replace(/\D/g, '');
+                    return phoneDigits.includes(qDigits) || c?.full_name?.toLowerCase().includes(q);
+                }
                 return c?.full_name?.toLowerCase().includes(q) || c?.phone?.toLowerCase().includes(q);
             }
             return true;

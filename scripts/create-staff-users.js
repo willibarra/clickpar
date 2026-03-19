@@ -2,7 +2,7 @@
 /**
  * Create 2 staff users:
  * - Laura Vera (laura@clickpar.net / laura2026)
- * - Vivian Pereira (vivian@clickpar.net / vivi2026)
+ * - Vivian Pereira (vivian@clickpar.net / vivi2026!)
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -19,7 +19,7 @@ const staffUsers = [
     },
     {
         email: 'vivian@clickpar.net',
-        password: 'vivi2026',
+        password: 'vivi2026!',
         fullName: 'Vivian Pereira',
     },
 ];

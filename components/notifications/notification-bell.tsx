@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, X, Check, Shield, AlertTriangle, Info, Eye, EyeOff, Loader2, ExternalLink } from 'lucide-react';
+import { Bell, X, Check, Shield, AlertTriangle, Info, Eye, EyeOff, Loader2, ExternalLink, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,16 +25,14 @@ export function NotificationBell() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
 
-    // Resolve modal state
     const [resolveModal, setResolveModal] = useState(false);
     const [resolveNotif, setResolveNotif] = useState<Notification | null>(null);
     const [newPassword, setNewPassword] = useState('');
     const [showPass, setShowPass] = useState(false);
 
-    // Fetch unread count on mount + interval
     useEffect(() => {
         fetchCount();
-        const interval = setInterval(fetchCount, 30000); // Every 30s
+        const interval = setInterval(fetchCount, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -49,7 +47,7 @@ export function NotificationBell() {
         setLoading(true);
         try {
             const data = await getNotifications();
-            setNotifications(data.slice(0, 10)); // Show last 10
+            setNotifications(data.slice(0, 10));
             setUnreadCount(data.filter(n => !n.is_read).length);
         } catch { }
         setLoading(false);
@@ -103,10 +101,28 @@ export function NotificationBell() {
         });
     }
 
+    function getNotifClass(type: string): string {
+        if (type === 'security_password_rotation') return 'notif-security';
+        if (type === 'warning') return 'notif-warning';
+        return 'notif-info';
+    }
+
     function getNotifIcon(type: string) {
-        if (type === 'security_password_rotation') return <Shield className="h-4 w-4 text-red-400" />;
-        if (type === 'warning') return <AlertTriangle className="h-4 w-4 text-orange-400" />;
-        return <Info className="h-4 w-4 text-blue-400" />;
+        if (type === 'security_password_rotation') return (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                <Shield className="h-4 w-4 text-red-400" />
+            </div>
+        );
+        if (type === 'warning') return (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: 'rgba(232,121,249,0.15)', border: '1px solid rgba(232,121,249,0.3)' }}>
+                <AlertTriangle className="h-4 w-4" style={{ color: '#e879f9' }} />
+            </div>
+        );
+        return (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}>
+                <Info className="h-4 w-4 text-blue-400" />
+            </div>
+        );
     }
 
     function timeAgo(dateStr: string) {
@@ -127,11 +143,23 @@ export function NotificationBell() {
             <div className="relative">
                 <button
                     onClick={handleOpen}
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200"
+                    style={{
+                        background: open
+                            ? 'linear-gradient(135deg, rgba(168,85,247,0.25), rgba(59,130,246,0.15))'
+                            : 'rgba(168,85,247,0.08)',
+                        border: '1px solid rgba(168,85,247,0.2)',
+                    }}
                 >
-                    <Bell className="h-5 w-5" />
+                    <Bell
+                        className="h-5 w-5 transition-colors"
+                        style={{ color: open ? '#a855f7' : '#8b8ba7' }}
+                    />
                     {unreadCount > 0 && (
-                        <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                        <span
+                            className="absolute -right-0.5 -top-0.5 badge-glow flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                            style={{ background: 'linear-gradient(135deg, #e879f9, #a855f7)' }}
+                        >
                             {unreadCount > 9 ? '9+' : unreadCount}
                         </span>
                     )}
@@ -141,55 +169,108 @@ export function NotificationBell() {
                 {open && (
                     <>
                         <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-                        <div className="absolute right-0 top-12 z-50 w-[380px] rounded-xl border border-border bg-card shadow-2xl">
+                        <div
+                            className="absolute right-0 top-12 z-50 w-[400px] rounded-2xl overflow-hidden shadow-2xl"
+                            style={{
+                                background: 'rgba(11, 11, 20, 0.92)',
+                                backdropFilter: 'blur(20px)',
+                                WebkitBackdropFilter: 'blur(20px)',
+                                border: '1px solid rgba(168,85,247,0.25)',
+                                boxShadow: '0 20px 60px rgba(168,85,247,0.15), 0 0 0 1px rgba(168,85,247,0.1)',
+                            }}
+                        >
                             {/* Header */}
-                            <div className="flex items-center justify-between border-b border-border p-4">
-                                <h3 className="font-semibold text-foreground">Notificaciones</h3>
+                            <div
+                                className="flex items-center justify-between px-5 py-4"
+                                style={{
+                                    borderBottom: '1px solid rgba(168,85,247,0.15)',
+                                    background: 'linear-gradient(135deg, rgba(168,85,247,0.08), rgba(59,130,246,0.05))',
+                                }}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <Sparkles className="h-4 w-4" style={{ color: '#a855f7' }} />
+                                    <h3 className="font-semibold text-white">Notificaciones</h3>
+                                    {unreadCount > 0 && (
+                                        <span
+                                            className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
+                                            style={{ background: 'linear-gradient(135deg, #a855f7, #3b82f6)' }}
+                                        >
+                                            {unreadCount}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-2">
                                     {unreadCount > 0 && (
                                         <button
                                             onClick={handleMarkAllRead}
-                                            className="rounded px-2 py-1 text-xs text-[#86EFAC] hover:bg-[#86EFAC]/10 transition-colors"
+                                            className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
+                                            style={{
+                                                color: '#a855f7',
+                                                background: 'rgba(168,85,247,0.10)',
+                                                border: '1px solid rgba(168,85,247,0.2)',
+                                            }}
                                         >
-                                            Marcar todo leído
+                                            <Check className="h-3 w-3" />
+                                            Todo leído
                                         </button>
                                     )}
-                                    <button onClick={() => setOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
+                                    <button
+                                        onClick={() => setOpen(false)}
+                                        className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8b8ba7] hover:text-white transition-colors"
+                                        style={{ background: 'rgba(255,255,255,0.05)' }}
+                                    >
                                         <X className="h-4 w-4" />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Notifications List */}
-                            <div className="max-h-[400px] overflow-y-auto">
+                            <div className="max-h-[420px] overflow-y-auto">
                                 {loading && (
-                                    <div className="py-8 text-center text-muted-foreground">
-                                        <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                                    <div className="flex items-center justify-center py-10">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <Loader2 className="h-6 w-6 animate-spin" style={{ color: '#a855f7' }} />
+                                            <span className="text-xs text-[#8b8ba7]">Cargando...</span>
+                                        </div>
                                     </div>
                                 )}
+
                                 {!loading && notifications.length === 0 && (
-                                    <div className="py-8 text-center text-muted-foreground text-sm">
-                                        Sin notificaciones
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3">
+                                        <div
+                                            className="flex h-12 w-12 items-center justify-center rounded-full"
+                                            style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.2)' }}
+                                        >
+                                            <Bell className="h-5 w-5" style={{ color: '#a855f7' }} />
+                                        </div>
+                                        <p className="text-sm text-[#8b8ba7]">Sin notificaciones</p>
                                     </div>
                                 )}
-                                {!loading && notifications.map(notif => (
+
+                                {!loading && notifications.map((notif, i) => (
                                     <div
                                         key={notif.id}
-                                        className={`border-b border-border/50 p-3 transition-colors hover:bg-secondary/50 ${!notif.is_read ? 'bg-[#86EFAC]/5' : ''
-                                            }`}
+                                        className={`notif-item p-4 transition-all cursor-default ${getNotifClass(notif.type)} ${!notif.is_read ? 'notif-unread' : ''}`}
+                                        style={{
+                                            animationDelay: `${i * 40}ms`,
+                                            borderBottom: '1px solid rgba(168,85,247,0.08)',
+                                        }}
                                     >
-                                        <div className="flex gap-3">
-                                            <div className="mt-0.5">{getNotifIcon(notif.type)}</div>
+                                        <div className="flex gap-3 items-start">
+                                            <div className="mt-0.5 shrink-0">{getNotifIcon(notif.type)}</div>
                                             <div className="flex-1 min-w-0">
-                                                <p className={`text-sm ${!notif.is_read ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                                                <p className={`text-sm leading-relaxed ${!notif.is_read ? 'font-medium text-white' : 'text-[#8b8ba7]'}`}>
                                                     {notif.message}
                                                 </p>
-                                                <p className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(notif.created_at)}</p>
-                                                <div className="flex gap-2 mt-2">
+                                                <p className="text-[11px] mt-1" style={{ color: 'rgba(139,139,167,0.7)' }}>
+                                                    {timeAgo(notif.created_at)}
+                                                </p>
+                                                <div className="flex gap-2 mt-2 flex-wrap">
                                                     {!notif.is_read && (
                                                         <button
                                                             onClick={() => handleRead(notif.id)}
-                                                            className="text-[10px] text-[#86EFAC] hover:underline"
+                                                            className="text-[11px] font-medium transition-colors px-2 py-0.5 rounded-md"
+                                                            style={{ color: '#a855f7', background: 'rgba(168,85,247,0.1)' }}
                                                         >
                                                             Marcar leído
                                                         </button>
@@ -197,13 +278,19 @@ export function NotificationBell() {
                                                     {notif.type === 'security_password_rotation' && !notif.is_resolved && (
                                                         <button
                                                             onClick={() => handleResolve(notif)}
-                                                            className="text-[10px] text-red-400 hover:underline font-medium"
+                                                            className="text-[11px] font-medium transition-colors px-2 py-0.5 rounded-md"
+                                                            style={{ color: '#ef4444', background: 'rgba(239,68,68,0.1)' }}
                                                         >
-                                                            🔒 Resolver (Cambiar Contraseña)
+                                                            🔒 Cambiar contraseña
                                                         </button>
                                                     )}
                                                     {notif.is_resolved && (
-                                                        <span className="text-[10px] text-green-400">✅ Resuelto</span>
+                                                        <span
+                                                            className="text-[11px] font-medium px-2 py-0.5 rounded-md"
+                                                            style={{ color: '#a855f7', background: 'rgba(168,85,247,0.1)' }}
+                                                        >
+                                                            ✓ Resuelto
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -213,13 +300,21 @@ export function NotificationBell() {
                             </div>
 
                             {/* Footer */}
-                            <div className="border-t border-border p-3">
+                            <div
+                                className="px-5 py-3"
+                                style={{
+                                    borderTop: '1px solid rgba(168,85,247,0.15)',
+                                    background: 'linear-gradient(135deg, rgba(168,85,247,0.05), rgba(59,130,246,0.03))',
+                                }}
+                            >
                                 <Link
                                     href="/notifications"
                                     onClick={() => setOpen(false)}
-                                    className="flex items-center justify-center gap-1 text-xs text-[#86EFAC] hover:underline"
+                                    className="flex items-center justify-center gap-1.5 text-xs font-medium transition-colors"
+                                    style={{ color: '#a855f7' }}
                                 >
-                                    Ver todas <ExternalLink className="h-3 w-3" />
+                                    Ver todas las notificaciones
+                                    <ExternalLink className="h-3 w-3" />
                                 </Link>
                             </div>
                         </div>
@@ -229,22 +324,22 @@ export function NotificationBell() {
 
             {/* ─── RESOLVE PASSWORD MODAL ─── */}
             <Dialog open={resolveModal} onOpenChange={setResolveModal}>
-                <DialogContent className="bg-card border-border sm:max-w-[440px]">
+                <DialogContent className="sm:max-w-[440px]" style={{ background: 'rgba(11,11,20,0.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(239,68,68,0.25)' }}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-red-400">
                             <Shield className="h-5 w-5" />
                             Cambiar Contraseña de Cuenta
                         </DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription className="text-[#8b8ba7]">
                             {resolveNotif?.message}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
-                        <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+                        <div className="rounded-xl p-3 text-sm text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                             ⚠️ Un usuario dejó de pagar. Cambia la contraseña para proteger a los demás usuarios activos.
                         </div>
                         <div className="space-y-2">
-                            <Label>Nueva Contraseña</Label>
+                            <Label className="text-white">Nueva Contraseña</Label>
                             <div className="relative">
                                 <Input
                                     type={showPass ? 'text' : 'password'}
@@ -256,7 +351,7 @@ export function NotificationBell() {
                                 <button
                                     type="button"
                                     onClick={() => setShowPass(!showPass)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8b8ba7] hover:text-white p-1"
                                 >
                                     {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>

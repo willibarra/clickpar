@@ -149,10 +149,19 @@ export function CustomersView({ customers }: CustomersViewProps) {
         }
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            result = result.filter(c =>
-                (c.full_name || '').toLowerCase().includes(q) ||
-                (c.phone || '').includes(q)
-            );
+            // Strip non-digits for phone comparison so "+595 994 480158" matches "595994480158"
+            const qDigits = q.replace(/\D/g, '');
+            const isPhoneSearch = qDigits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
+            result = result.filter(c => {
+                if (isPhoneSearch) {
+                    // Compare digits-only version of stored phone with digits-only query
+                    const phoneDigits = (c.phone || '').replace(/\D/g, '');
+                    return phoneDigits.includes(qDigits) ||
+                        (c.full_name || '').toLowerCase().includes(q);
+                }
+                return (c.full_name || '').toLowerCase().includes(q) ||
+                    (c.phone || '').includes(q);
+            });
         }
         return result;
     }, [customers, searchQuery, statusFilter]);
