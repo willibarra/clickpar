@@ -21,6 +21,13 @@ export async function middleware(request: NextRequest) {
             return NextResponse.next({ request });
         }
 
+        // Creator slug links: single-segment paths like /willibarra
+        // These are handled by app/[slug]/page.tsx which logs the click and redirects to WhatsApp
+        const isCreatorSlug = /^\/[a-z0-9_-]+$/i.test(pathname);
+        if (isCreatorSlug) {
+            return NextResponse.next({ request });
+        }
+
         // Any non-cliente route → redirect to customer portal
         if (!pathname.startsWith('/cliente')) {
             return NextResponse.redirect(new URL('/cliente', request.url));
@@ -87,6 +94,12 @@ export async function middleware(request: NextRequest) {
         pathname === '/staff/login' ||
         pathname.startsWith('/api/')
     ) {
+        return NextResponse.next({ request });
+    }
+
+    // Creator slug links: single-segment paths like /willibarra
+    // These are handled by app/[slug]/page.tsx — no auth required
+    if (/^\/[a-z0-9_-]+$/i.test(pathname)) {
         return NextResponse.next({ request });
     }
 

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check } from 'lucide-react';
+import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, BarChart2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
 
@@ -34,6 +34,9 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [regenerating, setRegenerating] = useState(false);
     const [copied, setCopied] = useState(false);
     const [customerType, setCustomerType] = useState(customer.customer_type || 'cliente');
+    const [slugInput, setSlugInput] = useState(customer.creator_slug || '');
+    const [copiedLink, setCopiedLink] = useState(false);
+    const [creatorStats, setCreatorStats] = useState<{ total: number; last30Days: number } | null>(null);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -211,17 +214,55 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                     <input
                                         id="creator_slug"
                                         name="creator_slug"
-                                        defaultValue={customer.creator_slug || ''}
+                                        value={slugInput}
                                         placeholder="genaro"
                                         className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground/50 font-mono"
                                         pattern="[a-z0-9_-]+"
                                         title="Solo letras minúsculas, números, guiones y guiones bajos"
                                         onChange={(e) => {
-                                            e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                                            const clean = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                                            setSlugInput(clean);
                                         }}
                                     />
                                 </div>
                                 <p className="text-xs text-muted-foreground">Solo letras minúsculas, números y guiones. Ej: <code>genaro</code></p>
+
+                                {/* Link display + copy button */}
+                                {slugInput && (
+                                    <div className="flex items-center gap-2 rounded-lg bg-[#86EFAC]/5 border border-[#86EFAC]/20 px-3 py-2">
+                                        <Link className="h-3.5 w-3.5 text-[#86EFAC] flex-shrink-0" />
+                                        <span className="flex-1 text-xs font-mono text-[#86EFAC] truncate">
+                                            clickpar.net/{slugInput}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                await navigator.clipboard.writeText(`https://clickpar.net/${slugInput}`);
+                                                setCopiedLink(true);
+                                                setTimeout(() => setCopiedLink(false), 2000);
+                                                // Fetch stats
+                                                if (customer.creator_slug === slugInput) {
+                                                    const res = await fetch(`/api/admin/creator-stats?slug=${slugInput}`);
+                                                    const data = await res.json();
+                                                    setCreatorStats({ total: data.total, last30Days: data.last30Days });
+                                                }
+                                            }}
+                                            className="flex-shrink-0 rounded p-1 text-[#86EFAC] hover:bg-[#86EFAC]/10"
+                                        >
+                                            {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Stats badge */}
+                                {creatorStats && (
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                        <BarChart2 className="h-3.5 w-3.5" />
+                                        <span><strong className="text-foreground">{creatorStats.total}</strong> clicks totales</span>
+                                        <span>·</span>
+                                        <span><strong className="text-foreground">{creatorStats.last30Days}</strong> este mes</span>
+                                    </div>
+                                )}
                             </div>
                         )}
 
