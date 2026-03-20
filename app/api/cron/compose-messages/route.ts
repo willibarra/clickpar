@@ -8,13 +8,15 @@ import {
     MessageQueueRow,
 } from '@/lib/queue-helpers';
 import {
-export const dynamic = 'force-dynamic';
-
     getWhatsAppSettings,
     getRenderedTemplate,
     sendRenewalToN8N,
     isPhoneWhitelisted,
 } from '@/lib/whatsapp';
+
+export const dynamic = 'force-dynamic';
+
+
 
 /**
  * POST /api/cron/compose-messages
