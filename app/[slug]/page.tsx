@@ -1,17 +1,20 @@
-import { createClient } from '@supabase/supabase-js';
 import { redirect, notFound } from 'next/navigation';
 import { headers } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const dynamic = 'force-dynamic';
 
 export default async function CreatorSlugPage({
     params,
 }: {
     params: Promise<{ slug: string }>;
 }) {
+    // Create client inside handler to avoid module-level env var access during build
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const { slug } = await params;
 
     // 1. Look up the creator by slug
@@ -51,6 +54,3 @@ export default async function CreatorSlugPage({
     // 4. Redirect to WhatsApp
     redirect(waUrl);
 }
-
-// Tell Next.js this page is always dynamic (don't cache)
-export const dynamic = 'force-dynamic';

@@ -3,14 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 // GET /api/admin/creator-stats?slug=willibarra
 // Returns click counts for a creator slug (last 30 days + all time)
 export async function GET(request: NextRequest) {
+    // Create client inside handler to avoid module-level env var access
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const slug = request.nextUrl.searchParams.get('slug');
     if (!slug) {
         return NextResponse.json({ error: 'slug required' }, { status: 400 });
