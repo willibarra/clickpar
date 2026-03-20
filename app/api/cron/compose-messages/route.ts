@@ -8,6 +8,8 @@ import {
     MessageQueueRow,
 } from '@/lib/queue-helpers';
 import {
+export const dynamic = 'force-dynamic';
+
     getWhatsAppSettings,
     getRenderedTemplate,
     sendRenewalToN8N,

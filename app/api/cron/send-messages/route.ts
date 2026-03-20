@@ -7,6 +7,8 @@ import {
     MessageQueueRow,
 } from '@/lib/queue-helpers';
 import { sendText } from '@/lib/whatsapp';
+export const dynamic = 'force-dynamic';
+
 
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 2000;

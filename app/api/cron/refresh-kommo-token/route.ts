@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * Kommo token refresh is temporarily disabled.

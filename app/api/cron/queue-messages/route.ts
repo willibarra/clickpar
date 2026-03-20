@@ -9,6 +9,8 @@ import {
     MessageType,
 } from '@/lib/queue-helpers';
 import { getPlatformDisplayName } from '@/lib/whatsapp';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * POST /api/cron/queue-messages
