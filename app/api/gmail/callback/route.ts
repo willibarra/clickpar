@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { exchangeGmailCode } from '@/lib/gmail';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * GET /api/gmail/callback?code=xxx

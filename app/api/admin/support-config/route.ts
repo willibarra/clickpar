@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * Admin API for managing provider_support_config

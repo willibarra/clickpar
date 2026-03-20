@@ -5,6 +5,8 @@ import {
     sendExpiryNotification,
     sendPreExpiryReminder
 } from '@/lib/whatsapp';
+export const dynamic = 'force-dynamic';
+
 
 // Helper to format currency
 function getGsValue(amount: number | string): string {

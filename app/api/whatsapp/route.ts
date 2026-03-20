@@ -12,6 +12,8 @@ import {
     toggleTemplate,
     sendText,
 } from '@/lib/whatsapp';
+export const dynamic = 'force-dynamic';
+
 
 // GET /api/whatsapp?action=instances|settings|templates|qr|logs
 export async function GET(request: NextRequest) {

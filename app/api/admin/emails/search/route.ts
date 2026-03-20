@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAuthClient, createAdminClient } from '@/lib/supabase/server';
 import { createClient as createRawClient } from '@supabase/supabase-js';
 import { getValidGmailToken, searchInbox } from '@/lib/gmail';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * GET /api/admin/emails/search?email=xxx&q=yyy

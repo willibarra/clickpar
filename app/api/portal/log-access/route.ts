@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * POST /api/portal/log-access

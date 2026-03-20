@@ -3,6 +3,8 @@ import { createClient as createAuthClient, createAdminClient } from '@/lib/supab
 import { createClient as createRawClient } from '@supabase/supabase-js';
 import { getValidGmailToken, searchVerificationEmails, extractVerificationCode } from '@/lib/gmail';
 import { normalizePhone } from '@/lib/utils/phone';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * GET /api/portal/verification-code?saleId=xxx

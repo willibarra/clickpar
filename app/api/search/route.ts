@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { safeNormalizePhone } from '@/lib/utils/phone';
+export const dynamic = 'force-dynamic';
+
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);

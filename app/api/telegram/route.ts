@@ -11,6 +11,8 @@ import {
     type InlineButton,
 } from '@/lib/telegram';
 import { createAdminClient } from '@/lib/supabase/server';
+export const dynamic = 'force-dynamic';
+
 
 // Escape special characters for Telegram's legacy Markdown mode
 function safeMd(text: string): string {

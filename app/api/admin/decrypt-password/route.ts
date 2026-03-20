@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { decrypt, isEncrypted } from '@/lib/utils/encryption';
+export const dynamic = 'force-dynamic';
+
 
 /**
  * POST /api/admin/decrypt-password
