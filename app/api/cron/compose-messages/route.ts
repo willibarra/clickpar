@@ -3,7 +3,6 @@ import {
     verifyCronSecret,
     getQueueSupabase,
     getMessageTypeConfig,
-    buildKommoMessage,
     formatDate,
     todayMidnight,
     MessageQueueRow,
@@ -77,7 +76,12 @@ export async function POST(request: NextRequest) {
             if (msg.channel === 'whatsapp') {
                 await composeWhatsApp(msg, supabase, useAiMessages, waSettings, results);
             } else if (msg.channel === 'kommo') {
-                await composeKommo(msg, supabase, results);
+                // Canal kommo desactivado: marcar como skipped
+                await supabase
+                    .from('message_queue' as any)
+                    .update({ status: 'skipped', error: 'Kommo desactivado temporalmente' })
+                    .eq('id', msg.id);
+                results.skipped++;
             }
         } catch (e: any) {
             results.errors.push(`${msg.id}: ${e.message}`);
@@ -124,15 +128,11 @@ async function composeWhatsApp(
         }
     }
 
-    // For cancelled messages, there's no static template — always compose inline
+    // For cancelled messages, there's no static template — compose inline
     if (msg.message_type === 'cancelled') {
-        const body = buildKommoMessage(
-            'cancelled',
-            msg.customer_name || 'Cliente',
-            msg.platform || 'Servicio',
-            '',
-            '',
-        );
+        const name = msg.customer_name || 'Cliente';
+        const platform = msg.platform || 'Servicio';
+        const body = `❌ *Servicio cancelado*\n\nHola ${name}, tu servicio de *${platform}* fue cancelado por falta de pago.\n\nSi querés reactivar tu cuenta, escribinos y con gusto te ayudamos 🤝`;
         await supabase
             .from('message_queue' as any)
             .update({ status: 'composed', message_body: body, compose_method: 'template' })
@@ -224,13 +224,22 @@ async function composeWhatsApp(
         .eq('id', msg.sale_id)
         .single();
 
-    const body = buildKommoMessage(
-        msg.message_type as any,
-        msg.customer_name || 'Cliente',
-        msg.platform || 'Servicio',
-        saleData?.end_date || '',
-        (saleData?.amount_gs || 0).toLocaleString(),
-    );
+    // Fallback: build message inline
+    const name = msg.customer_name || 'Cliente';
+    const platform = msg.platform || 'Servicio';
+    const expDate = saleData?.end_date || '';
+    const price = (saleData?.amount_gs || 0).toLocaleString();
+
+    let body = '';
+    if (msg.message_type === 'pre_expiry') {
+        body = `⏰ *Recordatorio de Vencimiento*\n\nHola ${name}, tu servicio de *${platform}* vence mañana (${expDate}).\n\n💰 Renovación: Gs. ${price}\n\nEscribinos para renovar 🙌`;
+    } else if (msg.message_type === 'expiry_today') {
+        body = `🔴 *Tu servicio vence HOY*\n\nHola ${name}, tu servicio de *${platform}* vence hoy (${expDate}).\n\n💰 Renovación: Gs. ${price}\n\nEscribinos ahora para renovar ✅`;
+    } else if (msg.message_type === 'expired_yesterday') {
+        body = `⚠️ *Servicio vencido*\n\nHola ${name}, tu servicio de *${platform}* venció ayer.\n\nÚltima oportunidad para renovar antes de cancelar definitivamente.\n\n💰 Gs. ${price} | Escribinos 📲`;
+    } else {
+        body = `Hola ${name}, hay una novedad con tu servicio de *${platform}*. Escribinos para más info.`;
+    }
 
     await supabase
         .from('message_queue' as any)
@@ -239,33 +248,3 @@ async function composeWhatsApp(
     results.composed++;
 }
 
-// =============================================
-// Kommo compose logic
-// =============================================
-
-async function composeKommo(
-    msg: MessageQueueRow,
-    supabase: ReturnType<typeof getQueueSupabase>,
-    results: { composed: number; sent_via_ai: number; skipped: number; failed: number; errors: string[] },
-) {
-    // Fetch sale amount for message
-    const { data: saleData } = await supabase
-        .from('sales' as any)
-        .select('amount_gs, end_date')
-        .eq('id', msg.sale_id)
-        .single();
-
-    const body = buildKommoMessage(
-        msg.message_type as any,
-        msg.customer_name || 'Cliente',
-        msg.platform || 'Servicio',
-        saleData?.end_date || '',
-        (saleData?.amount_gs || 0).toLocaleString(),
-    );
-
-    await supabase
-        .from('message_queue' as any)
-        .update({ status: 'composed', message_body: body, compose_method: 'template' })
-        .eq('id', msg.id);
-    results.composed++;
-}

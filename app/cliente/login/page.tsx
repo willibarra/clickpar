@@ -19,19 +19,31 @@ export default function PortalLoginPage() {
 
     const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || '';
 
-    const formatPhoneToEmail = (p: string) => {
-        let formatted = p.trim().replace(/\s+/g, '');
-        // Remove leading 0 and add country code if needed
-        if (formatted.startsWith('0')) {
-            formatted = '595' + formatted.slice(1);
-        } else if (formatted.startsWith('+')) {
-            formatted = formatted.slice(1);
+    const getEmailVariants = (p: string): string[] => {
+        const raw = p.trim().replace(/\s+/g, '').replace(/[-().]/g, '');
+        const variants: string[] = [];
+
+        // Variant 1: strip leading 0 and add 595 (most common PY format)
+        if (raw.startsWith('0')) {
+            variants.push(`595${raw.slice(1)}@clickpar.shop`);
         }
-        // If it's just digits without country code, assume PY
-        if (formatted.length <= 10) {
-            formatted = '595' + formatted;
+        // Variant 2: strip leading +
+        if (raw.startsWith('+')) {
+            variants.push(`${raw.slice(1)}@clickpar.shop`);
         }
-        return `${formatted}@clickpar.shop`;
+        // Variant 3: already starts with 595 (no leading 0)
+        if (raw.startsWith('595') && !raw.startsWith('0')) {
+            variants.push(`${raw}@clickpar.shop`);
+        }
+        // Variant 4: short number — prepend 595
+        if (!raw.startsWith('0') && !raw.startsWith('+') && !raw.startsWith('595')) {
+            variants.push(`595${raw}@clickpar.shop`);
+        }
+        // Variant 5: raw as-is fallback
+        variants.push(`${raw}@clickpar.shop`);
+
+        // Deduplicate while preserving order
+        return [...new Set(variants)];
     };
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -68,38 +80,45 @@ export default function PortalLoginPage() {
             }
         }
 
-        const email = formatPhoneToEmail(phone);
+        // Try multiple email variants derived from the phone number
+        const emailVariants = getEmailVariants(phone);
+        let loginSuccess = false;
 
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        for (const email of emailVariants) {
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-        if (signInError) {
-            if (signInError.message.includes('Invalid login credentials')) {
-                setError('Teléfono o contraseña incorrectos. Verificá tus datos.');
-            } else {
-                setError(signInError.message);
+            if (!signInError) {
+                loginSuccess = true;
+                try {
+                    await fetch('/api/portal/log-access', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ eventType: 'login', metadata: { phone } }),
+                    });
+                } catch { /* non-blocking */ }
+                router.push('/cliente');
+                router.refresh();
+                return;
             }
+
+            // Stop on non-credentials errors
+            if (!signInError.message.includes('Invalid login credentials')) {
+                setError(signInError.message);
+                captchaRef.current?.resetCaptcha();
+                setCaptchaToken(null);
+                setLoading(false);
+                return;
+            }
+        }
+
+        if (!loginSuccess) {
+            setError('Teléfono o contraseña incorrectos. Verificá tus datos.');
             captchaRef.current?.resetCaptcha();
             setCaptchaToken(null);
             setLoading(false);
-        } else {
-            // Log successful login
-            try {
-                await fetch('/api/portal/log-access', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        eventType: 'login',
-                        metadata: { phone },
-                    }),
-                });
-            } catch {
-                // Non-blocking
-            }
-            router.push('/cliente');
-            router.refresh();
         }
     };
 

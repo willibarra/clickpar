@@ -53,9 +53,22 @@ export async function POST(req: NextRequest) {
     const email = `${phoneClean}@clickpar.shop`;
 
     try {
-        // Find existing auth user
-        const { data: { users } } = await admin.auth.admin.listUsers();
-        const authUser = users?.find((u: any) => u.email === email);
+        // Search directly by email filter (avoids listUsers pagination that misses users > page 1)
+        const { data: searchData } = await admin.auth.admin.listUsers({ filter: `email=${email}` } as any);
+        let authUser = searchData?.users?.find((u: any) => u.email === email) ?? null;
+
+        // Fallback: paginated search if filter is not supported by the self-hosted version
+        if (!authUser) {
+            let page = 1;
+            const perPage = 1000;
+            while (true) {
+                const { data: pageData } = await admin.auth.admin.listUsers({ page, perPage });
+                const found = pageData?.users?.find((u: any) => u.email === email);
+                if (found) { authUser = found; break; }
+                if (!pageData?.users || pageData.users.length < perPage) break;
+                page++;
+            }
+        }
 
         if (authUser) {
             // Update existing user's password
@@ -66,7 +79,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: `Error al actualizar: ${updateErr.message}` }, { status: 500 });
             }
         } else {
-            // Create new auth user
+            // Create new auth user (first time setup)
             const phoneWithPlus = customer.phone.startsWith('+') ? customer.phone : `+${customer.phone}`;
             const { error: createErr } = await admin.auth.admin.createUser({
                 email,

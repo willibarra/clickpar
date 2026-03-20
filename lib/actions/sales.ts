@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import { createKommoLead, addNoteToLead } from '@/lib/kommo';
+// Kommo CRM desactivado temporalmente
 import { sendSaleCredentials, sendFamilyCredentials, sendFamilyInvite, getWhatsAppSettings } from '@/lib/whatsapp';
 import { normalizePhone } from '@/lib/utils/phone';
 import { ensurePortalAccount } from '@/lib/utils/portal-account';
@@ -159,49 +159,60 @@ export async function createQuickSale(data: QuickSaleData) {
         }
 
         const slotId = slotToSell.slot_id || slotToSell.id;
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+        const originalPrice = slotToSell.slot_price_gs || data.price;
 
-        // Insertar la venta
-        const { data: newSaleData, error: saleError } = await (supabase.from('sales') as any)
-            .insert({
-                customer_id: customerId,
-                slot_id: slotId,
-                amount_gs: data.price,
-                original_price_gs: slotToSell.slot_price_gs || data.price,
-                override_price: data.price !== slotToSell.slot_price_gs,
-                start_date: startDate.toISOString().split('T')[0],
-                end_date: endDate.toISOString().split('T')[0],
-                is_active: true,
-                payment_method: 'cash',
-            })
-            .select('id')
-            .single();
+        // 3. Crear venta + marcar slot ATÓMICAMENTE (usa FOR UPDATE para evitar race conditions)
+        let newSaleId: string;
 
-        if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
+        const { data: atomicResult, error: atomicError } = await (supabase as any).rpc('create_sale_atomic', {
+            p_customer_id: customerId,
+            p_slot_id: slotId,
+            p_amount_gs: data.price,
+            p_start_date: startDateStr,
+            p_end_date: endDateStr,
+            p_payment_method: 'cash',
+            p_original_price_gs: originalPrice,
+            p_override_price: data.price !== originalPrice,
+        });
 
-        // Marcar slot como vendido
-        const { error: slotUpdateError } = await (supabase.from('sale_slots') as any)
-            .update({ status: 'sold' })
-            .eq('id', slotId);
-
-        if (slotUpdateError) throw new Error(`Error actualizando slot: ${slotUpdateError.message}`);
-
-        // 5. Crear lead en Kommo CRM (sin bloquear la venta si falla)
-        try {
-            const kommoResult = await createKommoLead({
-                platform: data.platform,
-                customerPhone: data.customerPhone,
-                customerName: data.customerName || data.customerPhone,
-                price: data.price,
-                slotInfo: slotToSell.slot_id || slotToSell.id,
-            });
-            if (kommoResult.leadId) {
-                await addNoteToLead(kommoResult.leadId,
-                    `Venta registrada desde ClickPar\nPlataforma: ${data.platform}\nPrecio: Gs. ${data.price.toLocaleString()}\nTeléfono: ${data.customerPhone}`
-                );
+        if (atomicError) {
+            if (atomicError.code === 'PGRST202') {
+                // Función atómica no disponible aún — usar método legacy como fallback
+                const { data: newSaleData, error: saleError } = await (supabase.from('sales') as any)
+                    .insert({
+                        customer_id: customerId,
+                        slot_id: slotId,
+                        amount_gs: data.price,
+                        original_price_gs: originalPrice,
+                        override_price: data.price !== originalPrice,
+                        start_date: startDateStr,
+                        end_date: endDateStr,
+                        is_active: true,
+                        payment_method: 'cash',
+                    })
+                    .select('id')
+                    .single();
+                if (saleError) throw new Error(`Error creando venta: ${saleError.message}`);
+                const { error: slotUpdateError } = await (supabase.from('sale_slots') as any)
+                    .update({ status: 'sold' })
+                    .eq('id', slotId);
+                if (slotUpdateError) throw new Error(`Error actualizando slot: ${slotUpdateError.message}`);
+                newSaleId = newSaleData.id;
+                console.warn('[QuickSale] Usando método legacy (create_sale_atomic no disponible)');
+            } else if (atomicError.code === 'P0001') {
+                // Error de la función (slot no disponible, etc.) — propagar al usuario
+                throw new Error(atomicError.message);
+            } else {
+                throw new Error(`Error en venta atómica: ${atomicError.message}`);
             }
-        } catch (kommoError) {
-            console.error('[Kommo] Error (non-blocking):', kommoError);
+        } else {
+            newSaleId = atomicResult as string;
         }
+
+
+        // Kommo CRM desactivado temporalmente
 
         // 6. Enviar credenciales por WhatsApp (sin bloquear la venta si falla)
         try {
@@ -1101,16 +1112,7 @@ export async function processComboSale(data: ComboSaleData) {
             }
         }
 
-        // 5. Kommo CRM lead (non-blocking)
-        try {
-            await createKommoLead({
-                platform: `Combo: ${comboLabel}`,
-                customerPhone: data.customerPhone,
-                customerName: data.customerName || data.customerPhone,
-                price: data.totalPrice,
-                slotInfo: comboId.slice(0, 8),
-            });
-        } catch { /* CRM errors don't block the sale */ }
+        // 5. Kommo CRM desactivado temporalmente
 
         // 6. Enviar credenciales por WhatsApp para cada slot del combo (sin bloquear)
         try {

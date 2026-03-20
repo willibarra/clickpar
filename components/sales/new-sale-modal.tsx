@@ -50,8 +50,22 @@ interface FullAccount {
     renewal_date: string;
 }
 
-export function NewSaleModal() {
-    const [open, setOpen] = useState(false);
+interface NewSaleModalProps {
+    // Props opcionales para control externo (ej: desde Venta Rápida)
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    preselectedPlatform?: string;
+}
+
+export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenChange, preselectedPlatform }: NewSaleModalProps = {}) {
+    const [internalOpen, setInternalOpen] = useState(false);
+
+    // Usar estado externo si se provee, si no usar estado interno
+    const open = externalOpen !== undefined ? externalOpen : internalOpen;
+    const setOpen = (val: boolean) => {
+        setInternalOpen(val);
+        externalOnOpenChange?.(val);
+    };
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -90,6 +104,16 @@ export function NewSaleModal() {
 
 
     const supabase = createClient();
+
+    // Preseleccionar plataforma cuando se abre con preselectedPlatform
+    useEffect(() => {
+        if (open && preselectedPlatform) {
+            setSelectedPlatform(preselectedPlatform);
+        }
+        if (!open) {
+            // reset interno cuando se cierra
+        }
+    }, [open, preselectedPlatform]);
 
     useEffect(() => {
         if (open) {
@@ -227,10 +251,14 @@ export function NewSaleModal() {
         }
     };
 
-    // Create new customer
+    // Create new customer — nombre y teléfono obligatorios
     const handleCreateCustomer = async () => {
-        if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
-            setError('Ingresa nombre y teléfono del cliente');
+        if (!newCustomerName.trim()) {
+            setError('El nombre del cliente es obligatorio');
+            return;
+        }
+        if (!newCustomerPhone.trim()) {
+            setError('El teléfono del cliente es obligatorio');
             return;
         }
 

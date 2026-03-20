@@ -35,6 +35,7 @@ export interface CustomerRow {
     phone: string;
     customer_type: 'cliente' | 'creador';
     whatsapp_instance?: string | null;
+    creator_slug?: string | null;
     services: CustomerService[];
     history: CustomerHistory[];
     // Computed in server
@@ -445,6 +446,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                             phone_number: customer.phone,
                                                             customer_type: customer.customer_type,
                                                             whatsapp_instance: customer.whatsapp_instance,
+                                                            creator_slug: customer.creator_slug,
                                                         }}
                                                         defaultOpen={autoEditId === customer.id}
                                                         onOpenChange={(open: boolean) => { if (!open && autoEditId === customer.id) clearAutoEdit(); }}

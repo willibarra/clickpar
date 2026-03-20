@@ -96,18 +96,21 @@ function expiryColor(dateStr: string): string {
 
 // ── Copy-to-clipboard hook ───────────────────────
 
-function CopyableEmail({ email }: { email: string }) {
+function CopyableEmail({ email, supplierName }: { email: string; supplierName?: string | null }) {
     const [copied, setCopied] = useState(false);
     const handleCopy = async () => {
         await navigator.clipboard.writeText(email);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
     };
+    const tooltipText = supplierName
+        ? `Proveedor: ${supplierName}\nClick para copiar email`
+        : 'Click para copiar email';
     return (
         <button
             onClick={handleCopy}
             className="group flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title="Click para copiar email"
+            title={tooltipText}
         >
             <span className="truncate max-w-[220px]">{email}</span>
             {copied ? (
@@ -125,6 +128,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
     const [searchQuery, setSearchQuery] = useState('');
     const [platformFilter, setPlatformFilter] = useState<string>('all');
+    const [supplierFilter, setSupplierFilter] = useState<string>('all');
     const [sortField, setSortField] = useState<SortField>('platform');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [pageSize, setPageSize] = useState<number>(30);
@@ -161,11 +165,33 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
         return Array.from(set).sort();
     }, [accounts]);
 
-    // Filter accounts based on search + platform
+    // Extract unique suppliers for filter pills
+    const suppliers = useMemo(() => {
+        const set = new Set(
+            accounts
+                .map(a => a.supplier_name)
+                .filter((s): s is string => !!s)
+        );
+        return Array.from(set).sort();
+    }, [accounts]);
+
+    // Suppliers filtered by active platform selection
+    const suppliersForCurrentPlatform = useMemo(() => {
+        const base = platformFilter === 'all' ? accounts : accounts.filter(a => a.platform === platformFilter);
+        const set = new Set(
+            base.map(a => a.supplier_name).filter((s): s is string => !!s)
+        );
+        return Array.from(set).sort();
+    }, [accounts, platformFilter]);
+
+    // Filter accounts based on search + platform + supplier
     const filteredAccounts = useMemo(() => {
         let result = accounts;
         if (platformFilter !== 'all') {
             result = result.filter(a => a.platform === platformFilter);
+        }
+        if (supplierFilter !== 'all') {
+            result = result.filter(a => a.supplier_name === supplierFilter);
         }
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
@@ -175,7 +201,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
             );
         }
         return result;
-    }, [accounts, searchQuery, platformFilter]);
+    }, [accounts, searchQuery, platformFilter, supplierFilter]);
 
     // Sort accounts
     const sortedAccounts = useMemo(() => {
@@ -276,11 +302,11 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                 </div>
             </div>
 
-            {/* Platform Filter Pills */}
-            <div className="flex items-center gap-2 flex-wrap">
-                <Filter className="h-4 w-4 text-muted-foreground" />
+            {/* Platform Filter Pills + Mostrar por (proveedor) */}
+            <div className="flex flex-wrap items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <button
-                    onClick={() => { setPlatformFilter('all'); setCurrentPage(1); }}
+                    onClick={() => { setPlatformFilter('all'); setSupplierFilter('all'); setCurrentPage(1); }}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${platformFilter === 'all'
                         ? 'bg-[#86EFAC] text-black'
                         : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -289,21 +315,54 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                     Todas
                 </button>
                 {platforms.map(p => {
-                    const count = accounts.filter(a => a.platform === p).length;
+                    const platformAccounts = accounts.filter(a => a.platform === p);
+                    const count = platformAccounts.length;
+                    const freeSlots = platformAccounts.reduce((sum, a) =>
+                        sum + (a.sale_slots?.filter(s => s.status === 'available').length || 0), 0
+                    );
                     const pColors = platformColors[p] || platformColors.default;
                     return (
                         <button
                             key={p}
-                            onClick={() => { setPlatformFilter(p); setCurrentPage(1); }}
+                            onClick={() => { setPlatformFilter(p); setSupplierFilter('all'); setCurrentPage(1); }}
                             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${platformFilter === p
                                 ? `${pColors.bg} ${pColors.text}`
                                 : 'bg-secondary text-muted-foreground hover:text-foreground'
                                 }`}
                         >
                             {p} ({count})
+                            {freeSlots > 0 ? (
+                                <span className="text-green-400 font-semibold">🟢{freeSlots}</span>
+                            ) : (
+                                <span className="text-red-400 font-semibold">🔴0</span>
+                            )}
                         </button>
                     );
                 })}
+
+                {/* Mostrar por proveedor — solo si hay proveedores disponibles */}
+                {suppliersForCurrentPlatform.length > 0 && (
+                    <>
+                        <span className="text-muted-foreground/40 text-xs">|</span>
+                        <span className="text-xs text-muted-foreground font-medium">Mostrar por:</span>
+                        <select
+                            value={supplierFilter}
+                            onChange={e => { setSupplierFilter(e.target.value); setCurrentPage(1); }}
+                            className="rounded-full px-3 py-1 text-xs font-medium bg-secondary border border-border text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-purple-500/50 cursor-pointer transition-colors"
+                        >
+                            <option value="all">Todos los proveedores</option>
+                            {suppliersForCurrentPlatform.map(s => {
+                                const count = accounts.filter(a =>
+                                    a.supplier_name === s &&
+                                    (platformFilter === 'all' || a.platform === platformFilter)
+                                ).length;
+                                return (
+                                    <option key={s} value={s}>{s} ({count})</option>
+                                );
+                            })}
+                        </select>
+                    </>
+                )}
             </div>
 
             {/* Content */}
@@ -327,7 +386,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             <div className="flex items-center gap-3">
                                                 <PlatformIcon platform={account.platform} size={36} />
                                                 <div>
-                                                    <CopyableEmail email={account.email} />
+                                                    <CopyableEmail email={account.email} supplierName={account.supplier_name} />
                                                 </div>
                                             </div>
                                             <EditAccountModal account={account} />
@@ -484,7 +543,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <CopyableEmail email={account.email} />
+                                                <CopyableEmail email={account.email} supplierName={account.supplier_name} />
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1 max-w-[200px]">

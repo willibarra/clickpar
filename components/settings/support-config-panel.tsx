@@ -1,0 +1,500 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import {
+    Plus, Pencil, Trash2, Loader2, Check, X, ChevronDown, ChevronUp,
+    HelpCircle, ListChecks, Link, ToggleLeft, ToggleRight, Search,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+
+interface FaqItem {
+    q: string;
+    a: string;
+}
+
+interface SupportConfig {
+    id: string;
+    platform: string;
+    supplier_name: string;
+    support_instructions: string;
+    help_steps: string[];
+    faq_items: FaqItem[];
+    needs_code: boolean;
+    code_url: string | null;
+}
+
+const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
+    platform: '',
+    supplier_name: '',
+    support_instructions: '',
+    help_steps: [],
+    faq_items: [],
+    needs_code: false,
+    code_url: null,
+};
+
+// ─── Step List Editor ──────────────────────────────────────────────────────
+
+function StepListEditor({
+    steps,
+    onChange,
+}: {
+    steps: string[];
+    onChange: (steps: string[]) => void;
+}) {
+    const addStep = () => onChange([...steps, '']);
+    const removeStep = (i: number) => onChange(steps.filter((_, idx) => idx !== i));
+    const updateStep = (i: number, val: string) =>
+        onChange(steps.map((s, idx) => (idx === i ? val : s)));
+
+    return (
+        <div className="space-y-2">
+            {steps.map((step, i) => (
+                <div key={i} className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/20 text-[10px] font-bold text-[#86EFAC]">
+                        {i + 1}
+                    </span>
+                    <Input
+                        value={step}
+                        onChange={(e) => updateStep(i, e.target.value)}
+                        placeholder={`Paso ${i + 1}`}
+                        className="h-8 text-sm"
+                    />
+                    <button
+                        onClick={() => removeStep(i)}
+                        className="flex-shrink-0 rounded p-1 text-muted-foreground hover:text-red-400"
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            ))}
+            <button
+                onClick={addStep}
+                className="flex items-center gap-1.5 text-xs text-[#86EFAC] hover:text-[#86EFAC]/80"
+            >
+                <Plus className="h-3.5 w-3.5" />
+                Agregar paso
+            </button>
+        </div>
+    );
+}
+
+// ─── FAQ List Editor ───────────────────────────────────────────────────────
+
+function FaqListEditor({
+    faqs,
+    onChange,
+}: {
+    faqs: FaqItem[];
+    onChange: (faqs: FaqItem[]) => void;
+}) {
+    const addFaq = () => onChange([...faqs, { q: '', a: '' }]);
+    const removeFaq = (i: number) => onChange(faqs.filter((_, idx) => idx !== i));
+    const updateFaq = (i: number, field: 'q' | 'a', val: string) =>
+        onChange(faqs.map((f, idx) => (idx === i ? { ...f, [field]: val } : f)));
+
+    return (
+        <div className="space-y-3">
+            {faqs.map((faq, i) => (
+                <div key={i} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground font-medium">FAQ #{i + 1}</span>
+                        <button
+                            onClick={() => removeFaq(i)}
+                            className="rounded p-0.5 text-muted-foreground hover:text-red-400"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                    <Input
+                        value={faq.q}
+                        onChange={(e) => updateFaq(i, 'q', e.target.value)}
+                        placeholder="Pregunta"
+                        className="h-8 text-sm"
+                    />
+                    <textarea
+                        value={faq.a}
+                        onChange={(e) => updateFaq(i, 'a', e.target.value)}
+                        placeholder="Respuesta"
+                        rows={2}
+                        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                </div>
+            ))}
+            <button
+                onClick={addFaq}
+                className="flex items-center gap-1.5 text-xs text-[#86EFAC] hover:text-[#86EFAC]/80"
+            >
+                <Plus className="h-3.5 w-3.5" />
+                Agregar pregunta
+            </button>
+        </div>
+    );
+}
+
+// ─── Config Row ────────────────────────────────────────────────────────────
+
+function ConfigRow({
+    config,
+    onEdit,
+    onDelete,
+}: {
+    config: SupportConfig;
+    onEdit: (c: SupportConfig) => void;
+    onDelete: (id: string) => void;
+}) {
+    const [deleting, setDeleting] = useState(false);
+
+    return (
+        <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 px-4 py-3 gap-3">
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-foreground text-sm">{config.platform}</span>
+                    <span className="text-muted-foreground text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">{config.supplier_name}</span>
+                    {config.needs_code && (
+                        <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+                            Necesita código
+                        </span>
+                    )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {config.help_steps.length} pasos · {config.faq_items.length} FAQs
+                </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                    onClick={() => onEdit(config)}
+                    className="rounded-md p-1.5 text-muted-foreground hover:text-[#86EFAC] hover:bg-[#86EFAC]/10 transition-colors"
+                    title="Editar"
+                >
+                    <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    onClick={async () => {
+                        if (!confirm(`¿Eliminar ${config.platform} - ${config.supplier_name}?`)) return;
+                        setDeleting(true);
+                        await onDelete(config.id);
+                        setDeleting(false);
+                    }}
+                    disabled={deleting}
+                    className="rounded-md p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Eliminar"
+                >
+                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Edit Modal ────────────────────────────────────────────────────────────
+
+function EditModal({
+    config,
+    isNew,
+    onSave,
+    onClose,
+}: {
+    config: Partial<SupportConfig>;
+    isNew: boolean;
+    onSave: (data: Partial<SupportConfig>) => Promise<void>;
+    onClose: () => void;
+}) {
+    const [draft, setDraft] = useState<Partial<SupportConfig>>({ ...config });
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [openSection, setOpenSection] = useState<'instructions' | 'steps' | 'faqs' | 'code' | null>('instructions');
+
+    const set = (field: keyof SupportConfig, value: unknown) =>
+        setDraft((d) => ({ ...d, [field]: value }));
+
+    const handleSave = async () => {
+        setSaving(true);
+        await onSave(draft);
+        setSaving(false);
+        setSaved(true);
+        setTimeout(() => { setSaved(false); onClose(); }, 800);
+    };
+
+    const toggleSection = (s: typeof openSection) =>
+        setOpenSection((prev) => (prev === s ? null : s));
+
+    const SectionHeader = ({
+        id, label, icon,
+    }: { id: typeof openSection; label: string; icon: React.ReactNode }) => (
+        <button
+            onClick={() => toggleSection(id)}
+            className="flex w-full items-center justify-between py-2 text-left text-sm font-medium text-foreground hover:text-[#86EFAC] transition-colors"
+        >
+            <div className="flex items-center gap-2 text-muted-foreground">
+                {icon}
+                <span>{label}</span>
+            </div>
+            {openSection === id
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />
+            }
+        </button>
+    );
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+                    <div>
+                        <h2 className="font-bold text-foreground">
+                            {isNew ? 'Nueva configuración' : 'Editar soporte'}
+                        </h2>
+                        {!isNew && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                {draft.platform} · {draft.supplier_name}
+                            </p>
+                        )}
+                    </div>
+                    <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+
+                {/* Scrollable body */}
+                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-1">
+                    {/* Platform + Supplier (only editable for new) */}
+                    {isNew && (
+                        <div className="grid grid-cols-2 gap-3 pb-3 border-b border-border/40">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Plataforma</label>
+                                <Input
+                                    value={draft.platform || ''}
+                                    onChange={(e) => set('platform', e.target.value)}
+                                    placeholder="Netflix"
+                                    className="h-8 text-sm"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">Proveedor</label>
+                                <Input
+                                    value={draft.supplier_name || ''}
+                                    onChange={(e) => set('supplier_name', e.target.value)}
+                                    placeholder="POP PREMIUM"
+                                    className="h-8 text-sm"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Instructions */}
+                    <div className="border-b border-border/30 pb-2">
+                        <SectionHeader id="instructions" label="Instrucciones generales" icon={<HelpCircle className="h-4 w-4" />} />
+                        {openSection === 'instructions' && (
+                            <textarea
+                                value={draft.support_instructions || ''}
+                                onChange={(e) => set('support_instructions', e.target.value)}
+                                placeholder="Instrucciones que verá el cliente en su portal..."
+                                rows={3}
+                                className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                        )}
+                    </div>
+
+                    {/* Steps */}
+                    <div className="border-b border-border/30 pb-2">
+                        <SectionHeader id="steps" label={`Pasos de ayuda (${draft.help_steps?.length || 0})`} icon={<ListChecks className="h-4 w-4" />} />
+                        {openSection === 'steps' && (
+                            <div className="mt-2">
+                                <StepListEditor
+                                    steps={draft.help_steps || []}
+                                    onChange={(s) => set('help_steps', s)}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* FAQs */}
+                    <div className="border-b border-border/30 pb-2">
+                        <SectionHeader id="faqs" label={`FAQs (${draft.faq_items?.length || 0})`} icon={<HelpCircle className="h-4 w-4" />} />
+                        {openSection === 'faqs' && (
+                            <div className="mt-2">
+                                <FaqListEditor
+                                    faqs={draft.faq_items || []}
+                                    onChange={(f) => set('faq_items', f)}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Code lookup */}
+                    <div>
+                        <SectionHeader id="code" label="Consulta de código" icon={<Link className="h-4 w-4" />} />
+                        {openSection === 'code' && (
+                            <div className="mt-2 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => set('needs_code', !draft.needs_code)}
+                                        className="flex items-center gap-2 text-sm"
+                                    >
+                                        {draft.needs_code
+                                            ? <ToggleRight className="h-5 w-5 text-[#86EFAC]" />
+                                            : <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                                        }
+                                        <span className={draft.needs_code ? 'text-[#86EFAC]' : 'text-muted-foreground'}>
+                                            Requiere código de acceso
+                                        </span>
+                                    </button>
+                                </div>
+                                {draft.needs_code && (
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-muted-foreground">URL del servicio de código</label>
+                                        <Input
+                                            value={draft.code_url || ''}
+                                            onChange={(e) => set('code_url', e.target.value || null)}
+                                            placeholder="https://householdcode.com/es"
+                                            className="h-8 text-sm"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex justify-end gap-3 px-5 py-4 border-t border-border flex-shrink-0">
+                    <Button variant="outline" size="sm" onClick={onClose}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90 min-w-[90px]"
+                    >
+                        {saved ? (
+                            <><Check className="mr-1.5 h-4 w-4" /> Guardado</>
+                        ) : saving ? (
+                            <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...</>
+                        ) : (
+                            isNew ? 'Crear' : 'Guardar'
+                        )}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Panel ────────────────────────────────────────────────────────────
+
+export function SupportConfigPanel() {
+    const [configs, setConfigs] = useState<SupportConfig[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [editTarget, setEditTarget] = useState<Partial<SupportConfig> | null>(null);
+    const [isNew, setIsNew] = useState(false);
+
+    const load = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/admin/support-config');
+            const data = await res.json();
+            setConfigs(data.configs || []);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { load(); }, []);
+
+    const filtered = configs.filter((c) => {
+        const q = search.toLowerCase();
+        return (
+            c.platform.toLowerCase().includes(q) ||
+            c.supplier_name.toLowerCase().includes(q)
+        );
+    });
+
+    const handleSave = async (draft: Partial<SupportConfig>) => {
+        if (isNew) {
+            await fetch('/api/admin/support-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft),
+            });
+        } else {
+            await fetch(`/api/admin/support-config?id=${draft.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft),
+            });
+        }
+        await load();
+    };
+
+    const handleDelete = async (id: string) => {
+        await fetch(`/api/admin/support-config?id=${id}`, { method: 'DELETE' });
+        await load();
+    };
+
+    return (
+        <div className="p-5 space-y-4">
+            {/* Toolbar */}
+            <div className="flex items-center gap-3">
+                <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Buscar plataforma o proveedor..."
+                        className="w-full rounded-lg border border-input bg-background pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                </div>
+                <Button
+                    size="sm"
+                    onClick={() => { setIsNew(true); setEditTarget({ ...EMPTY_CONFIG }); }}
+                    className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                >
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    Nueva
+                </Button>
+            </div>
+
+            {/* List */}
+            {loading ? (
+                <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-[#86EFAC]" />
+                </div>
+            ) : filtered.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-8">
+                    {search ? 'Sin resultados para esa búsqueda' : 'No hay configuraciones de soporte'}
+                </p>
+            ) : (
+                <div className="space-y-2">
+                    {filtered.map((c) => (
+                        <ConfigRow
+                            key={c.id}
+                            config={c}
+                            onEdit={(cfg) => { setIsNew(false); setEditTarget(cfg); }}
+                            onDelete={handleDelete}
+                        />
+                    ))}
+                    <p className="text-xs text-muted-foreground text-right pt-1">
+                        {filtered.length} configuración{filtered.length !== 1 ? 'es' : ''}
+                    </p>
+                </div>
+            )}
+
+            {/* Edit/Create Modal */}
+            {editTarget && (
+                <EditModal
+                    config={editTarget}
+                    isNew={isNew}
+                    onSave={handleSave}
+                    onClose={() => { setEditTarget(null); setIsNew(false); }}
+                />
+            )}
+        </div>
+    );
+}

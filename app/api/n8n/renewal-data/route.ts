@@ -84,6 +84,8 @@ export async function POST(request: NextRequest) {
             .eq('is_active', true)
             .order('sort_order', { ascending: true });
 
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://clickpar.shop';
+
         return NextResponse.json({
             customer: {
                 id: (customer as any).id,
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
                 phone: (customer as any).phone,
                 type: (customer as any).customer_type,
                 whatsapp_instance: (customer as any).whatsapp_instance,
+                portal_url: `${baseUrl}/portal`,
             },
             sale: {
                 id: (sale as any)?.id,

@@ -192,18 +192,19 @@ export default async function DashboardPage({
     // Obtener plataformas activas (con umbral de stock)
     const { data: rawPlatforms } = await supabase
         .from('platforms')
-        .select('id, name, icon_color, default_slot_price_gs, stock_alert_threshold')
+        .select('id, name, icon_color, default_slot_price_gs, stock_alert_threshold, business_type')
         .eq('is_active', true)
         .order('name');
 
     // Mapear a formato esperado por QuickSaleWidget
-    type RawPlatform = { id: string; name: string; icon_color: string | null; default_slot_price_gs: number | null };
+    type RawPlatform = { id: string; name: string; icon_color: string | null; default_slot_price_gs: number | null; business_type: string | null };
     const allPlatforms = (rawPlatforms as RawPlatform[] | null)?.map(p => ({
         id: p.id,
         name: p.name,
         color: p.icon_color || '#666',
         icon_letter: p.name.charAt(0).toUpperCase(),
-        price: p.default_slot_price_gs || 25000
+        price: p.default_slot_price_gs || 25000,
+        business_type: p.business_type || 'profile_sharing'
     })) || [];
 
     // Filter: only show platforms that have available stock

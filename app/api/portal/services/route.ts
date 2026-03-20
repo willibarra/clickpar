@@ -47,7 +47,7 @@ export async function GET() {
     ];
     for (const phone of phonesToTry) {
         const { data } = await (admin.from('customers') as any)
-            .select('id, full_name')
+            .select('id, full_name, customer_type, creator_slug')
             .eq('phone', phone)
             .maybeSingle();
         if (data) { customer = data; break; }
@@ -162,6 +162,8 @@ export async function GET() {
         customer: {
             name: profile?.full_name || customer.full_name || user.email,
             phone: resolvedPhone,
+            customerType: customer.customer_type || 'cliente',
+            creatorSlug: customer.creator_slug || null,
         },
         services,
         totalActive: services.length,

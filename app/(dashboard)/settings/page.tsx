@@ -2,7 +2,7 @@
 
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { AuditLogPanel } from '@/components/settings/audit-log-panel';
 import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
 import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
+import { SupportConfigPanel } from '@/components/settings/support-config-panel';
 import { useUsdtRate } from '@/lib/usdt-rate';
 
 // ==========================================
@@ -383,6 +384,20 @@ export default function SettingsPage() {
                     <WhatsAppSettingsPanel />
                 </div>
             </CollapsibleSection>
+
+            {/* 4. Soporte — guías por plataforma */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<HelpCircle className="h-5 w-5" />}
+                    iconColor="text-blue-400"
+                    title="Guías de Soporte"
+                    description="Pasos de ayuda y FAQs por plataforma y proveedor"
+                >
+                    <div className="p-0">
+                        <SupportConfigPanel />
+                    </div>
+                </CollapsibleSection>
+            )}
 
             {/* 7. Plataformas Disponibles */}
             <CollapsibleSection

@@ -20,8 +20,10 @@ import {
     Check,
     Calendar,
     UserPlus,
-    X
+    X,
+    Users
 } from 'lucide-react';
+import { NewSaleModal } from '@/components/sales/new-sale-modal';
 import { SlotSelectorModal } from './slot-selector-modal';
 import { createClient } from '@/lib/supabase/client';
 
@@ -37,6 +39,7 @@ interface Platform {
     color: string;
     icon_letter: string;
     price?: number;
+    business_type?: string;
 }
 
 interface ComboItem {
@@ -55,6 +58,10 @@ type SaleMode = 'individual' | 'combo';
 export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) {
     // Mode toggle
     const [saleMode, setSaleMode] = useState<SaleMode>('individual');
+
+    // Nueva Venta modal (para plataformas familia)
+    const [openNewSaleModal, setOpenNewSaleModal] = useState(false);
+    const [familyPreselect, setFamilyPreselect] = useState<string | undefined>(undefined);
 
     // Individual mode state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
@@ -132,6 +139,12 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     };
 
     const handlePlatformSelect = (platform: Platform) => {
+        // Si es plataforma familia, abrir modal de Nueva Venta
+        if (platform.business_type === 'family_account') {
+            setFamilyPreselect(platform.name);
+            setOpenNewSaleModal(true);
+            return;
+        }
         setSelectedPlatform(platform.name);
         setPrice(platform.price || 25000);
         setStep('customer');
@@ -176,7 +189,15 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     };
 
     const handleCreateInlineCustomer = async () => {
-        if (!newCustomerName.trim() || !newCustomerPhone.trim()) return;
+        if (!newCustomerName.trim()) {
+            setErrorMsg('El nombre del cliente es obligatorio');
+            return;
+        }
+        if (!newCustomerPhone.trim()) {
+            setErrorMsg('El teléfono del cliente es obligatorio');
+            return;
+        }
+        setErrorMsg(null);
         setSearchLoading(true);
         try {
             const { normalizePhone } = await import('@/lib/utils/phone');
@@ -201,9 +222,20 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     };
 
     const handleCustomerNext = () => {
-        if (selectedCustomer) {
-            setStep('confirm');
+        if (!selectedCustomer) {
+            setErrorMsg('Seleccioná o creá un cliente');
+            return;
         }
+        if (!selectedCustomer.full_name?.trim()) {
+            setErrorMsg('El cliente debe tener nombre registrado');
+            return;
+        }
+        if (!selectedCustomer.phone?.trim()) {
+            setErrorMsg('El cliente debe tener teléfono registrado');
+            return;
+        }
+        setErrorMsg(null);
+        setStep('confirm');
     };
 
     const handleSale = async () => {
@@ -399,23 +431,37 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                             <>
                                 <p className="text-sm text-muted-foreground">Selecciona una plataforma:</p>
                                 <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
-                                    {platforms.map((platform) => (
-                                        <button
-                                            key={platform.id}
-                                            onClick={() => handlePlatformSelect(platform)}
-                                            className="flex flex-col items-center gap-1 rounded-lg border border-border bg-[#1a1a1a] p-3 transition-all hover:border-[#86EFAC] hover:bg-[#86EFAC]/10"
-                                        >
-                                            <div
-                                                className="flex h-8 w-8 items-center justify-center rounded-full text-white text-sm font-bold"
-                                                style={{ backgroundColor: platform.color }}
+                                    {platforms.map((platform) => {
+                                        const isFamily = platform.business_type === 'family_account';
+                                        return (
+                                            <button
+                                                key={platform.id}
+                                                onClick={() => handlePlatformSelect(platform)}
+                                                className={`relative flex flex-col items-center gap-1 rounded-lg border p-3 transition-all ${isFamily
+                                                    ? 'border-blue-500/40 bg-blue-500/5 hover:border-blue-400 hover:bg-blue-500/15'
+                                                    : 'border-border bg-[#1a1a1a] hover:border-[#86EFAC] hover:bg-[#86EFAC]/10'
+                                                    }`}
                                             >
-                                                {platform.icon_letter}
-                                            </div>
-                                            <span className="text-xs text-foreground truncate w-full text-center">
-                                                {platform.name}
-                                            </span>
-                                        </button>
-                                    ))}
+                                                {isFamily && (
+                                                    <span className="absolute top-1 right-1">
+                                                        <Users className="h-2.5 w-2.5 text-blue-400" />
+                                                    </span>
+                                                )}
+                                                <div
+                                                    className="flex h-8 w-8 items-center justify-center rounded-full text-white text-sm font-bold"
+                                                    style={{ backgroundColor: platform.color }}
+                                                >
+                                                    {platform.icon_letter}
+                                                </div>
+                                                <span className="text-xs text-foreground truncate w-full text-center">
+                                                    {platform.name}
+                                                </span>
+                                                {isFamily && (
+                                                    <span className="text-[9px] text-blue-400 font-medium">Familia</span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </>
                         ) : (
@@ -861,6 +907,13 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                     setSelectedSlot(slot);
                     setShowSlotModal(false);
                 }}
+            />
+
+            {/* Modal de Nueva Venta — se abre al seleccionar plataforma Familia */}
+            <NewSaleModal
+                open={openNewSaleModal}
+                onOpenChange={setOpenNewSaleModal}
+                preselectedPlatform={familyPreselect}
             />
         </Card>
     );

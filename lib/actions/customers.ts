@@ -87,6 +87,23 @@ export async function updateCustomer(id: string, formData: FormData) {
     const waInstance = formData.get('whatsapp_instance') as string | null;
     const whatsappInstance = waInstance && waInstance !== 'auto' ? waInstance : null;
 
+    // Creator slug: only applies when creador; clean to safe chars
+    const rawSlug = (formData.get('creator_slug') as string)?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || null;
+    const creatorSlug = customerType === 'creador' && rawSlug ? rawSlug : null;
+
+    // Validate slug uniqueness
+    if (creatorSlug) {
+        const { data: existingSlug } = await (supabase.from('customers') as any)
+            .select('id')
+            .eq('creator_slug', creatorSlug)
+            .neq('id', id)
+            .limit(1)
+            .single();
+        if (existingSlug) {
+            return { error: `El slug "${creatorSlug}" ya está en uso por otro creador.` };
+        }
+    }
+
     // Obtener tipo actual para detectar cambios
     const { data: currentCustomer } = await (supabase.from('customers') as any)
         .select('customer_type')
@@ -96,7 +113,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     const previousType = currentCustomer?.customer_type || 'cliente';
 
     const { error } = await (supabase.from('customers') as any)
-        .update({ full_name: fullName, phone, customer_type: customerType, whatsapp_instance: whatsappInstance })
+        .update({ full_name: fullName, phone, customer_type: customerType, whatsapp_instance: whatsappInstance, creator_slug: creatorSlug })
         .eq('id', id);
 
     if (error) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ServiceCard } from '@/components/portal/service-card';
-import { Loader2, Tv, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap } from 'lucide-react';
 
 interface Service {
     saleId: string;
@@ -25,6 +25,9 @@ export default function PortalDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [customerName, setCustomerName] = useState('');
+    const [customerType, setCustomerType] = useState<string>('cliente');
+    const [creatorSlug, setCreatorSlug] = useState<string | null>(null);
+    const [copiedSlug, setCopiedSlug] = useState(false);
 
     useEffect(() => {
         fetch('/api/portal/services')
@@ -33,6 +36,8 @@ export default function PortalDashboard() {
                 if (data.success) {
                     setServices(data.services);
                     setCustomerName(data.customer?.name || '');
+                    setCustomerType(data.customer?.customerType || 'cliente');
+                    setCreatorSlug(data.customer?.creatorSlug || null);
                 } else {
                     setError(data.error || 'Error al cargar servicios');
                 }
@@ -41,12 +46,18 @@ export default function PortalDashboard() {
             .finally(() => setLoading(false));
     }, []);
 
-    // Count expiring soon
     const expiringSoon = services.filter((s) => {
         if (!s.expiresAt) return false;
         const days = Math.ceil((new Date(s.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
         return days >= 0 && days <= 3;
     });
+
+    const handleCopySlug = async () => {
+        if (!creatorSlug) return;
+        await navigator.clipboard.writeText(`clickpar.net/${creatorSlug}`);
+        setCopiedSlug(true);
+        setTimeout(() => setCopiedSlug(false), 2000);
+    };
 
     if (loading) {
         return (
@@ -69,6 +80,35 @@ export default function PortalDashboard() {
 
     return (
         <div className="space-y-6">
+            {/* Creator URL banner — only for creadores with a slug */}
+            {customerType === 'creador' && creatorSlug && (
+                <div className="overflow-hidden rounded-2xl border border-[#818CF8]/40 bg-gradient-to-r from-[#818CF8]/10 to-[#86EFAC]/10">
+                    <div className="flex items-center gap-2 border-b border-[#818CF8]/20 bg-[#818CF8]/10 px-4 py-2">
+                        <Zap className="h-4 w-4 text-[#818CF8]" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[#818CF8]">Tu URL de Creador</span>
+                    </div>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-1">Compartí este link para que te reconozcan como creador</p>
+                            <p className="font-mono text-sm font-semibold text-foreground truncate">
+                                clickpar.net/<span className="text-[#86EFAC]">{creatorSlug}</span>
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleCopySlug}
+                            className={`flex-shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
+                                copiedSlug
+                                    ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
+                                    : 'bg-[#818CF8]/20 text-[#818CF8] hover:bg-[#818CF8]/30'
+                            }`}
+                        >
+                            {copiedSlug ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedSlug ? 'Copiado!' : 'Copiar'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Welcome */}
             <div>
                 <h1 className="text-2xl font-bold text-foreground">

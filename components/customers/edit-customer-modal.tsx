@@ -15,6 +15,7 @@ interface Customer {
     phone_number: string | null;
     customer_type?: string;
     whatsapp_instance?: string | null;
+    creator_slug?: string | null;
 }
 
 interface EditCustomerModalProps {
@@ -32,6 +33,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [loadingPassword, setLoadingPassword] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [customerType, setCustomerType] = useState(customer.customer_type || 'cliente');
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -189,7 +191,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
 
                         <div className="space-y-2">
                             <Label>Tipo de cliente</Label>
-                            <Select name="customer_type" defaultValue={customer.customer_type || 'cliente'}>
+                            <Select name="customer_type" defaultValue={customer.customer_type || 'cliente'} onValueChange={setCustomerType}>
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
@@ -199,6 +201,29 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Creator slug — only shown when type is creador */}
+                        {customerType === 'creador' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="creator_slug">URL personalizada</Label>
+                                <div className="flex items-center rounded-md border border-input bg-muted/30 px-3 py-2 text-sm focus-within:ring-1 focus-within:ring-ring">
+                                    <span className="text-muted-foreground select-none whitespace-nowrap">clickpar.net/</span>
+                                    <input
+                                        id="creator_slug"
+                                        name="creator_slug"
+                                        defaultValue={customer.creator_slug || ''}
+                                        placeholder="genaro"
+                                        className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground/50 font-mono"
+                                        pattern="[a-z0-9_-]+"
+                                        title="Solo letras minúsculas, números, guiones y guiones bajos"
+                                        onChange={(e) => {
+                                            e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                                        }}
+                                    />
+                                </div>
+                                <p className="text-xs text-muted-foreground">Solo letras minúsculas, números y guiones. Ej: <code>genaro</code></p>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <Label>WhatsApp preferido</Label>
