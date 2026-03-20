@@ -5,12 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, LayoutGrid, List, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Copy, Check, Filter, Edit3, X } from 'lucide-react';
+import { Package, LayoutGrid, List, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Copy, Check, Filter, Edit3, X, Tag } from 'lucide-react';
 import { EditAccountModal } from '@/components/inventory/edit-account-modal';
 import { SlotDetailsModal } from '@/components/inventory/slot-details-modal';
 import { AddAccountModal } from '@/components/inventory/add-account-modal';
 import { PlatformIcon } from '@/components/ui/platform-icon';
 import { BulkEditModal } from '@/components/inventory/bulk-edit-modal';
+import { BulkPriceModal } from '@/components/inventory/bulk-price-modal';
 
 interface Slot {
     id: string;
@@ -137,6 +138,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
     // ── Bulk selection state ──────────────────────
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkEditOpen, setBulkEditOpen] = useState(false);
+    const [bulkPriceOpen, setBulkPriceOpen] = useState(false);
 
     function toggleSelect(id: string) {
         setSelectedIds(prev => {
@@ -279,6 +281,18 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                             className="pl-9 w-48 bg-card border-border"
                         />
                     </div>
+
+                    {/* Bulk price button */}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setBulkPriceOpen(true)}
+                        className="border-[#86EFAC]/30 text-[#86EFAC] hover:bg-[#86EFAC]/10 gap-1.5"
+                        title="Actualizar precio de perfiles libres"
+                    >
+                        <Tag className="h-3.5 w-3.5" />
+                        Precios libres
+                    </Button>
 
                     {/* View Toggle */}
                     <div className="flex rounded-lg border border-border bg-card">
@@ -641,6 +655,13 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                 onClose={() => setBulkEditOpen(false)}
                 selectedIds={Array.from(selectedIds)}
                 onSuccess={() => { clearSelection(); }}
+            />
+
+            {/* BulkPrice Modal */}
+            <BulkPriceModal
+                open={bulkPriceOpen}
+                onClose={() => setBulkPriceOpen(false)}
+                platforms={platforms}
             />
 
             {/* Pagination */}
