@@ -67,19 +67,24 @@ export default function StaffLoginPage() {
             if (!isDev && siteKey) {
                 const token = await executeRecaptcha();
                 if (token) {
-                    // Optionally verify score server-side
-                    const verifyRes = await fetch('/api/auth/verify-recaptcha', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token }),
-                    });
-                    const verifyData = await verifyRes.json();
-                    if (!verifyData.success || (verifyData.score !== undefined && verifyData.score < 0.3)) {
-                        setError('Verificación de seguridad fallida. Intenta de nuevo.');
-                        setLoading(false);
-                        return;
+                    try {
+                        // Optionally verify score server-side
+                        const verifyRes = await fetch('/api/auth/verify-recaptcha', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token }),
+                        });
+                        const verifyData = await verifyRes.json();
+                        if (!verifyData.success || (verifyData.score !== undefined && verifyData.score < 0.3)) {
+                            setError('Verificación de seguridad fallida. Intenta de nuevo.');
+                            setLoading(false);
+                            return;
+                        }
+                        captchaToken = token;
+                    } catch {
+                        // If reCAPTCHA verification fetch fails (network error), skip it and proceed
+                        console.warn('[Login] reCAPTCHA verify fetch failed, proceeding without captcha');
                     }
-                    captchaToken = token;
                 }
             }
 
