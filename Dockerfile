@@ -36,6 +36,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Supabase env vars needed at runtime for server-side API routes
+# These are fallbacks — Dokploy's Environment tab will override them at runtime
+ENV NEXT_PUBLIC_SUPABASE_URL=https://db.clickpar.shop
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjkyMzY3MDgsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.QoOcOY46cCu2YBja1j57EYlQe4ZhkkAvZf6I6iWUrgM
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -54,5 +59,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Real env vars (NEXT_PUBLIC_SUPABASE_URL, etc.) are injected by Dokploy at runtime
 CMD ["node", "server.js"]
