@@ -415,6 +415,16 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300">⚠️ Cuenta Reportada</span>
                                             </div>
                                         )}
+                                        {account.status === 'possible_autopay' && (
+                                            <div className="mx-4 mb-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">💳 Posible Autopay</span>
+                                            </div>
+                                        )}
+                                        {account.status === 'no_renovar' && (
+                                            <div className="mx-4 mb-1">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300">🚫 No Renovar</span>
+                                            </div>
+                                        )}
                                         {account.notes && (
                                             <div className="mx-4 mb-2">
                                                 <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">📝 {account.notes}</p>
@@ -553,6 +563,12 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                                     )}
                                                     {isQuarantine && (
                                                         <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-1.5 py-0.5 text-xs font-medium text-purple-300">⚠️</span>
+                                                    )}
+                                                    {account.status === 'possible_autopay' && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-xs font-medium text-emerald-300">💳</span>
+                                                    )}
+                                                    {account.status === 'no_renovar' && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-xs font-medium text-red-300">🚫</span>
                                                     )}
                                                 </div>
                                             </td>

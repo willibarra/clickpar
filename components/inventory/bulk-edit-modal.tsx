@@ -138,6 +138,8 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
                                     <SelectItem value="suspended">⚠️ Suspendida</SelectItem>
                                     <SelectItem value="quarantine">🔴 En Cuarentena</SelectItem>
                                     <SelectItem value="cancelled">❌ Cancelada</SelectItem>
+                                    <SelectItem value="possible_autopay">💳 Posible Autopay</SelectItem>
+                                    <SelectItem value="no_renovar">🚫 No Renovar</SelectItem>
                                 </SelectContent>
                             </Select>
                         </FieldToggle>

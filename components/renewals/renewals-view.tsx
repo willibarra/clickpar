@@ -16,7 +16,7 @@ import {
     MessageSquare, MessageSquareOff, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice } from '@/lib/actions/renewals';
+import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice, markAccountsAsPossibleAutopay, markAccountsAsNoRenovar, confirmNoRenovar } from '@/lib/actions/renewals';
 import { BatchSendModal } from "./batch-send-modal";
 
 type FilterType = 'all' | 'expired' | 'today' | '3days';
@@ -80,6 +80,17 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [showReleaseModal, setShowReleaseModal] = useState(false);
     const [showBatchSendModal, setShowBatchSendModal] = useState(false);
     const [sendingNotice, setSendingNotice] = useState<Set<string>>(new Set());
+
+    // No Renovar modal state
+    const [showAutopayModal, setShowAutopayModal] = useState(false);
+    const [showNoRenovarModal, setShowNoRenovarModal] = useState(false);
+    const [noRenovarLoading, setNoRenovarLoading] = useState(false);
+    const [autopayLoading, setAutopayLoading] = useState(false);
+    const [noRenovarData, setNoRenovarData] = useState<{
+        activeClients: any[];
+        availableDestinations: any[];
+        canAutoMove: boolean;
+    } | null>(null);
 
     // Enrich subscriptions with expiry info
     const enrichedSubs = useMemo(() => {
@@ -310,6 +321,70 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         });
     };
 
+    // Handler: open No Renovar modal (check for active clients first)
+    const handleOpenNoRenovar = async () => {
+        setNoRenovarLoading(true);
+        try {
+            const result = await markAccountsAsNoRenovar(Array.from(provSelected));
+            if (result.success) {
+                setNoRenovarData({
+                    activeClients: result.activeClients,
+                    availableDestinations: result.availableDestinations,
+                    canAutoMove: result.canAutoMove,
+                });
+                setShowNoRenovarModal(true);
+            } else {
+                toast.error('Error al verificar cuentas');
+            }
+        } finally {
+            setNoRenovarLoading(false);
+        }
+    };
+
+    // Handler: confirm Posible Autopay
+    const handleConfirmAutopay = () => {
+        setAutopayLoading(true);
+        startTransition(async () => {
+            const result = await markAccountsAsPossibleAutopay(Array.from(provSelected));
+            setAutopayLoading(false);
+            if (result.success) {
+                toast.success(`💳 ${result.updated} cuenta(s) marcadas como Posible Autopay`);
+                setShowAutopayModal(false);
+                setProvSelected(new Set());
+                router.refresh();
+            } else {
+                toast.error('Error', { description: (result as any).error });
+            }
+        });
+    };
+
+    // Handler: confirm No Renovar (with optional auto-move)
+    const handleConfirmNoRenovar = (autoMove: boolean) => {
+        if (!noRenovarData) return;
+        startTransition(async () => {
+            let moves: Array<{ saleId: string; oldSlotId: string; newSlotId: string }> = [];
+            if (autoMove && noRenovarData.canAutoMove) {
+                // Pair each active client with an available destination slot
+                moves = noRenovarData.activeClients.map((client, i) => ({
+                    saleId: client.saleId,
+                    oldSlotId: client.slotId,
+                    newSlotId: noRenovarData.availableDestinations[i].slotId,
+                }));
+            }
+            const result = await confirmNoRenovar(Array.from(provSelected), moves);
+            if (result.success) {
+                const movedMsg = moves.length > 0 ? ` y ${moves.length} cliente(s) movidos` : '';
+                toast.success(`🚫 Cuentas marcadas como No Renovar${movedMsg}`);
+                setShowNoRenovarModal(false);
+                setNoRenovarData(null);
+                setProvSelected(new Set());
+                router.refresh();
+            } else {
+                toast.error('Error', { description: result.error });
+            }
+        });
+    };
+
     const filterButtons: { key: FilterType; label: string; count?: number }[] = [
         { key: 'all', label: 'Todos' },
         { key: 'expired', label: 'Vencidos', count: expiredCount },
@@ -422,7 +497,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 ))}
                             </div>
                             {provSelected.size > 0 && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <Button
                                         variant="outline"
                                         onClick={handleCopyProviders}
@@ -437,6 +512,19 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     >
                                         <RefreshCw className="h-4 w-4" />
                                         Renovar a Proveedor ({provSelected.size})
+                                    </Button>
+                                    <Button
+                                        onClick={() => setShowAutopayModal(true)}
+                                        className="bg-emerald-600 hover:bg-emerald-600/90 text-white gap-2 h-9"
+                                    >
+                                        💳 Posible Autopay ({provSelected.size})
+                                    </Button>
+                                    <Button
+                                        onClick={handleOpenNoRenovar}
+                                        variant="outline"
+                                        className="border-red-500/50 text-red-400 hover:bg-red-500/10 gap-2 h-9"
+                                    >
+                                        🚫 No Renovar ({provSelected.size})
                                     </Button>
                                 </div>
                             )}
@@ -1049,6 +1137,119 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         days: s.daysUntilExpiry,
                     }))}
             />
+
+            {/* ── Modal: Posible Autopay ── */}
+            <Dialog open={showAutopayModal} onOpenChange={(o) => !o && setShowAutopayModal(false)}>
+                <DialogContent className="sm:max-w-[420px] bg-card border-border">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            💳 Marcar como Posible Autopay
+                        </DialogTitle>
+                        <DialogDescription>
+                            Se marcará {provSelected.size} cuenta(s) como <strong>Posible Autopay</strong>.
+                            Se activará <code>is_autopay = true</code> y desaparecerán de la lista de renovaciones.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-sm text-emerald-300">
+                        ℹ️ Estas cuentas serán excluidas del flujo normal de renovación. Podés revertirlo cambiando el estado en el Inventario.
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setShowAutopayModal(false)} disabled={autopayLoading}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleConfirmAutopay}
+                            disabled={autopayLoading || isPending}
+                            className="bg-emerald-600 hover:bg-emerald-600/90 text-white"
+                        >
+                            {autopayLoading || isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Confirmar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Modal: No Renovar ── */}
+            <Dialog open={showNoRenovarModal} onOpenChange={(o) => { if (!o) { setShowNoRenovarModal(false); setNoRenovarData(null); } }}>
+                <DialogContent className="sm:max-w-[540px] bg-card border-border max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            🚫 No Renovar
+                        </DialogTitle>
+                        <DialogDescription>
+                            {noRenovarData?.activeClients.length === 0
+                                ? `Las ${provSelected.size} cuenta(s) serán marcadas como No Renovar. No tienen clientes activos.`
+                                : `Se detectaron ${noRenovarData?.activeClients.length} cliente(s) activo(s) en estas cuentas.`
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {noRenovarData && noRenovarData.activeClients.length > 0 && (
+                        <div className="space-y-3">
+                            {/* Lista de clientes afectados */}
+                            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                                <p className="text-xs font-semibold text-red-400 mb-2">Clientes con suscripción activa:</p>
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                    {noRenovarData.activeClients.map((c) => (
+                                        <div key={c.saleId} className="flex items-center justify-between text-xs">
+                                            <span className="font-medium text-foreground">{c.customer?.full_name || 'N/A'}</span>
+                                            <span className="text-muted-foreground">{c.platform} · {c.slotIdentifier}</span>
+                                            <span className="text-muted-foreground">{c.endDate}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Opciones */}
+                            {noRenovarData.canAutoMove ? (
+                                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                                    <p className="text-emerald-300 font-semibold mb-1">✅ Hay {noRenovarData.availableDestinations.length} slot(s) disponibles para reubicar</p>
+                                    <p className="text-xs text-muted-foreground">Los clientes serán movidos automáticamente a slots libres de la misma plataforma.</p>
+                                </div>
+                            ) : (
+                                <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm">
+                                    <p className="text-yellow-300 font-semibold mb-1">⚠️ No hay suficientes slots disponibles</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Hay {noRenovarData.availableDestinations.length} slot(s) disponibles pero {noRenovarData.activeClients.length} clientes activos.
+                                        Podés marcar igual como No Renovar (los clientes quedarán en sus slots hasta que venzan).
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {noRenovarData?.activeClients.length === 0 && (
+                        <div className="rounded-lg bg-[#1a1a1a] border border-border p-3 text-sm text-muted-foreground">
+                            Estas cuentas no tienen clientes activos. Se marcarán como No Renovar sin impacto.
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2 flex-wrap">
+                        <Button variant="outline" onClick={() => { setShowNoRenovarModal(false); setNoRenovarData(null); }} disabled={isPending}>
+                            Cancelar
+                        </Button>
+                        {noRenovarData?.activeClients && noRenovarData.activeClients.length > 0 && noRenovarData.canAutoMove && (
+                            <Button
+                                onClick={() => handleConfirmNoRenovar(true)}
+                                disabled={isPending}
+                                className="bg-emerald-600 hover:bg-emerald-600/90 text-white"
+                            >
+                                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Mover clientes y No Renovar
+                            </Button>
+                        )}
+                        <Button
+                            onClick={() => handleConfirmNoRenovar(false)}
+                            disabled={isPending}
+                            variant="outline"
+                            className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+                        >
+                            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            {noRenovarData?.activeClients.length === 0 ? 'Confirmar No Renovar' : 'No Renovar sin mover'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

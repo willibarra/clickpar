@@ -103,7 +103,7 @@ export async function getAccountsForRenewal() {
         .in('status', ['active', 'expired'])
         .gte('renewal_date', windowStart.toISOString().split('T')[0])
         .lte('renewal_date', windowEnd.toISOString().split('T')[0])
-        .eq('is_autopay', false)  // excluir las de autopay
+        .eq('is_autopay', false)  // excluir las de autopay (includes possible_autopay)
         .order('renewal_date', { ascending: true });
 
     if (error) return { data: [], error: error.message };
@@ -529,4 +529,160 @@ export async function sendRenewalNotice(saleId: string) {
         return { success: true };
     }
     return { success: false, error: result.error || 'Error al enviar' };
+}
+
+/**
+ * Mark accounts as Possible Autopay:
+ * - status = 'possible_autopay', is_autopay = true
+ * - They will be excluded from the renewal list automatically
+ */
+export async function markAccountsAsPossibleAutopay(accountIds: string[]) {
+    const supabase = await createAdminClient();
+
+    const { error } = await supabase
+        .from('mother_accounts')
+        .update({ status: 'possible_autopay', is_autopay: true })
+        .in('id', accountIds);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/renewals');
+    revalidatePath('/inventory');
+    revalidatePath('/');
+
+    return { success: true, updated: accountIds.length };
+}
+
+/**
+ * Mark accounts as No Renovar:
+ * - status = 'no_renovar'
+ * - Returns active clients inside those accounts so the UI can offer to move them
+ */
+export async function markAccountsAsNoRenovar(accountIds: string[]) {
+    const supabase = await createAdminClient();
+
+    // Find active slots in these accounts that have active sales
+    const { data: slots } = await (supabase.from('sale_slots') as any)
+        .select(`
+            id, slot_identifier, mother_account_id,
+            mother_account:mother_accounts(id, platform, email),
+            sales(id, is_active, end_date, amount_gs,
+                customer:customers(id, full_name, phone)
+            )
+        `)
+        .in('mother_account_id', accountIds)
+        .eq('status', 'sold');
+
+    const activeClients: any[] = [];
+
+    for (const slot of slots || []) {
+        const activeSale = (slot.sales || []).find((s: any) => s.is_active);
+        if (activeSale) {
+            activeClients.push({
+                slotId: slot.id,
+                slotIdentifier: slot.slot_identifier,
+                motherAccountId: slot.mother_account_id,
+                platform: slot.mother_account?.platform,
+                accountEmail: slot.mother_account?.email,
+                saleId: activeSale.id,
+                endDate: activeSale.end_date,
+                amountGs: activeSale.amount_gs,
+                customer: activeSale.customer,
+            });
+        }
+    }
+
+    // If there are active clients, find available destination slots in same platform
+    const availableDestinations: any[] = [];
+    if (activeClients.length > 0) {
+        // Get unique platforms from accounts to be marked
+        const { data: accountsData } = await supabase
+            .from('mother_accounts')
+            .select('id, platform')
+            .in('id', accountIds);
+
+        const platforms = [...new Set((accountsData || []).map((a: any) => a.platform))];
+
+        // Find available slots in OTHER accounts with same platform
+        for (const platform of platforms) {
+            const { data: availSlots } = await (supabase.from('sale_slots') as any)
+                .select(`
+                    id, slot_identifier, mother_account_id,
+                    mother_account:mother_accounts(id, platform, email, status)
+                `)
+                .eq('status', 'available')
+                .not('mother_account_id', 'in', `(${accountIds.join(',')})`)
+                .eq('mother_account.platform', platform);
+
+            // Filter: only slots whose mother account is active
+            const validSlots = (availSlots || []).filter(
+                (s: any) => s.mother_account?.status === 'active'
+            );
+            availableDestinations.push(...validSlots.map((s: any) => ({
+                slotId: s.id,
+                slotIdentifier: s.slot_identifier,
+                motherAccountId: s.mother_account_id,
+                platform: s.mother_account?.platform,
+                accountEmail: s.mother_account?.email,
+            })));
+        }
+    }
+
+    return {
+        success: true,
+        activeClients,
+        availableDestinations,
+        canAutoMove: availableDestinations.length >= activeClients.length,
+    };
+}
+
+/**
+ * Confirm No Renovar:
+ * - Optionally moves active sales to new slots
+ * - Then marks the accounts as no_renovar
+ */
+export async function confirmNoRenovar(
+    accountIds: string[],
+    moves: Array<{ saleId: string; oldSlotId: string; newSlotId: string }>
+) {
+    const supabase = await createAdminClient();
+    const errors: string[] = [];
+
+    // 1. Execute moves if any
+    for (const move of moves) {
+        // Update the sale to point to the new slot
+        const { error: saleErr } = await (supabase.from('sales') as any)
+            .update({ slot_id: move.newSlotId })
+            .eq('id', move.saleId);
+
+        if (saleErr) {
+            errors.push(`Error moviendo venta ${move.saleId}: ${saleErr.message}`);
+            continue;
+        }
+
+        // Free old slot
+        await (supabase.from('sale_slots') as any)
+            .update({ status: 'available' })
+            .eq('id', move.oldSlotId);
+
+        // Mark new slot as sold
+        await (supabase.from('sale_slots') as any)
+            .update({ status: 'sold' })
+            .eq('id', move.newSlotId);
+    }
+
+    // 2. Mark accounts as no_renovar
+    const { error: updateErr } = await supabase
+        .from('mother_accounts')
+        .update({ status: 'no_renovar' })
+        .in('id', accountIds);
+
+    if (updateErr) errors.push(updateErr.message);
+
+    revalidatePath('/renewals');
+    revalidatePath('/inventory');
+    revalidatePath('/');
+
+    if (errors.length > 0) return { success: false, error: errors.join('; ') };
+    return { success: true };
 }

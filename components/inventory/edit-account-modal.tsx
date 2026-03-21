@@ -284,6 +284,8 @@ export function EditAccountModal({ account }: { account: Account }) {
                                             <SelectItem value="frozen">❄️ Congelada</SelectItem>
                                             <SelectItem value="suspended">Suspendida</SelectItem>
                                             <SelectItem value="cancelled">Cancelada</SelectItem>
+                                            <SelectItem value="possible_autopay">💳 Posible Autopay</SelectItem>
+                                            <SelectItem value="no_renovar">🚫 No Renovar</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
