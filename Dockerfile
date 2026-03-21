@@ -13,6 +13,20 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Accept build-time env vars so Next.js can collect page data during build
+# These are placeholder values — real values are injected at runtime by Dokploy
+ARG NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder_anon_key
+ARG SUPABASE_SERVICE_ROLE_KEY=placeholder_service_role_key
+ARG NEXT_PUBLIC_RECAPTCHA_SITE_KEY=placeholder_recaptcha
+ARG NEXTAUTH_SECRET=placeholder_secret
+
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+ENV NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+ENV NEXTAUTH_SECRET=$NEXTAUTH_SECRET
+
 # Build
 RUN npm run build
 
