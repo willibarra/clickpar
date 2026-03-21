@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
                 .select('value')
                 .eq('key', 'use_n8n_ai')
                 .single();
-            useAiMessages = aiConfig?.value === 'true';
+            useAiMessages = (aiConfig as any)?.value === 'true';
         } catch { /* default false */ }
 
         const batchInterval = (waSettings?.batch_send_interval_seconds || 30) * 1000;
@@ -252,14 +252,14 @@ export async function GET(request: NextRequest) {
             const name = customer?.full_name || 'Cliente';
 
             // Cancelar venta + liberar slot
-            await supabase
-                .from('sales' as any)
+            await (supabase as any)
+                .from('sales')
                 .update({ is_active: false })
                 .eq('id', sale.id);
 
             if (sale.slot_id) {
-                await supabase
-                    .from('sale_slots' as any)
+                await (supabase as any)
+                    .from('sale_slots')
                     .update({ status: 'available' })
                     .eq('id', sale.slot_id);
             }
@@ -284,8 +284,8 @@ export async function GET(request: NextRequest) {
             const daysSince = Math.floor((today.getTime() - lastChecked.getTime()) / (1000 * 60 * 60 * 24));
 
             if (daysSince >= 15) {
-                await supabase
-                    .from('mother_accounts' as any)
+                await (supabase as any)
+                    .from('mother_accounts')
                     .update({ autopay_last_checked: todayStr })
                     .eq('id', acct.id);
 
@@ -294,7 +294,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (autopayReviews.length > 0) {
-            await (await createAdminClient()).from('notifications' as any).insert({
+            await (supabase as any).from('notifications').insert({
                 type: 'autopay_review',
                 message: `🔄 Revisión de cuentas autopagables (${autopayReviews.length}): ${autopayReviews.join(', ')}. Verificar que siguen activas.`,
                 is_read: false,
@@ -306,7 +306,7 @@ export async function GET(request: NextRequest) {
             results.reminder_1day_after.length + results.cancelled_2days_after.length;
 
         if (totalSent > 0) {
-            await (await createAdminClient()).from('notifications' as any).insert({
+            await (supabase as any).from('notifications').insert({
                 type: 'expiration_cron',
                 message: `📬 Avisos de vencimiento: ${results.reminder_1day.length} (mañana) + ${results.reminder_today.length} (hoy) + ${results.reminder_1day_after.length} (ayer) + ${results.cancelled_2days_after.length} (cancelados)`,
                 is_read: false,

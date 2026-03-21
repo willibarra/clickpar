@@ -218,6 +218,7 @@ export async function POST(request: NextRequest) {
 // ── Helper: send credentials for a newly created sale ────────────────────────
 
 async function sendCredentialsForSale(saleId: string, customer: any) {
+    const supabase = await createAdminClient();
     const { data: sale } = await (supabase as any)
         .from('sales')
         .select(`

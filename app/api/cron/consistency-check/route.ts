@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
             results.errors.push(`Error consultando orphan_slots: ${orphanError.message}`);
         } else if (orphans && orphans.length > 0) {
             for (const orphan of orphans as any[]) {
-                const { error: fixError } = await supabase
+                const { error: fixError } = await (supabase as any)
                     .from('sale_slots')
                     .update({ status: 'available' })
                     .eq('id', orphan.slot_id);
@@ -88,8 +88,8 @@ export async function POST(request: NextRequest) {
                 const slotStatus = sale.sale_slots?.status;
                 // A ghost sale is an active sale whose slot is available (not sold)
                 if (slotStatus === 'available') {
-                    const { error: deactivateError } = await supabase
-                        .from('sales' as any)
+                    const { error: deactivateError } = await (supabase as any)
+                        .from('sales')
                         .update({ is_active: false })
                         .eq('id', sale.id);
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
                 parts.push(`⚠️ ${results.errors.length} error(es)`);
             }
 
-            await (await createAdminClient()).from('notifications' as any).insert({
+            await (supabase as any).from('notifications').insert({
                 type: 'consistency_check',
                 message: `🔍 Consistency Check: ${parts.join(' | ')}`,
                 is_read: false,
