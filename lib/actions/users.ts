@@ -35,21 +35,17 @@ export async function getAllUsers(): Promise<{ users: UserProfile[]; error?: str
 
         if (profilesError) throw profilesError;
 
-        // Obtener emails de auth.users (solo disponible con service_role)
-        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-
-        if (authError) {
-            console.error('Error fetching auth users:', authError);
-        }
-
-        // Mapear emails a perfiles
-        const usersWithEmail = (profiles || []).map((profile: any) => {
-            const authUser = authUsers?.users?.find((u: any) => u.id === profile.id);
-            return {
-                ...profile,
-                email: authUser?.email || 'N/A'
-            };
-        });
+        // Obtener emails individualmente por ID (evita problemas de paginación con listUsers)
+        const usersWithEmail = await Promise.all(
+            (profiles || []).map(async (profile: any) => {
+                try {
+                    const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.id);
+                    return { ...profile, email: authUser?.email || 'N/A' };
+                } catch {
+                    return { ...profile, email: 'N/A' };
+                }
+            })
+        );
 
         return { users: usersWithEmail };
     } catch (error: any) {
