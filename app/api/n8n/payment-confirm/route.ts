@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { sendSaleCredentials } from '@/lib/whatsapp';
 export const dynamic = 'force-dynamic';
 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const PAGOPAR_PRIVATE_KEY = process.env.PAGOPAR_PRIVATE_KEY || '';
 const BANCARD_PRIVATE_KEY = process.env.BANCARD_PRIVATE_KEY || '';
@@ -24,6 +20,8 @@ const BANCARD_PRIVATE_KEY = process.env.BANCARD_PRIVATE_KEY || '';
  * For manual (N8N): { source: 'manual', order_id, secret: N8N_SECRET }
  */
 export async function POST(request: NextRequest) {
+    const supabase = await createAdminClient();
+
     try {
         const body = await request.json();
 

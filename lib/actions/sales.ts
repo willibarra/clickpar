@@ -348,19 +348,67 @@ export async function createQuickSale(data: QuickSaleData) {
             message: `realizó una venta de ${data.platform} a ${data.customerName || data.customerPhone}`
         });
 
-        // Fetch instructions to return to the UI (for the copy button)
+        // Fetch credentials + instructions to return to the UI (for the copy button)
         let saleInstructions: string | null = null;
+        let saleCredentials: {
+            email?: string;
+            password?: string;
+            profile?: string;
+            pin?: string;
+            expirationDate?: string;
+            clientEmail?: string;
+            clientPassword?: string;
+            familyAccessType?: string;
+        } | null = null;
+
         try {
-            const { data: slotForInst } = await (supabase.from('sale_slots') as any)
-                .select('mother_accounts:mother_account_id (instructions, send_instructions)')
-                .eq('id', slotToSell.slot_id || slotToSell.id)
+            const slotKey = slotToSell.slot_id || slotToSell.id;
+            const { data: slotForCopy } = await (supabase.from('sale_slots') as any)
+                .select(`
+                    slot_identifier,
+                    pin_code,
+                    mother_accounts:mother_account_id (
+                        email,
+                        password,
+                        instructions,
+                        send_instructions
+                    )
+                `)
+                .eq('id', slotKey)
                 .single();
-            const acct = slotForInst?.mother_accounts;
+
+            const acct = slotForCopy?.mother_accounts;
             if (acct?.send_instructions && acct?.instructions) saleInstructions = acct.instructions;
+
+            const expDateStr = endDate.toLocaleDateString('es-PY');
+
+            if (data.familyAccessType && data.clientEmail) {
+                // Family flow: return client email/password
+                saleCredentials = {
+                    familyAccessType: data.familyAccessType,
+                    clientEmail: data.clientEmail,
+                    clientPassword: data.clientPassword,
+                    expirationDate: expDateStr,
+                };
+            } else if (acct) {
+                // Regular slot flow
+                saleCredentials = {
+                    email: acct.email || '',
+                    password: acct.password || '',
+                    profile: slotForCopy?.slot_identifier || '',
+                    pin: slotForCopy?.pin_code || '',
+                    expirationDate: expDateStr,
+                };
+            }
         } catch { /* non-blocking */ }
 
         revalidatePath('/');
-        return { success: true, message: 'Venta realizada exitosamente', instructions: saleInstructions };
+        return {
+            success: true,
+            message: 'Venta realizada exitosamente',
+            instructions: saleInstructions,
+            credentials: saleCredentials,
+        };
 
     } catch (error: any) {
         console.error('Quick Sale Error:', error);

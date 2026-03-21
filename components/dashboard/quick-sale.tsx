@@ -76,6 +76,16 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [deliveryDate, setDeliveryDate] = useState('');
+    const [saleCredentials, setSaleCredentials] = useState<{
+        email?: string;
+        password?: string;
+        profile?: string;
+        pin?: string;
+        expirationDate?: string;
+        clientEmail?: string;
+        clientPassword?: string;
+        familyAccessType?: string;
+    } | null>(null);
 
     // Customer search state
     const [customerSearch, setCustomerSearch] = useState('');
@@ -282,6 +292,9 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                     setIsLoading(false);
                     return;
                 }
+                if (result.credentials) {
+                    setSaleCredentials(result.credentials);
+                }
             }
 
             setSaleComplete(true);
@@ -312,6 +325,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         setComboPrice(0);
         setErrorMsg('');
         setDeliveryDate('');
+        setSaleCredentials(null);
     };
 
     const getComboLabel = () => {
@@ -330,16 +344,58 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     };
 
     const handleCopyData = () => {
-        const now = new Date();
-        const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const text = [
-            `✅ *Venta Registrada*`,
-            `📦 Servicio: ${getSaleName()}`,
-            `👤 Cliente: ${selectedCustomer?.full_name || ''}`,
-            `📱 Teléfono: ${selectedCustomer?.phone || ''}`,
-            `💰 Precio: Gs. ${getFinalPrice().toLocaleString('es-PY')}`,
-            `📅 Fecha: ${fecha}`,
-        ].join('\n');
+        let lines: string[];
+
+        if (saleCredentials?.familyAccessType === 'credentials' && saleCredentials.clientEmail && saleCredentials.clientPassword) {
+            // Family account — credentials we created
+            lines = [
+                `✅ *Tu acceso a ${getSaleName()} (Plan Familiar)*`,
+                ``,
+                `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                `📧 *Correo:* ${saleCredentials.clientEmail}`,
+                `🔑 *Contraseña:* ${saleCredentials.clientPassword}`,
+                `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+                ``,
+                `_Ingresá con estas credenciales a ${getSaleName()}._`,
+            ];
+        } else if (saleCredentials?.familyAccessType === 'invite' && saleCredentials.clientEmail) {
+            // Family account — invitation
+            lines = [
+                `✅ *Acceso a ${getSaleName()} (Plan Familiar)*`,
+                ``,
+                `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                `📧 Hemos enviado una invitación a: *${saleCredentials.clientEmail}*`,
+                ``,
+                `⚠️ *Revisá tu correo y aceptá la invitación* para activar tu acceso.`,
+                `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+            ];
+        } else if (saleCredentials?.email) {
+            // Regular slot — standard credentials
+            lines = [
+                `✅ *Tus credenciales de ${getSaleName()}*`,
+                ``,
+                `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                `📧 *Correo:* ${saleCredentials.email}`,
+                `🔑 *Contraseña:* ${saleCredentials.password}`,
+                saleCredentials.profile ? `👤 *Perfil:* ${saleCredentials.profile}` : '',
+                saleCredentials.pin ? `🔒 *PIN:* ${saleCredentials.pin}` : '',
+                `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+            ].filter(Boolean);
+        } else {
+            // Fallback: generic info (no credentials available)
+            const now = new Date();
+            const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            lines = [
+                `✅ *Venta Registrada*`,
+                `📦 Servicio: ${getSaleName()}`,
+                `👤 Cliente: ${selectedCustomer?.full_name || ''}`,
+                `📱 Teléfono: ${selectedCustomer?.phone || ''}`,
+                `💰 Precio: Gs. ${getFinalPrice().toLocaleString('es-PY')}`,
+                `📅 Fecha: ${fecha}`,
+            ];
+        }
+
+        const text = lines.join('\n');
         navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);

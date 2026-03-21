@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification, getWhatsAppSettings, getPlatformDisplayName, sendRenewalToN8N, isPhoneWhitelisted } from '@/lib/whatsapp';
 export const dynamic = 'force-dynamic';
 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 // Secret to protect the cron endpoint
 const CRON_SECRET = process.env.CRON_SECRET || 'clickpar-cron-2024';
@@ -32,6 +28,8 @@ export async function GET(request: NextRequest) {
     if (secret !== CRON_SECRET) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const supabase = await createAdminClient();
 
     try {
         const today = new Date();
@@ -296,7 +294,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (autopayReviews.length > 0) {
-            await supabase.from('notifications' as any).insert({
+            await (await createAdminClient()).from('notifications' as any).insert({
                 type: 'autopay_review',
                 message: `🔄 Revisión de cuentas autopagables (${autopayReviews.length}): ${autopayReviews.join(', ')}. Verificar que siguen activas.`,
                 is_read: false,
@@ -308,7 +306,7 @@ export async function GET(request: NextRequest) {
             results.reminder_1day_after.length + results.cancelled_2days_after.length;
 
         if (totalSent > 0) {
-            await supabase.from('notifications' as any).insert({
+            await (await createAdminClient()).from('notifications' as any).insert({
                 type: 'expiration_cron',
                 message: `📬 Avisos de vencimiento: ${results.reminder_1day.length} (mañana) + ${results.reminder_today.length} (hoy) + ${results.reminder_1day_after.length} (ayer) + ${results.cancelled_2days_after.length} (cancelados)`,
                 is_read: false,

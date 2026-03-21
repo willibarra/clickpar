@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const CRON_SECRET = process.env.CRON_SECRET || 'clickpar-cron-2024';
 
@@ -35,6 +31,8 @@ export async function POST(request: NextRequest) {
     if (secret !== CRON_SECRET) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const supabase = await createAdminClient();
 
     try {
         const results = {
@@ -124,7 +122,7 @@ export async function POST(request: NextRequest) {
                 parts.push(`⚠️ ${results.errors.length} error(es)`);
             }
 
-            await supabase.from('notifications' as any).insert({
+            await (await createAdminClient()).from('notifications' as any).insert({
                 type: 'consistency_check',
                 message: `🔍 Consistency Check: ${parts.join(' | ')}`,
                 is_read: false,
