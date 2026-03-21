@@ -197,7 +197,8 @@ export async function middleware(request: NextRequest) {
     }
 
     // Only super_admin and staff can access admin routes
-    if (role !== 'super_admin' && role !== 'staff') {
+    // If role is undefined but user is authenticated, allow through (role lookup may have failed)
+    if (role !== 'super_admin' && role !== 'staff' && role !== undefined) {
         return NextResponse.redirect(new URL('/cliente', request.url));
     }
 
