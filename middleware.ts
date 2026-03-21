@@ -84,6 +84,9 @@ export async function middleware(request: NextRequest) {
     if (pathname === '/register' || pathname === '/portal/login') {
         return NextResponse.redirect(new URL('/cliente/login', request.url));
     }
+    if (pathname === '/login') {
+        return NextResponse.redirect(new URL('/staff/login', request.url));
+    }
     if (pathname.startsWith('/portal')) {
         return NextResponse.redirect(new URL(pathname.replace('/portal', '/cliente'), request.url));
     }
