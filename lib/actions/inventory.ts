@@ -342,18 +342,81 @@ export async function updateMotherAccount(id: string, formData: FormData) {
 export async function deleteMotherAccount(id: string) {
     const supabase = await createClient();
 
-    // First delete all slots
-    await (supabase.from('sale_slots') as any).delete().eq('mother_account_id', id);
+    // Fetch account details before soft-deleting (so audit log has info)
+    const { data: account } = await (supabase.from('mother_accounts') as any)
+        .select('platform, email')
+        .eq('id', id)
+        .single();
 
-    // Then delete the account
-    const { error } = await (supabase.from('mother_accounts') as any).delete().eq('id', id);
+    // Soft delete: mark as deleted instead of removing
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id);
 
     if (error) {
         return { error: error.message };
     }
 
     await logAction('delete_account', 'mother_account', id, {
-        message: `eliminó una cuenta del inventario`
+        message: `eliminó la cuenta de ${
+            account ? `${account.platform} (${account.email})` : 'inventario'
+        } — movida a papelera`
+    });
+
+    revalidatePath('/inventory');
+    return { success: true };
+}
+
+export async function restoreMotherAccount(id: string) {
+    const supabase = await createClient();
+
+    const { data: account } = await (supabase.from('mother_accounts') as any)
+        .select('platform, email')
+        .eq('id', id)
+        .single();
+
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .update({ deleted_at: null })
+        .eq('id', id);
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    await logAction('restore_account', 'mother_account', id, {
+        message: `restauró la cuenta de ${
+            account ? `${account.platform} (${account.email})` : 'papelera'
+        }`
+    });
+
+    revalidatePath('/inventory');
+    return { success: true };
+}
+
+export async function permanentlyDeleteMotherAccount(id: string) {
+    const supabase = await createClient();
+
+    const { data: account } = await (supabase.from('mother_accounts') as any)
+        .select('platform, email')
+        .eq('id', id)
+        .single();
+
+    // Hard delete slots first
+    await (supabase.from('sale_slots') as any).delete().eq('mother_account_id', id);
+
+    // Hard delete the account
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    await logAction('permanent_delete_account', 'mother_account', id, {
+        message: `eliminó permanentemente la cuenta de ${
+            account ? `${account.platform} (${account.email})` : 'papelera'
+        }`
     });
 
     revalidatePath('/inventory');

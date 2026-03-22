@@ -4,6 +4,7 @@ import { AddAccountModal } from '@/components/inventory/add-account-modal';
 import { AddPlatformModal } from '@/components/inventory/add-platform-modal';
 import { InventoryView } from '@/components/inventory/inventory-view';
 import { InventoryDataActions } from '@/components/inventory/inventory-data-actions';
+import { TrashPanel } from '@/components/inventory/trash-panel';
 
 // Static platform colors
 const platformColors: Record<string, { bg: string; text: string; gradient: string }> = {
@@ -39,8 +40,7 @@ const statusLabels: Record<string, string> = {
 export default async function InventoryPage() {
     const supabase = await createAdminClient();
 
-    // Fetch mother accounts with their slots (simplified query to avoid timeout)
-    // Sales/customer details are fetched on-demand by SlotDetailsModal
+    // Fetch mother accounts with their slots (active only)
     const { data: accounts } = await supabase
         .from('mother_accounts')
         .select(`
@@ -52,7 +52,15 @@ export default async function InventoryPage() {
         pin_code
       )
     `)
+        .is('deleted_at', null)
         .order('platform');
+
+    // Fetch deleted (trash) accounts
+    const { data: trashedAccounts } = await supabase
+        .from('mother_accounts')
+        .select('id, platform, email, password, max_slots, renewal_date, status, deleted_at, supplier_name, notes, sale_type, purchase_cost_gs, purchase_cost_usdt')
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
 
     // Calculate stats
     const totalAccounts = accounts?.length || 0;
@@ -129,6 +137,9 @@ export default async function InventoryPage() {
                 platformColors={platformColors}
                 statusColors={statusColors}
             />
+
+            {/* Trash Panel */}
+            <TrashPanel accounts={trashedAccounts || []} />
 
             {/* Legend */}
             <div className="flex flex-wrap gap-4 text-sm">
