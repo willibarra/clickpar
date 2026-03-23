@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link } from 'lucide-react';
-import { updateMotherAccount, deleteMotherAccount, syncSlots } from '@/lib/actions/inventory';
+import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link, User, Key, Copy, Check } from 'lucide-react';
+import { updateMotherAccount, deleteMotherAccount, syncSlots, updateSlot } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
 
 const fallbackPlatforms = ['Netflix', 'Spotify', 'HBO Max', 'Disney+', 'Amazon Prime', 'YouTube Premium', 'Apple TV+', 'Crunchyroll', 'Paramount+', 'Star+'];
@@ -17,6 +17,14 @@ interface Platform {
     id: string;
     name: string;
     business_type?: string;
+}
+
+interface SlotEdit {
+    id: string;
+    slot_identifier: string;
+    pin_code: string;
+    status: string;
+    customer?: { full_name: string | null; phone: string | null } | null;
 }
 
 interface Account {
@@ -32,7 +40,12 @@ interface Account {
     max_slots: number;
     status?: string;
     notes?: string | null;
-    sale_slots?: { id: string }[];
+    sale_slots?: {
+        id: string;
+        slot_identifier?: string | null;
+        pin_code?: string | null;
+        status?: string;
+    }[];
     supplier_name?: string | null;
     supplier_phone?: string | null;
     invitation_url?: string | null;
@@ -40,9 +53,18 @@ interface Account {
     sale_type?: string | null;
 }
 
+const slotStatusOptions = [
+    { value: 'available', label: 'Disponible', color: 'bg-[#86EFAC]/20 text-[#86EFAC] border-[#86EFAC]/30' },
+    { value: 'sold', label: 'Vendido', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+    { value: 'reserved', label: 'Reservado', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
+    { value: 'warranty_claim', label: 'En Garantía', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+];
+
 export function EditAccountModal({ account }: { account: Account }) {
     const [open, setOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'cuenta' | 'perfiles'>('cuenta');
     const [loading, setLoading] = useState(false);
+    const [savingSlots, setSavingSlots] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -50,12 +72,48 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [platforms, setPlatforms] = useState<Platform[]>([]);
     const [selectedPlatformType, setSelectedPlatformType] = useState<string>('');
+    const [slotEdits, setSlotEdits] = useState<SlotEdit[]>([]);
+    const [copiedPin, setCopiedPin] = useState<string | null>(null);
 
     useEffect(() => {
         if (open) {
             fetchPlatforms();
+            initSlotEdits();
+            setActiveTab('cuenta');
         }
     }, [open]);
+
+    function initSlotEdits() {
+        const slots = account.sale_slots || [];
+        const sorted = [...slots].sort((a, b) => {
+            const numA = parseInt((a.slot_identifier ?? '').match(/\d+/)?.[0] ?? '0');
+            const numB = parseInt((b.slot_identifier ?? '').match(/\d+/)?.[0] ?? '0');
+            return numA - numB;
+        });
+        setSlotEdits(sorted.map(s => ({
+            id: s.id,
+            slot_identifier: s.slot_identifier || '',
+            pin_code: s.pin_code || '',
+            status: s.status || 'available',
+            customer: null, // loaded lazily via API
+        })));
+    }
+
+    async function fetchSlotCustomers(slots: SlotEdit[]) {
+        const updated = await Promise.all(
+            slots.map(async (slot) => {
+                if (slot.status !== 'sold') return slot;
+                try {
+                    const res = await fetch(`/api/search/slot-customer?slotId=${slot.id}`);
+                    const data = await res.json();
+                    return { ...slot, customer: data.customer ?? null };
+                } catch {
+                    return slot;
+                }
+            })
+        );
+        setSlotEdits(updated);
+    }
 
     async function fetchPlatforms() {
         const supabase = createClient();
@@ -80,6 +138,37 @@ export function EditAccountModal({ account }: { account: Account }) {
 
     const currentSlots = account.sale_slots?.length || 0;
     const needsSync = currentSlots < account.max_slots;
+
+    async function handleSaveSlots() {
+        setSavingSlots(true);
+        setError(null);
+        let hasError = false;
+        for (const slot of slotEdits) {
+            const fd = new FormData();
+            fd.set('slot_identifier', slot.slot_identifier);
+            fd.set('pin_code', slot.pin_code);
+            fd.set('status', slot.status);
+            const result = await updateSlot(slot.id, fd);
+            if (result.error) { hasError = true; break; }
+        }
+        if (!hasError) {
+            setSuccessMessage('✅ Perfiles guardados correctamente');
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } else {
+            setError('Error al guardar algunos perfiles. Intenta de nuevo.');
+        }
+        setSavingSlots(false);
+    }
+
+    function updateSlotEdit(id: string, field: keyof Omit<SlotEdit, 'id' | 'customer'>, value: string) {
+        setSlotEdits(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+    }
+
+    async function copyPin(pin: string, id: string) {
+        await navigator.clipboard.writeText(pin);
+        setCopiedPin(id);
+        setTimeout(() => setCopiedPin(null), 1500);
+    }
 
     async function handleSync() {
         setSyncing(true);
@@ -147,7 +236,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                     <Pencil className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
                         {confirmDelete ? 'Confirmar Eliminación' : 'Editar Cuenta Madre'}
@@ -159,6 +248,38 @@ export function EditAccountModal({ account }: { account: Account }) {
                         }
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* Tabs — only shown when not in confirm-delete mode */}
+                {!confirmDelete && (
+                    <div className="flex border-b border-border mb-2">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('cuenta')}
+                            className={`px-4 py-2 text-sm font-medium transition-colors ${
+                                activeTab === 'cuenta'
+                                    ? 'border-b-2 border-[#86EFAC] text-[#86EFAC]'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            Cuenta Madre
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setActiveTab('perfiles'); fetchSlotCustomers(slotEdits); }}
+                            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                                activeTab === 'perfiles'
+                                    ? 'border-b-2 border-[#86EFAC] text-[#86EFAC]'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            <User className="h-3.5 w-3.5" />
+                            Perfiles
+                            <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                                {slotEdits.length}
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 {confirmDelete ? (
                     // Confirmation View
@@ -208,8 +329,138 @@ export function EditAccountModal({ account }: { account: Account }) {
                             </Button>
                         </DialogFooter>
                     </div>
+                ) : activeTab === 'perfiles' ? (
+                    // ── Perfiles Tab ──────────────────────────────
+                    <div className="space-y-3 py-2">
+                        {error && (
+                            <div className="mb-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">{error}</div>
+                        )}
+                        {successMessage && (
+                            <div className="mb-2 rounded-lg bg-[#86EFAC]/20 p-3 text-sm text-[#86EFAC]">{successMessage}</div>
+                        )}
+
+                        {slotEdits.length === 0 ? (
+                            <div className="py-8 text-center text-sm text-muted-foreground">
+                                Esta cuenta no tiene perfiles registrados.
+                            </div>
+                        ) : (
+                            slotEdits.map((slot, idx) => {
+                                const isSold = slot.status === 'sold';
+                                const statusOpt = slotStatusOptions.find(o => o.value === slot.status);
+                                return (
+                                    <div
+                                        key={slot.id}
+                                        className={`rounded-lg border p-3 space-y-3 transition-colors ${
+                                            isSold
+                                                ? 'border-orange-500/20 bg-orange-500/5'
+                                                : 'border-border bg-card/50'
+                                        }`}
+                                    >
+                                        {/* Header row */}
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                #{idx + 1}
+                                            </span>
+                                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusOpt?.color || 'bg-secondary text-muted-foreground border-border'}`}>
+                                                {statusOpt?.label || slot.status}
+                                            </span>
+                                        </div>
+
+                                        {/* Cliente asignado (si hay) */}
+                                        {isSold && slot.customer && (
+                                            <div className="flex items-center gap-2 rounded bg-orange-500/10 px-2.5 py-1.5">
+                                                <User className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
+                                                <span className="text-xs text-orange-300 font-medium">
+                                                    {slot.customer.full_name || 'Cliente sin nombre'}
+                                                </span>
+                                                {slot.customer.phone && (
+                                                    <span className="text-xs text-muted-foreground ml-auto">{slot.customer.phone}</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Nombre + Status */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs text-muted-foreground">Nombre</Label>
+                                                <Input
+                                                    value={slot.slot_identifier}
+                                                    onChange={e => updateSlotEdit(slot.id, 'slot_identifier', e.target.value)}
+                                                    placeholder="Perfil 1"
+                                                    className="h-8 text-sm"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs text-muted-foreground">Estado</Label>
+                                                <Select
+                                                    value={slot.status}
+                                                    onValueChange={v => updateSlotEdit(slot.id, 'status', v)}
+                                                >
+                                                    <SelectTrigger className="h-8 text-sm">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {slotStatusOptions.map(o => (
+                                                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        {/* PIN */}
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                                                <Key className="h-3 w-3" /> PIN
+                                            </Label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    value={slot.pin_code}
+                                                    onChange={e => updateSlotEdit(slot.id, 'pin_code', e.target.value)}
+                                                    placeholder="Sin PIN"
+                                                    maxLength={6}
+                                                    className="h-8 text-sm font-mono tracking-widest"
+                                                />
+                                                {slot.pin_code && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-8 w-8 flex-shrink-0"
+                                                        onClick={() => copyPin(slot.pin_code, slot.id)}
+                                                        title="Copiar PIN"
+                                                    >
+                                                        {copiedPin === slot.id ? (
+                                                            <Check className="h-3.5 w-3.5 text-green-500" />
+                                                        ) : (
+                                                            <Copy className="h-3.5 w-3.5" />
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+
+                        <DialogFooter className="pt-2">
+                            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button
+                                type="button"
+                                className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90"
+                                disabled={savingSlots || slotEdits.length === 0}
+                                onClick={handleSaveSlots}
+                            >
+                                {savingSlots ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Guardar Perfiles
+                            </Button>
+                        </DialogFooter>
+                    </div>
                 ) : (
-                    // Edit Form View
+                    // ── Cuenta Madre Tab (Edit Form) ─────────────
                     <form onSubmit={handleSubmit}>
                         {error && (
                             <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">

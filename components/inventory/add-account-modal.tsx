@@ -106,6 +106,7 @@ export function AddAccountModal() {
     // Bulk mode
     const [bulkMode, setBulkMode] = useState(false);
     const [bulkText, setBulkText] = useState('');
+    const [bulkNotes, setBulkNotes] = useState('');
     const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
     const [bulkResult, setBulkResult] = useState<{ created: number; errors: { email: string; error: string }[] } | null>(null);
 
@@ -121,6 +122,11 @@ export function AddAccountModal() {
     const [supplierPhone, setSupplierPhone] = useState('');
     const [salePriceGs, setSalePriceGs] = useState('');
 
+    // Controlled platform select
+    const [selectedPlatformName, setSelectedPlatformName] = useState<string>('');
+    // Whether user manually changed max slots (so we don't overwrite on platform change)
+    const [userEditedSlots, setUserEditedSlots] = useState(false);
+
     // Parse bulk text in real-time
     const bulkAccounts = useMemo(() => parseAccountLines(bulkText), [bulkText]);
     const bulkDuplicates = useMemo(() => {
@@ -133,6 +139,8 @@ export function AddAccountModal() {
             fetchPlatforms();
             setError(null);
             setSelectedPlatform(null);
+            setSelectedPlatformName('');
+            setUserEditedSlots(false);
             setCustomizeSlots(false);
             setIsOwnedEmail(false);
             setEmailPassword('');
@@ -148,6 +156,7 @@ export function AddAccountModal() {
             setServiceDays(getDaysInCurrentMonth());
             setBulkMode(false);
             setBulkText('');
+            setBulkNotes('');
             setBulkProgress(null);
             setBulkResult(null);
             setSupplierName('');
@@ -279,7 +288,9 @@ export function AddAccountModal() {
     function handlePlatformChange(platformName: string) {
         const platform = platforms.find(p => p.name === platformName);
         setSelectedPlatform(platform || null);
-        if (platform) {
+        setSelectedPlatformName(platformName);
+        // Only set default max_slots if user hasn't manually edited the field
+        if (platform && !userEditedSlots) {
             setMaxSlots(platform.default_max_slots || 5);
         }
     }
@@ -335,7 +346,7 @@ export function AddAccountModal() {
         }
 
         return {
-            platform: formData.get('platform') as string,
+            platform: formData.get('platform') as string || selectedPlatformName,
             max_slots: maxSlots,
             purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,
             purchase_cost_gs: parseFloat(formData.get('purchase_cost_gs') as string) || 0,
@@ -345,6 +356,7 @@ export function AddAccountModal() {
             supplier_name: (formData.get('supplier_name') as string) || null,
             supplier_phone: (formData.get('supplier_phone') as string) || null,
             sale_type: 'profile',
+            notes: bulkNotes.trim() || null,
             instructions: instructions.trim() || null,
             send_instructions: sendInstructions,
             is_autopay: isAutopay,
@@ -535,7 +547,7 @@ export function AddAccountModal() {
                         {/* Row 1: Platform */}
                         <div className="space-y-2">
                             <Label htmlFor="platform">Plataforma</Label>
-                            <Select name="platform" required onValueChange={handlePlatformChange}>
+                            <Select name="platform" required value={selectedPlatformName} onValueChange={handlePlatformChange}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Seleccionar" />
                                 </SelectTrigger>
@@ -564,7 +576,11 @@ export function AddAccountModal() {
                                 name="max_slots"
                                 type="number"
                                 value={maxSlots}
-                                onChange={(e) => setMaxSlots(parseInt(e.target.value) || 1)}
+                                onChange={(e) => {
+                                    const v = parseInt(e.target.value) || 1;
+                                    setMaxSlots(v);
+                                    setUserEditedSlots(true);
+                                }}
                                 min={1}
                                 max={10}
                                 required
@@ -600,6 +616,19 @@ export function AddAccountModal() {
                                             <span>Emails duplicados: {[...new Set(bulkDuplicates)].join(', ')}</span>
                                         </div>
                                     )}
+                                </div>
+
+                                {/* Bulk Observación */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="bulk_notes">Observación <span className="text-xs text-muted-foreground font-normal">(opcional, aplica a todas)</span></Label>
+                                    <textarea
+                                        id="bulk_notes"
+                                        value={bulkNotes}
+                                        onChange={(e) => setBulkNotes(e.target.value)}
+                                        placeholder="Ej: Lote comprado a Proveedor X, Marzo 2026..."
+                                        rows={2}
+                                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/50 placeholder:text-muted-foreground"
+                                    />
                                 </div>
 
                                 {/* Bulk Result */}

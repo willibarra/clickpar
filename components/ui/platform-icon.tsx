@@ -7,6 +7,7 @@
 
 const PLATFORM_COLORS: Record<string, string> = {
     'Netflix': '#E50914',
+    'Prime Video': '#00A8E1',
     'Amazon Prime Video': '#00A8E1',
     'Disney+': '#0063E5',
     'HBO Max': '#5C16C5',
@@ -41,9 +42,10 @@ export function PlatformIcon({ platform, size = 32, className = '' }: PlatformIc
                 </svg>
             );
 
+        case 'Prime Video':
         case 'Amazon Prime Video':
             return (
-                <svg width={s} height={s} viewBox="0 0 32 32" className={className} aria-label="Amazon Prime Video">
+                <svg width={s} height={s} viewBox="0 0 32 32" className={className} aria-label="Prime Video">
                     <rect width="32" height="32" rx="8" fill="#00A8E1" />
                     <polygon points="16,7 10,25 14,25 16,19 18,25 22,25" fill="white" />
                     <path d="M8 22 Q16 28 24 22" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" />

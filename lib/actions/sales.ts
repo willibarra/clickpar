@@ -1343,3 +1343,102 @@ export async function createFullAccountSale({
     }
 }
 
+// ==========================================
+// Extend Sale (extend active subscription)
+// Creates a NEW sale record for financial history.
+// The slot stays 'sold' — only the sale rotates.
+// ==========================================
+
+export interface ExtendSaleData {
+    saleId: string;
+    extraDays: number;
+    amountGs: number;
+    notes?: string;
+}
+
+export async function extendSale(data: ExtendSaleData) {
+    const supabase = await createAdminClient();
+
+    try {
+        if (!data.saleId) throw new Error('Se require el ID de la venta');
+        if (!data.extraDays || data.extraDays <= 0) throw new Error('Los días de extensión deben ser mayores a 0');
+        if (data.amountGs < 0) throw new Error('El monto no puede ser negativo');
+
+        // 1. Extend via atomic function
+        const { data: result, error: rpcError } = await (supabase as any).rpc('extend_sale_atomic', {
+            p_sale_id:    data.saleId,
+            p_extra_days: data.extraDays,
+            p_amount_gs:  data.amountGs,
+            p_notes:      data.notes || null,
+        });
+
+        if (rpcError) {
+            if (rpcError.code === 'P0001') throw new Error(rpcError.message);
+            throw new Error(`Error al extender: ${rpcError.message}`);
+        }
+
+        // result is an array of rows (RETURNS TABLE)
+        const row = Array.isArray(result) ? result[0] : result;
+        if (!row) throw new Error('La función no retornó resultado');
+
+        const newSaleId: string = row.new_sale_id;
+        const newEndDate: string = row.new_end_date; // 'YYYY-MM-DD'
+
+        // 2. Send WhatsApp notification (non-blocking)
+        try {
+            const waSettings = await getWhatsAppSettings();
+            if (waSettings.auto_send_credentials) {
+                // Fetch sale info to get customer + slot details
+                const { data: saleInfo } = await (supabase.from('sales') as any)
+                    .select(`
+                        customer_id,
+                        slot_id,
+                        customers:customer_id (full_name, phone, whatsapp_instance),
+                        sale_slots:slot_id (
+                            slot_identifier,
+                            pin_code,
+                            mother_accounts:mother_account_id (email, password, platform)
+                        )
+                    `)
+                    .eq('id', newSaleId)
+                    .single();
+
+                if (saleInfo?.customers?.phone) {
+                    const { sendText } = await import('@/lib/whatsapp');
+                    const customer = saleInfo.customers as any;
+                    const slot = saleInfo.sale_slots as any;
+                    const platform = slot?.mother_accounts?.platform || 'tu servicio';
+                    const expDateStr = new Date(newEndDate + 'T12:00:00').toLocaleDateString('es-PY', {
+                        day: '2-digit', month: 'long', year: 'numeric'
+                    });
+
+                    await sendText(
+                        customer.phone,
+                        `✅ *Extensión de servicio confirmada*\n\n🎬 *Plataforma:* ${platform}\n📅 *Nueva fecha de vencimiento:* ${expDateStr}\n\n¡Gracias por tu confianza! 🙌`,
+                        { instanceName: customer.whatsapp_instance || undefined, customerId: saleInfo.customer_id }
+                    );
+                }
+            }
+        } catch (waError) {
+            console.error('[WhatsApp/Extend] Error (non-blocking):', waError);
+        }
+
+        // 3. Log action
+        await logAction('extend_sale', 'sale', newSaleId, {
+            message: `extendió suscripción por ${data.extraDays} días (Gs. ${data.amountGs.toLocaleString()})`
+        });
+
+        revalidatePath('/');
+        return {
+            success: true,
+            newSaleId,
+            newEndDate,
+            message: `Suscripción extendida ${data.extraDays} días — nuevo vencimiento: ${new Date(newEndDate + 'T12:00:00').toLocaleDateString('es-PY')}`
+        };
+
+    } catch (error: any) {
+        console.error('[ExtendSale] Error:', error);
+        return { error: error.message || 'Error al extender la suscripción' };
+    }
+}
+

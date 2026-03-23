@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle, ShoppingCart, ExternalLink } from 'lucide-react';
-import { updateSlot, deleteSlot } from '@/lib/actions/inventory';
+import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle, ShoppingCart, ExternalLink, ArrowLeftRight, X, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { updateSlot, deleteSlot, swapSlotCustomer } from '@/lib/actions/inventory';
+import { extendSale } from '@/lib/actions/sales';
 
 interface SlotSale {
     id: string;
@@ -31,6 +32,12 @@ interface SlotDetailsModalProps {
         password: string;
     };
     accountStatus?: string;
+}
+
+interface CustomerResult {
+    id: string;
+    full_name: string | null;
+    phone: string | null;
 }
 
 const statusOptions = [
@@ -65,14 +72,51 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
     const [pinCode, setPinCode] = useState(slot.pin_code || '');
     const [slotName, setSlotName] = useState(slot.slot_identifier || '');
     const [slotCustomer, setSlotCustomer] = useState<{ id: string; full_name: string | null; phone: string | null; end_date: string | null } | null>(null);
-    const [loadingCustomer, setLoadingCustomer] = useState(false);
+    const [loadingCustomer, setLoadingCustomer] = useState(slot.status === 'sold');
 
-    // Try to get customer from inline sales data first
+    // ── Intercambiar mode ──────────────────────────────────
+    const [swapMode, setSwapMode] = useState(false);
+    const [swapQuery, setSwapQuery] = useState('');
+    const [swapResults, setSwapResults] = useState<CustomerResult[]>([]);
+    const [swapSearching, setSwapSearching] = useState(false);
+    const [selectedSwapCustomer, setSelectedSwapCustomer] = useState<CustomerResult | null>(null);
+    const [swapping, setSwapping] = useState(false);
+    const [swapError, setSwapError] = useState<string | null>(null);
+    const [swapSuccess, setSwapSuccess] = useState(false);
+    const swapSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── Extender mode ────────────────────────────────────
+    const EXTEND_PRESETS = [30, 60, 90];
+    const [extendMode, setExtendMode] = useState(false);
+    const [extendDays, setExtendDays] = useState(30);
+    const [extendCustomDays, setExtendCustomDays] = useState('');
+    const [extendUseCustom, setExtendUseCustom] = useState(false);
+    const [extendAmount, setExtendAmount] = useState('');
+    const [extending, setExtending] = useState(false);
+    const [extendError, setExtendError] = useState<string | null>(null);
+    const [extendSuccess, setExtendSuccess] = useState<string | null>(null);
+
+    // Try to get customer from inline sales data first (if available)
     const inlineCustomer = getActiveCustomerFromSales(slot.sales);
+
 
     useEffect(() => {
         if (!open) return;
         setConfirmDelete(false);
+        setSwapMode(false);
+        setSwapQuery('');
+        setSwapResults([]);
+        setSelectedSwapCustomer(null);
+        setSwapError(null);
+        setSwapSuccess(false);
+        setSlotCustomer(null);
+        setExtendMode(false);
+        setExtendDays(30);
+        setExtendCustomDays('');
+        setExtendUseCustom(false);
+        setExtendAmount('');
+        setExtendError(null);
+        setExtendSuccess(null);
 
         // If we already have inline customer data, use it directly
         if (inlineCustomer) {
@@ -81,19 +125,48 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
             return;
         }
 
-        // Fallback: fetch from API
+        // Only fetch for sold slots
+        if (slot.status !== 'sold' && slot.status !== 'reserved') {
+            setLoadingCustomer(false);
+            return;
+        }
+
+        // Fetch customer via API
         setLoadingCustomer(true);
-        setSlotCustomer(null);
-        fetch(`/api/search/slot-customer?slotId=${slot.id}`)
+        const controller = new AbortController();
+        fetch(`/api/search/slot-customer?slotId=${slot.id}`, { signal: controller.signal })
             .then(r => r.json())
-            .then(d => { if (d.customer) setSlotCustomer(d.customer); })
-            .catch(() => { })
-            .finally(() => setLoadingCustomer(false));
+            .then(d => {
+                if (d.customer) setSlotCustomer(d.customer);
+                setLoadingCustomer(false);
+            })
+            .catch(err => {
+                if (err.name !== 'AbortError') setLoadingCustomer(false);
+            });
+
+        return () => controller.abort();
     }, [open, slot.id]);
+
+    // ── Customer search ────────────────────────────────────
+    useEffect(() => {
+        if (swapSearchTimeout.current) clearTimeout(swapSearchTimeout.current);
+        if (!swapQuery.trim() || swapQuery.length < 2) {
+            setSwapResults([]);
+            return;
+        }
+        swapSearchTimeout.current = setTimeout(async () => {
+            setSwapSearching(true);
+            try {
+                const res = await fetch(`/api/search/customers?q=${encodeURIComponent(swapQuery)}`);
+                const data = await res.json();
+                setSwapResults(data.customers || []);
+            } catch { setSwapResults([]); }
+            finally { setSwapSearching(false); }
+        }, 300);
+    }, [swapQuery]);
 
     const isQuarantine = accountStatus === 'quarantine';
 
-    // Determine slot button color based on account status
     const getSlotButtonColor = () => {
         if (isQuarantine) {
             if (slot.status === 'sold') return 'bg-purple-500 text-white';
@@ -104,7 +177,6 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
 
     const statusColor = getSlotButtonColor();
 
-    // Get customer name for tooltip on the slot button
     const customerNameTooltip = inlineCustomer?.full_name
         ? `${slot.slot_identifier || 'Slot'} — ${inlineCustomer.full_name}`
         : `Click para ver detalles`;
@@ -135,29 +207,87 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
         }
     }
 
+    async function handleSwap() {
+        if (!selectedSwapCustomer) return;
+        setSwapping(true);
+        setSwapError(null);
+        const result = await swapSlotCustomer(slot.id, selectedSwapCustomer.id);
+        if (result.error) {
+            setSwapError(result.error);
+        } else {
+            setSwapSuccess(true);
+            // Update local state to show new customer
+            setSlotCustomer({
+                id: selectedSwapCustomer.id,
+                full_name: selectedSwapCustomer.full_name,
+                phone: selectedSwapCustomer.phone,
+                end_date: slotCustomer?.end_date ?? null,
+            });
+            setSwapMode(false);
+            setSelectedSwapCustomer(null);
+            setSwapQuery('');
+        }
+        setSwapping(false);
+    }
+
+    async function handleExtend() {
+        setExtendError(null);
+        const days = extendUseCustom ? parseInt(extendCustomDays || '0', 10) : extendDays;
+        const amount = parseFloat(extendAmount.replace(/\./g, '').replace(',', '.'));
+        if (!days || days <= 0) { setExtendError('Ingresá una cantidad de días válida'); return; }
+        if (isNaN(amount) || amount < 0) { setExtendError('Ingresá un monto válido'); return; }
+
+        // Need the active sale id — fetch it
+        setExtending(true);
+        try {
+            const res = await fetch(`/api/search/slot-customer?slotId=${slot.id}`);
+            const d = await res.json();
+            const saleId: string | undefined = d.sale_id;
+            if (!saleId) { setExtendError('No se encontró la venta activa'); setExtending(false); return; }
+
+            const result = await extendSale({ saleId, extraDays: days, amountGs: amount });
+            if (result.error) {
+                setExtendError(result.error);
+            } else {
+                setExtendSuccess(result.message || '¡Extensión realizada!');
+                // Update local display
+                if (result.newEndDate && slotCustomer) {
+                    setSlotCustomer({ ...slotCustomer, end_date: result.newEndDate });
+                }
+                setTimeout(() => {
+                    setExtendMode(false);
+                    setExtendSuccess(null);
+                    setExtendAmount('');
+                    setExtendDays(30);
+                    setExtendUseCustom(false);
+                    setExtendCustomDays('');
+                }, 2000);
+            }
+        } catch (e: any) {
+            setExtendError(e.message || 'Error inesperado');
+        }
+        setExtending(false);
+    }
+
     async function copyToClipboard(text: string, key: string) {
         await navigator.clipboard.writeText(text);
         setCopied(key);
         setTimeout(() => setCopied(null), 2000);
     }
 
-    /** Open the quick-sale page with this slot pre-selected (in a new tab) */
     function handleSellFromSlot() {
         const url = `/?sell=1&platform=${encodeURIComponent(account.platform)}&slotId=${slot.id}`;
         window.open(url, '_blank');
         setOpen(false);
     }
 
-    /** Navigate to the customers view and auto-open the edit modal for this customer */
     function handleGoToCustomer() {
         if (!slotCustomer) return;
         router.push(`/customers?edit=${slotCustomer.id}`);
         setOpen(false);
     }
 
-    // Whether this slot can be deleted (no active customer)
     const canDelete = !slotCustomer && !loadingCustomer;
-    // Can sell from this slot?
     const canSell = slot.status === 'available' && !isQuarantine;
 
     return (
@@ -222,7 +352,14 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
                             </div>
                         )}
 
-                        {/* ── Cliente asignado (arriba) ── */}
+                        {/* ── Success message ── */}
+                        {swapSuccess && (
+                            <div className="rounded-lg bg-[#86EFAC]/20 p-3 text-sm text-[#86EFAC]">
+                                ✅ Perfil reasignado correctamente
+                            </div>
+                        )}
+
+                        {/* ── Cliente asignado ── */}
                         {loadingCustomer ? (
                             <div className="rounded-lg border border-border/40 bg-muted/20 p-3 flex items-center gap-2">
                                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -239,9 +376,9 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
                             return (
                                 <div className={`rounded-lg border ${borderColor} p-3`}>
                                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Cliente asignado</p>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <User className={`h-5 w-5 flex-shrink-0 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-[#86EFAC]'}`} />
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex items-start gap-3 min-w-0">
+                                            <User className={`h-5 w-5 mt-0.5 flex-shrink-0 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-yellow-400' : 'text-[#86EFAC]'}`} />
                                             <div className="min-w-0">
                                                 <p className="text-sm font-semibold text-foreground truncate">
                                                     {slotCustomer.full_name || 'Sin nombre'}
@@ -276,8 +413,215 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
                                                 <ExternalLink className="h-3 w-3" />
                                                 Ver Cliente
                                             </Button>
+                                            {/* Intercambiar button */}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-1 text-xs h-7 border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                                                onClick={() => { setSwapMode(v => !v); setSwapError(null); setSelectedSwapCustomer(null); setSwapQuery(''); setSwapResults([]); setExtendMode(false); }}
+                                            >
+                                                <ArrowLeftRight className="h-3 w-3" />
+                                                Intercambiar
+                                            </Button>
+                                            {/* Extender button */}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-1 text-xs h-7 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                                                onClick={() => { setExtendMode(v => !v); setExtendError(null); setSwapMode(false); }}
+                                            >
+                                                <TrendingUp className="h-3 w-3" />
+                                                Extender
+                                            </Button>
                                         </div>
                                     </div>
+
+                                    {/* ── Swap search panel ── */}
+                                    {swapMode && (
+                                        <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
+                                            <p className="text-xs font-medium text-blue-400 flex items-center gap-1">
+                                                <ArrowLeftRight className="h-3 w-3" />
+                                                Reasignar perfil a otro cliente
+                                            </p>
+                                            {swapError && (
+                                                <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{swapError}</p>
+                                            )}
+
+                                            {selectedSwapCustomer ? (
+                                                <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 border border-blue-500/30 px-3 py-2">
+                                                    <User className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-foreground truncate">{selectedSwapCustomer.full_name || 'Sin nombre'}</p>
+                                                        {selectedSwapCustomer.phone && (
+                                                            <p className="text-xs text-muted-foreground">{selectedSwapCustomer.phone}</p>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 flex-shrink-0"
+                                                        onClick={() => { setSelectedSwapCustomer(null); setSwapQuery(''); }}
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="relative">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                                    <Input
+                                                        value={swapQuery}
+                                                        onChange={e => setSwapQuery(e.target.value)}
+                                                        placeholder="Buscar por nombre o teléfono..."
+                                                        className="pl-9 h-8 text-sm"
+                                                        autoFocus
+                                                    />
+                                                    {swapSearching && (
+                                                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Results */}
+                                            {!selectedSwapCustomer && swapResults.length > 0 && (
+                                                <div className="rounded-lg border border-border bg-card/80 overflow-hidden max-h-[160px] overflow-y-auto">
+                                                    {swapResults.map(c => (
+                                                        <button
+                                                            key={c.id}
+                                                            type="button"
+                                                            onClick={() => { setSelectedSwapCustomer(c); setSwapQuery(c.full_name || c.phone || ''); setSwapResults([]); }}
+                                                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/50 transition-colors text-left"
+                                                        >
+                                                            <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-medium text-foreground truncate">{c.full_name || 'Sin nombre'}</p>
+                                                                {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {!selectedSwapCustomer && swapQuery.length >= 2 && !swapSearching && swapResults.length === 0 && (
+                                                <p className="text-xs text-muted-foreground text-center py-2">No se encontraron clientes</p>
+                                            )}
+
+                                            {/* Confirm swap */}
+                                            {selectedSwapCustomer && (
+                                                <Button
+                                                    type="button"
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2 h-8 text-sm"
+                                                    disabled={swapping}
+                                                    onClick={handleSwap}
+                                                >
+                                                    {swapping ? (
+                                                        <><Loader2 className="h-3.5 w-3.5 animate-spin" />Reasignando...</>
+                                                    ) : (
+                                                        <><ArrowLeftRight className="h-3.5 w-3.5" />Confirmar Intercambio</>
+                                                    )}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ── Extend panel ── */}
+                                    {extendMode && (() => {
+                                        const resolvedDays = extendUseCustom ? parseInt(extendCustomDays || '0', 10) : extendDays;
+                                        const previewDate = slotCustomer?.end_date && resolvedDays > 0
+                                            ? (() => { const d = new Date(slotCustomer.end_date + 'T12:00:00'); d.setDate(d.getDate() + resolvedDays); return d; })()
+                                            : null;
+                                        const previewStr = previewDate
+                                            ? previewDate.toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
+                                            : null;
+                                        return (
+                                            <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
+                                                <p className="text-xs font-medium text-emerald-400 flex items-center gap-1">
+                                                    <TrendingUp className="h-3 w-3" />
+                                                    Extender suscripción
+                                                </p>
+
+                                                {extendError && (
+                                                    <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{extendError}</p>
+                                                )}
+                                                {extendSuccess && (
+                                                    <p className="text-xs text-emerald-400 bg-emerald-500/10 rounded p-2 flex items-center gap-1">
+                                                        <CheckCircle2 className="h-3 w-3" />{extendSuccess}
+                                                    </p>
+                                                )}
+
+                                                {/* Day presets */}
+                                                <div className="flex gap-1.5">
+                                                    {[30, 60, 90].map(d => (
+                                                        <button
+                                                            key={d}
+                                                            type="button"
+                                                            onClick={() => { setExtendDays(d); setExtendUseCustom(false); }}
+                                                            className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${
+                                                                !extendUseCustom && extendDays === d
+                                                                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                                                                    : 'border-border text-muted-foreground hover:border-emerald-500/50'
+                                                            }`}
+                                                        >
+                                                            {d}d
+                                                        </button>
+                                                    ))}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setExtendUseCustom(true)}
+                                                        className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${
+                                                            extendUseCustom
+                                                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                                                                : 'border-border text-muted-foreground hover:border-emerald-500/50'
+                                                        }`}
+                                                    >
+                                                        Otro
+                                                    </button>
+                                                </div>
+
+                                                {extendUseCustom && (
+                                                    <Input
+                                                        type="number" min={1} max={365}
+                                                        placeholder="Días (ej: 45)"
+                                                        value={extendCustomDays}
+                                                        onChange={e => setExtendCustomDays(e.target.value)}
+                                                        className="h-7 text-xs"
+                                                        autoFocus
+                                                    />
+                                                )}
+
+                                                {/* Amount */}
+                                                <Input
+                                                    type="number" min={0}
+                                                    placeholder="Monto cobrado (Gs.)"
+                                                    value={extendAmount}
+                                                    onChange={e => setExtendAmount(e.target.value)}
+                                                    className="h-7 text-xs"
+                                                />
+
+                                                {/* Preview */}
+                                                {previewStr && (
+                                                    <p className="text-xs text-emerald-400 flex items-center gap-1">
+                                                        <Calendar className="h-3 w-3" />
+                                                        Nuevo vencimiento: <strong>{previewStr}</strong>
+                                                    </p>
+                                                )}
+
+                                                <Button
+                                                    type="button"
+                                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-8 text-sm"
+                                                    disabled={extending || !resolvedDays || resolvedDays <= 0}
+                                                    onClick={handleExtend}
+                                                >
+                                                    {extending ? (
+                                                        <><Loader2 className="h-3.5 w-3.5 animate-spin" />Extendiendo...</>
+                                                    ) : (
+                                                        <><TrendingUp className="h-3.5 w-3.5" />Confirmar Extensión</>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             );
                         })() : (

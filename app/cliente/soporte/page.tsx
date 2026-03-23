@@ -36,6 +36,7 @@ const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
     'HBO Max': { emoji: '💜', gradient: 'from-purple-600 to-purple-800' },
     'Disney+': { emoji: '🏰', gradient: 'from-blue-600 to-blue-800' },
     'Amazon Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
+    'Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
     'Spotify Premium': { emoji: '🎧', gradient: 'from-green-500 to-green-700' },
     Spotify: { emoji: '🎧', gradient: 'from-green-500 to-green-700' },
     'YouTube Premium': { emoji: '▶️', gradient: 'from-red-500 to-red-700' },

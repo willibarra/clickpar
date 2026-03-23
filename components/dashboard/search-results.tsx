@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SwapServiceModal } from './swap-service-modal';
+import { ExtendSaleModal } from '@/components/customers/extend-sale-modal';
 import { createSlot, deleteSlot, renumberSlots, reactivateAccount } from '@/lib/actions/inventory';
 import { cancelSubscription } from '@/lib/actions/sales';
 
@@ -347,6 +348,14 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                         >
                             <Repeat className="h-3 w-3" /> Intercambiar
                         </button>
+                        {/* Extender — uses the modal's built-in trigger button */}
+                        <ExtendSaleModal
+                            saleId={svc.sale_id}
+                            currentEndDate={svc.sale_end_date || svc.renewal_date}
+                            customerName={''}
+                            platform={svc.platform}
+                            onSuccess={() => onSaved()}
+                        />
                         {confirmDelete ? (
                             <>
                                 <button
@@ -452,6 +461,13 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                     <button onClick={onSwap} className="flex items-center gap-1 rounded-md bg-[#F97316]/10 px-3 py-1.5 text-xs font-medium text-[#F97316] hover:bg-[#F97316]/20 transition-colors">
                         <Repeat className="h-3 w-3" /> Intercambiar
                     </button>
+                    <ExtendSaleModal
+                        saleId={svc.sale_id}
+                        currentEndDate={svc.sale_end_date || svc.renewal_date}
+                        customerName={''}
+                        platform={svc.platform}
+                        onSuccess={() => onSaved()}
+                    />
                     <button onClick={handleSave} disabled={saving}
                         className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-medium transition-all ${saved ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'bg-[#86EFAC]/10 text-[#86EFAC] hover:bg-[#86EFAC]/20'
                             } disabled:opacity-50`}>

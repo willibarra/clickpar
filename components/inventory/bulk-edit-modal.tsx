@@ -59,8 +59,9 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
     const [costGs, setCostGs] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [salePrice, setSalePrice] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [notes, setNotes] = useState<FieldState<string>>({ enabled: false, value: '' });
+    const [maxSlots, setMaxSlots] = useState<FieldState<string>>({ enabled: false, value: '' });
 
-    const anyEnabled = [status, renewalDate, supplierName, supplierPhone, costUsdt, costGs, salePrice, notes].some(f => f.enabled);
+    const anyEnabled = [status, renewalDate, supplierName, supplierPhone, costUsdt, costGs, salePrice, notes, maxSlots].some(f => f.enabled);
 
     function toggle<T>(setter: React.Dispatch<React.SetStateAction<FieldState<T>>>) {
         setter(prev => ({ ...prev, enabled: !prev.enabled }));
@@ -82,6 +83,7 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
         if (costGs.enabled) fields.purchase_cost_gs = parseFloat(costGs.value) || 0;
         if (salePrice.enabled) fields.sale_price_gs = parseFloat(salePrice.value) || null;
         if (notes.enabled) fields.notes = notes.value || null;
+        if (maxSlots.enabled && maxSlots.value) fields.max_slots = parseInt(maxSlots.value) || 1;
 
         const result = await bulkUpdateMotherAccounts(selectedIds, fields);
 
@@ -106,6 +108,7 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
         setCostGs({ enabled: false, value: '' });
         setSalePrice({ enabled: false, value: '' });
         setNotes({ enabled: false, value: '' });
+        setMaxSlots({ enabled: false, value: '' });
         onClose();
     }
 
@@ -203,6 +206,19 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
                                 placeholder="+595..."
                                 value={supplierPhone.value}
                                 onChange={(e) => setSupplierPhone(p => ({ ...p, value: e.target.value }))}
+                                className="bg-background"
+                            />
+                        </FieldToggle>
+
+                        {/* Máx. Slots */}
+                        <FieldToggle label="Máx. Slots (Perfiles)" enabled={maxSlots.enabled} onToggle={() => toggle(setMaxSlots)}>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={10}
+                                placeholder="5"
+                                value={maxSlots.value}
+                                onChange={(e) => setMaxSlots(p => ({ ...p, value: e.target.value }))}
                                 className="bg-background"
                             />
                         </FieldToggle>

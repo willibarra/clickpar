@@ -18,6 +18,7 @@ const PLATFORM_EMOJI: Record<string, string> = {
     'HBO Max': '💜',
     'Disney+': '🏰',
     'Amazon Prime Video': '📦',
+    'Prime Video': '📦',
     Spotify: '🎧',
     'YouTube Premium': '▶️',
     Crunchyroll: '🍥',

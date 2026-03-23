@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     if (!sale?.customers) return NextResponse.json({ customer: null });
 
     return NextResponse.json({
+        sale_id: sale.id,  // needed by SlotDetailsModal extend mode
         customer: {
             id: sale.customers.id,
             full_name: sale.customers.full_name,

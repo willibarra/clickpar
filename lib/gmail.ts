@@ -9,6 +9,7 @@ const PLATFORM_KEYWORDS: Record<string, string[]> = {
     'Disney+': ['disney', 'código', 'code', 'verification', 'verificación', 'one-time'],
     'HBO Max': ['hbo', 'max', 'código', 'code', 'verification', 'verificación'],
     'Amazon Prime Video': ['amazon', 'prime', 'código', 'code', 'otp', 'verificación'],
+    'Prime Video': ['amazon', 'prime', 'código', 'code', 'otp', 'verificación'],
     'Spotify': ['spotify', 'código', 'code', 'verification', 'login'],
     'YouTube Premium': ['youtube', 'google', 'código', 'code', 'verification'],
     'Crunchyroll': ['crunchyroll', 'código', 'code', 'verification'],

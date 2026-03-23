@@ -137,6 +137,7 @@ interface BulkAccountSharedData {
     supplier_name: string | null;
     supplier_phone: string | null;
     sale_type: string;
+    notes: string | null;
     instructions: string | null;
     send_instructions: boolean;
     is_autopay: boolean;
@@ -206,6 +207,7 @@ export async function bulkCreateMotherAccounts(
                 supplier_phone: sharedData.supplier_phone,
                 sale_price_gs: sharedData.sale_price_gs,
                 sale_type: sharedData.sale_type,
+                notes: sharedData.notes,
                 instructions: sharedData.instructions,
                 send_instructions: sharedData.send_instructions,
                 is_autopay: isAutopay,
@@ -284,6 +286,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         currentAccount.password !== newPassword
     );
 
+    const parsedMaxSlots = parseInt(formData.get('max_slots') as string);
     const data: Record<string, any> = {
         platform: formData.get('platform') as string,
         email: newEmail,
@@ -291,7 +294,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,
         purchase_cost_gs: parseFloat(formData.get('purchase_cost_gs') as string) || 0,
         renewal_date: renewalDate,
-        max_slots: parseInt(formData.get('max_slots') as string) || 5,
+        max_slots: isNaN(parsedMaxSlots) ? 1 : Math.max(1, parsedMaxSlots),
         status: formData.get('status') as string || 'active',
         supplier_name: (formData.get('supplier_name') as string) || null,
         supplier_phone: (formData.get('supplier_phone') as string) || null,
@@ -681,6 +684,7 @@ export async function bulkUpdateMotherAccounts(
         purchase_cost_gs?: number | null;
         sale_price_gs?: number | null;
         notes?: string | null;
+        max_slots?: number | null;
     }
 ) {
     if (!ids || ids.length === 0) return { error: 'No hay IDs seleccionados' };
@@ -700,6 +704,7 @@ export async function bulkUpdateMotherAccounts(
     if (fields.purchase_cost_gs !== undefined) update.purchase_cost_gs = fields.purchase_cost_gs ?? 0;
     if (fields.sale_price_gs !== undefined) update.sale_price_gs = fields.sale_price_gs ?? null;
     if (fields.notes !== undefined) update.notes = fields.notes || null;
+    if (fields.max_slots !== undefined && fields.max_slots !== null) update.max_slots = Math.max(1, fields.max_slots);
 
     if (Object.keys(update).length === 0) return { error: 'No hay campos para actualizar' };
 
@@ -783,3 +788,66 @@ export async function getAvailableFullAccounts() {
     return { data: fullAccounts };
 }
 
+/**
+ * Reasigna un slot de un cliente a otro.
+ * Cancela la venta activa del slot y crea una nueva para el nuevo cliente.
+ */
+export async function swapSlotCustomer(slotId: string, newCustomerId: string) {
+    const supabase = await createClient();
+
+    // 1. Buscar la venta activa del slot
+    const { data: activeSale } = await (supabase.from('sales') as any)
+        .select('id, start_date, end_date, amount_gs, original_price_gs')
+        .eq('slot_id', slotId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    // 2. Datos del slot y nuevo cliente para el log
+    const { data: slotInfo } = await (supabase.from('sale_slots') as any)
+        .select('slot_identifier, mother_account_id')
+        .eq('id', slotId)
+        .single();
+
+    const { data: newCustomer } = await (supabase.from('customers') as any)
+        .select('full_name, phone')
+        .eq('id', newCustomerId)
+        .single();
+
+    // 3. Si hay venta activa, cancelarla
+    if (activeSale) {
+        const { error: cancelError } = await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', activeSale.id);
+
+        if (cancelError) return { error: `Error cancelando venta anterior: ${cancelError.message}` };
+    }
+
+    // 4. Crear nueva venta para el nuevo cliente, preservando fechas y precio
+    const today = new Date().toISOString().split('T')[0];
+    const { error: saleError } = await (supabase.from('sales') as any)
+        .insert({
+            customer_id: newCustomerId,
+            slot_id: slotId,
+            amount_gs: activeSale?.amount_gs || 0,
+            original_price_gs: activeSale?.original_price_gs || 0,
+            override_price: false,
+            start_date: activeSale?.start_date || today,
+            end_date: activeSale?.end_date || null,
+            is_active: true,
+            payment_method: 'cash',
+        });
+
+    if (saleError) return { error: `Error creando nueva venta: ${saleError.message}` };
+
+    // 5. Asegurar que el slot quede como vendido
+    await (supabase.from('sale_slots') as any)
+        .update({ status: 'sold' })
+        .eq('id', slotId);
+
+    await logAction('swap_slot_customer', 'slot', slotId, {
+        message: `reasignó el perfil "${slotInfo?.slot_identifier || slotId}" a ${newCustomer?.full_name || newCustomerId}`
+    });
+
+    revalidatePath('/inventory');
+    return { success: true };
+}
