@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ServiceCard } from '@/components/portal/service-card';
-import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap } from 'lucide-react';
+import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap, Lock } from 'lucide-react';
 
 interface Service {
     saleId: string;
@@ -28,6 +28,7 @@ export default function PortalDashboard() {
     const [customerType, setCustomerType] = useState<string>('cliente');
     const [creatorSlug, setCreatorSlug] = useState<string | null>(null);
     const [copiedSlug, setCopiedSlug] = useState(false);
+    const [panelDisabled, setPanelDisabled] = useState(false);
 
     useEffect(() => {
         fetch('/api/portal/services')
@@ -38,6 +39,7 @@ export default function PortalDashboard() {
                     setCustomerName(data.customer?.name || '');
                     setCustomerType(data.customer?.customerType || 'cliente');
                     setCreatorSlug(data.customer?.creatorSlug || null);
+                    setPanelDisabled(data.customer?.panelDisabled ?? false);
                 } else {
                     setError(data.error || 'Error al cargar servicios');
                 }
@@ -74,6 +76,33 @@ export default function PortalDashboard() {
                     <AlertTriangle className="h-8 w-8 text-red-400" />
                 </div>
                 <p className="text-muted-foreground">{error}</p>
+            </div>
+        );
+    }
+
+    // Fix 3 — Panel disabled: show "Plan vencido" screen
+    if (panelDisabled) {
+        return (
+            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center px-4">
+                <div className="rounded-full bg-muted/50 p-6">
+                    <Lock className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <div className="space-y-2">
+                    <h2 className="text-xl font-bold text-foreground">Tu plan ha vencido</h2>
+                    <p className="text-sm text-muted-foreground max-w-xs">
+                        Tu acceso a los servicios de streaming fue suspendido.
+                        Renová para volver a disfrutar de tu contenido favorito.
+                    </p>
+                </div>
+                <a
+                    href="https://wa.me/595994540904?text=Hola%2C%20quisiera%20renovar%20mi%20plan"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#86EFAC] px-6 py-3 text-sm font-semibold text-black transition-all hover:bg-[#86EFAC]/90 active:scale-95"
+                >
+                    Renovar vía WhatsApp
+                </a>
+                <p className="text-xs text-muted-foreground">
+                    Si creés que es un error, contactá al soporte.
+                </p>
             </div>
         );
     }

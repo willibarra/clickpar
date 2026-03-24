@@ -104,20 +104,40 @@ export async function updateCustomer(id: string, formData: FormData) {
         }
     }
 
-    // Obtener tipo actual para detectar cambios
+    // panel_disabled: read from form ('true'/'on' = disabled)
+    const panelDisabledRaw = formData.get('panel_disabled');
+    const panelDisabled = panelDisabledRaw === 'true' || panelDisabledRaw === 'on';
+
+    // Obtener tipo actual y si ya tiene portal_password para detectar cambios
     const { data: currentCustomer } = await (supabase.from('customers') as any)
-        .select('customer_type')
+        .select('customer_type, portal_password')
         .eq('id', id)
         .single();
 
     const previousType = currentCustomer?.customer_type || 'cliente';
 
     const { error } = await (supabase.from('customers') as any)
-        .update({ full_name: fullName, phone, customer_type: customerType, whatsapp_instance: whatsappInstance, creator_slug: creatorSlug })
+        .update({
+            full_name: fullName,
+            phone,
+            customer_type: customerType,
+            whatsapp_instance: whatsappInstance,
+            creator_slug: creatorSlug,
+            panel_disabled: panelDisabled,
+        })
         .eq('id', id);
 
     if (error) {
         return { error: error.message };
+    }
+
+    // Fix 2: Auto-generate portal account if phone was just added and no password exists yet
+    if (phone && !currentCustomer?.portal_password) {
+        try {
+            await ensurePortalAccount(id, phone, fullName);
+        } catch (err) {
+            console.warn('[updateCustomer] Auto portal account generation failed (non-blocking):', err);
+        }
     }
 
     // Si cambia a CREADOR: marcar todas sus ventas activas como canje (precio = 0)

@@ -67,9 +67,9 @@ export async function middleware(request: NextRequest) {
             return NextResponse.next({ request });
         }
 
-        // Customer portal routes → redirect to clickpar.net
+        // Customer portal routes → redirect to clickpar.net/cliente/login
         if (pathname.startsWith('/cliente')) {
-            return NextResponse.redirect('https://clickpar.net/cliente');
+            return NextResponse.redirect('https://clickpar.net/cliente/login');
         }
 
         // Root (/) → fall through to admin auth check below (do NOT redirect away)

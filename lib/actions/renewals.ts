@@ -122,8 +122,10 @@ export async function getClientSubscriptions() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Ventana: 90 días atrás (vencidas sin cancelar) hasta 15 días adelante
+    // Se amplió de 7 → 90 días para que el admin cancele manualmente sin que desaparezcan
     const windowStart = new Date(today);
-    windowStart.setDate(windowStart.getDate() - 7);
+    windowStart.setDate(windowStart.getDate() - 90);
     const windowEnd = new Date(today);
     windowEnd.setDate(windowEnd.getDate() + 15);
 

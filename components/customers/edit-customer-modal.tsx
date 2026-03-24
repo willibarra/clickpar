@@ -5,8 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, BarChart2 } from 'lucide-react';
+import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, BarChart2, AlertTriangle, Lock } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
 
 interface Customer {
@@ -16,6 +17,7 @@ interface Customer {
     customer_type?: string;
     whatsapp_instance?: string | null;
     creator_slug?: string | null;
+    panel_disabled?: boolean;
 }
 
 interface EditCustomerModalProps {
@@ -37,6 +39,10 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [slugInput, setSlugInput] = useState(customer.creator_slug || '');
     const [copiedLink, setCopiedLink] = useState(false);
     const [creatorStats, setCreatorStats] = useState<{ total: number; last30Days: number } | null>(null);
+    const [panelDisabled, setPanelDisabled] = useState(customer.panel_disabled ?? false);
+
+    // Checks whether phone exists — required for portal password operations
+    const hasPhone = !!customer.phone_number?.trim();
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -283,76 +289,102 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                         {/* Portal password section */}
                         <div className="space-y-2">
                             <Label>Contraseña del Portal</Label>
-                            <div className="space-y-2">
-                                {portalPassword ? (
-                                    <div className="flex items-center gap-2">
-                                        <code className="flex-1 rounded-md bg-muted/50 px-3 py-2 text-sm font-mono text-[#86EFAC]">
-                                            {portalPassword}
-                                        </code>
+
+                            {!hasPhone ? (
+                                <div className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2">
+                                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+                                    <p className="text-xs text-amber-400">
+                                        Este cliente no tiene teléfono registrado. Los botones de contraseña del portal no están disponibles.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {portalPassword ? (
+                                        <div className="flex items-center gap-2">
+                                            <code className="flex-1 rounded-md bg-muted/50 px-3 py-2 text-sm font-mono text-[#86EFAC]">
+                                                {portalPassword}
+                                            </code>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setPortalPassword(null)}
+                                                title="Ocultar"
+                                            >
+                                                <EyeOff className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    ) : (
                                         <Button
                                             type="button"
-                                            variant="ghost"
+                                            variant="outline"
                                             size="sm"
-                                            onClick={() => setPortalPassword(null)}
-                                            title="Ocultar"
+                                            onClick={handleShowPassword}
+                                            disabled={loadingPassword}
+                                            className="gap-1.5"
                                         >
-                                            <EyeOff className="h-4 w-4" />
+                                            {loadingPassword ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                                <Key className="h-3.5 w-3.5" />
+                                            )}
+                                            Ver contraseña
+                                        </Button>
+                                    )}
+
+                                    {/* Action buttons */}
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleRegeneratePassword}
+                                            disabled={regenerating}
+                                            className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300"
+                                        >
+                                            {regenerating ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            )}
+                                            Regenerar contraseña
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleCopyCredentials}
+                                            className={`gap-1.5 transition-colors ${copied
+                                                ? 'text-[#86EFAC] border-[#86EFAC]/30 bg-[#86EFAC]/10'
+                                                : 'text-blue-400 border-blue-400/30 hover:bg-blue-400/10 hover:text-blue-300'
+                                            }`}
+                                        >
+                                            {copied ? (
+                                                <Check className="h-3.5 w-3.5" />
+                                            ) : (
+                                                <Copy className="h-3.5 w-3.5" />
+                                            )}
+                                            {copied ? '¡Copiado!' : 'Copiar datos'}
                                         </Button>
                                     </div>
-                                ) : (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleShowPassword}
-                                        disabled={loadingPassword}
-                                        className="gap-1.5"
-                                    >
-                                        {loadingPassword ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                            <Key className="h-3.5 w-3.5" />
-                                        )}
-                                        Ver contraseña
-                                    </Button>
-                                )}
+                                </div>
+                            )}
+                        </div>
 
-                                {/* Action buttons */}
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleRegeneratePassword}
-                                        disabled={regenerating}
-                                        className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300"
-                                    >
-                                        {regenerating ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                            <RefreshCw className="h-3.5 w-3.5" />
-                                        )}
-                                        Regenerar contraseña
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleCopyCredentials}
-                                        className={`gap-1.5 transition-colors ${copied
-                                            ? 'text-[#86EFAC] border-[#86EFAC]/30 bg-[#86EFAC]/10'
-                                            : 'text-blue-400 border-blue-400/30 hover:bg-blue-400/10 hover:text-blue-300'
-                                        }`}
-                                    >
-                                        {copied ? (
-                                            <Check className="h-3.5 w-3.5" />
-                                        ) : (
-                                            <Copy className="h-3.5 w-3.5" />
-                                        )}
-                                        {copied ? '¡Copiado!' : 'Copiar datos'}
-                                    </Button>
+                        {/* Panel disabled toggle — Fix 3 */}
+                        <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <Lock className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                    <p className="text-sm font-medium">Deshabilitar panel del cliente</p>
+                                    <p className="text-xs text-muted-foreground">El cliente verá una pantalla de "Plan vencido"</p>
                                 </div>
                             </div>
+                            <Switch
+                                checked={panelDisabled}
+                                onCheckedChange={setPanelDisabled}
+                                name="panel_disabled"
+                            />
                         </div>
                     </div>
 

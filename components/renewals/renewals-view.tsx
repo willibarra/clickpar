@@ -64,6 +64,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [provCost, setProvCost] = useState('');
     const [provUsdt, setProvUsdt] = useState('');
     const [provDays, setProvDays] = useState('30');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const [provRenewalDate, setProvRenewalDate] = useState(todayStr);
     const { rate: usdtRate } = useUsdtRate(); // Lee de localStorage (configurado en Settings)
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
@@ -246,6 +248,13 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
     // Open provider modal (no need to fetch - uses configured rate from Settings)
     const handleOpenProvModal = () => {
+        const today = new Date();
+        const todayIso = today.toISOString().split('T')[0];
+        setProvRenewalDate(todayIso);
+        // Auto-calcular días restantes del mes actual
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const diff = Math.round((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        setProvDays(diff.toString());
         setShowProvModal(true);
     };
 
@@ -1004,6 +1013,63 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 onChange={e => { setProvCost(e.target.value); setProvUsdt(''); }}
                                 placeholder="Ej: 150000"
                             />
+                        </div>
+
+                        {/* Fecha de Renovación */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-2">
+                                📅 Fecha de Renovación
+                                <span className="ml-auto text-xs text-muted-foreground">Inicio del período que estás pagando</span>
+                            </Label>
+                            <input
+                                type="date"
+                                value={provRenewalDate}
+                                onChange={e => {
+                                    const newDate = e.target.value;
+                                    setProvRenewalDate(newDate);
+                                    // Calcular días hasta fin de mes desde la nueva fecha
+                                    if (newDate) {
+                                        const d = new Date(newDate + 'T12:00:00');
+                                        const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                                        const diff = Math.round((endOfMonth.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                        setProvDays(diff.toString());
+                                    }
+                                }}
+                                className="w-full rounded-md border border-border bg-[#1a1a1a] px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
+                            />
+                            {/* Botones rápidos de días del mes actual */}
+                            {(() => {
+                                const base = provRenewalDate ? new Date(provRenewalDate + 'T12:00:00') : new Date();
+                                const year = base.getFullYear();
+                                const month = base.getMonth();
+                                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                const endOfMonth = new Date(year, month + 1, 0);
+                                const daysToEnd = Math.round((endOfMonth.getTime() - base.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                const options = [
+                                    { label: `Fin del mes (${daysToEnd}d)`, value: daysToEnd },
+                                    { label: '30 días', value: 30 },
+                                ];
+                                // Si el mes tiene más días agrega opciones útiles
+                                if (daysInMonth === 31) options.splice(1, 0, { label: '31 días', value: 31 });
+                                return (
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        {options.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => setProvDays(opt.value.toString())}
+                                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                                    provDays === opt.value.toString()
+                                                        ? 'bg-[#F97316] text-white'
+                                                        : 'bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80'
+                                                }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div className="space-y-2">

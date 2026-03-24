@@ -237,7 +237,8 @@ export async function GET(request: NextRequest) {
         }
 
         // ================================================
-        // 4. Sales expired 2 DAYS AGO → CANCEL
+        // 4. Sales expired 2 DAYS AGO → solo notificación interna (NO cancelar automáticamente)
+        // La cancelación debe hacerse MANUALMENTE desde el panel de Renovaciones.
         // ================================================
         const { data: expTwoDays } = await supabase
             .from('sales' as any)
@@ -251,20 +252,9 @@ export async function GET(request: NextRequest) {
             const platform = slot?.mother_accounts?.platform || 'Servicio';
             const name = customer?.full_name || 'Cliente';
 
-            // Cancelar venta + liberar slot
-            await (supabase as any)
-                .from('sales')
-                .update({ is_active: false })
-                .eq('id', sale.id);
-
-            if (sale.slot_id) {
-                await (supabase as any)
-                    .from('sale_slots')
-                    .update({ status: 'available' })
-                    .eq('id', sale.slot_id);
-            }
-
-            results.cancelled_2days_after.push(`${name} - ${platform}`);
+            // Solo registrar en el resultado — NO cancelar ni liberar slot.
+            // El admin debe cancelar manualmente desde /renewals.
+            results.cancelled_2days_after.push(`${name} - ${platform} (sin pago, pendiente cancelar)`);
         }
 
         // ================================================

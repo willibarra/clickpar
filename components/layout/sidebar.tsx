@@ -15,6 +15,7 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  Zap,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -28,6 +29,7 @@ const allNavItems = [
   { href: '/emails', label: 'Correos', icon: Mail, adminOnly: false },
   { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
   { href: '/statistics', label: 'Estadísticas', icon: BarChart3, adminOnly: true },
+  { href: '/automatizaciones', label: 'Automatizaciones', icon: Zap, adminOnly: true },
   { href: '/settings', label: 'Ajustes', icon: Settings, adminOnly: true },
 ];
 

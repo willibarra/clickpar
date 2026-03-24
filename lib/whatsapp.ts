@@ -10,7 +10,7 @@ import { normalizePhone } from '@/lib/utils/phone';
 // Test Whitelist — only these numbers receive automated messages
 // Set to empty array [] to disable and send to ALL customers
 // ==========================================
-const TEST_WHITELIST: string[] = ['595973442773', '595994501010'];
+const TEST_WHITELIST: string[] = []; // Vacío = todos los clientes reciben mensajes automáticos
 
 /**
  * Check if a phone number is allowed to receive automated messages.

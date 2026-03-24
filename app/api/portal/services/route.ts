@@ -49,7 +49,7 @@ export async function GET() {
     ];
     for (const phone of phonesToTry) {
         const { data } = await (admin.from('customers') as any)
-            .select('id, full_name, customer_type, creator_slug')
+            .select('id, full_name, customer_type, creator_slug, panel_disabled')
             .eq('phone', phone)
             .maybeSingle();
         if (data) { customer = data; break; }
@@ -79,7 +79,11 @@ export async function GET() {
     if (!sales || sales.length === 0) {
         return NextResponse.json({
             success: true,
-            customer: { name: profile?.full_name || customer.full_name, phone: resolvedPhone },
+            customer: {
+                name: profile?.full_name || customer.full_name,
+                phone: resolvedPhone,
+                panelDisabled: customer.panel_disabled ?? false,
+            },
             services: [],
             totalActive: 0,
         });
@@ -166,6 +170,7 @@ export async function GET() {
             phone: resolvedPhone,
             customerType: customer.customer_type || 'cliente',
             creatorSlug: customer.creator_slug || null,
+            panelDisabled: customer.panel_disabled ?? false,
         },
         services,
         totalActive: services.length,

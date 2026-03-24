@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 
 const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 2000;
+const BATCH_DELAY_MS = 30_000; // 30 seconds between batches (anti-spam)
 
 /**
  * POST /api/cron/send-messages
@@ -28,11 +28,12 @@ export async function POST(request: NextRequest) {
     const supabase = getQueueSupabase();
     const todayStr = formatDate(todayMidnight());
 
-    // Fetch composed messages that haven't exceeded max retries
+    // Fetch composed messages that haven't exceeded max retries and are due
     const { data: composedRows, error: fetchErr } = await supabase
         .from('message_queue' as any)
         .select('*')
         .eq('status', 'composed')
+        .lte('scheduled_at', new Date().toISOString())
         .order('scheduled_at', { ascending: true })
         .limit(50);
 

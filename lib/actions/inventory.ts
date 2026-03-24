@@ -287,6 +287,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
     );
 
     const parsedMaxSlots = parseInt(formData.get('max_slots') as string);
+    const isAutopay = formData.get('is_autopay') === 'on' || formData.get('is_autopay') === 'true';
     const data: Record<string, any> = {
         platform: formData.get('platform') as string,
         email: newEmail,
@@ -302,10 +303,29 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         invite_address: (formData.get('invite_address') as string) || null,
         sale_price_gs: parseFloat(formData.get('sale_price_gs') as string) || null,
         notes: (formData.get('notes') as string) || null,
+        is_autopay: isAutopay,
+        instructions: (formData.get('instructions') as string) || null,
+        send_instructions: formData.get('send_instructions') === 'on' || formData.get('send_instructions') === 'true',
     };
 
     if (billingDay !== undefined) {
         data.target_billing_day = billingDay;
+    }
+
+    // Handle owned email upsert if checked
+    const isOwnedEmail = formData.get('is_owned_email') === 'on' || formData.get('is_owned_email') === 'true';
+    if (isOwnedEmail) {
+        const emailPassword = formData.get('email_password') as string || null;
+        const emailNorm = newEmail.trim().toLowerCase();
+        let provider = 'otro';
+        if (emailNorm.includes('@gmail')) provider = 'gmail';
+        else if (emailNorm.includes('@hotmail')) provider = 'hotmail';
+        else if (emailNorm.includes('@outlook')) provider = 'outlook';
+        else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
+        await (supabase.from('owned_emails') as any).upsert(
+            { email: emailNorm, password: emailPassword, provider },
+            { onConflict: 'email' }
+        );
     }
 
     const { error } = await (supabase.from('mother_accounts') as any)

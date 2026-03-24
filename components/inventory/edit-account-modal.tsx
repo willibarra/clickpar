@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link, User, Key, Copy, Check } from 'lucide-react';
+import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link, User, Key, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { updateMotherAccount, deleteMotherAccount, syncSlots, updateSlot } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
 
@@ -51,6 +52,9 @@ interface Account {
     invitation_url?: string | null;
     invite_address?: string | null;
     sale_type?: string | null;
+    is_autopay?: boolean;
+    instructions?: string | null;
+    send_instructions?: boolean;
 }
 
 const slotStatusOptions = [
@@ -75,11 +79,25 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [slotEdits, setSlotEdits] = useState<SlotEdit[]>([]);
     const [copiedPin, setCopiedPin] = useState<string | null>(null);
 
+    // Extra fields matching AddAccountModal
+    const [isAutopay, setIsAutopay] = useState(account.is_autopay || false);
+    const [instructions, setInstructions] = useState(account.instructions || '');
+    const [sendInstructions, setSendInstructions] = useState(account.send_instructions || false);
+    const [isOwnedEmail, setIsOwnedEmail] = useState(false);
+    const [emailPassword, setEmailPassword] = useState('');
+    const [showEmailPass, setShowEmailPass] = useState(false);
+
     useEffect(() => {
         if (open) {
             fetchPlatforms();
             initSlotEdits();
             setActiveTab('cuenta');
+            setIsAutopay(account.is_autopay || false);
+            setInstructions(account.instructions || '');
+            setSendInstructions(account.send_instructions || false);
+            setIsOwnedEmail(false);
+            setEmailPassword('');
+            setShowEmailPass(false);
         }
     }, [open]);
 
@@ -190,6 +208,16 @@ export function EditAccountModal({ account }: { account: Account }) {
         setError(null);
 
         const formData = new FormData(e.currentTarget);
+        // Inject state-managed fields not bound to named inputs
+        formData.set('instructions', instructions || '');
+        formData.set('send_instructions', sendInstructions ? 'true' : 'false');
+        // is_autopay is a named checkbox — override with state for reliability
+        formData.set('is_autopay', isAutopay ? 'true' : 'false');
+        if (isOwnedEmail) {
+            formData.set('is_owned_email', 'true');
+            formData.set('email_password', emailPassword || '');
+        }
+
         const result = await updateMotherAccount(account.id, formData);
 
         if (result.error) {
@@ -658,6 +686,57 @@ export function EditAccountModal({ account }: { account: Account }) {
                                 </div>
                             </div>
 
+                            {/* Autopay */}
+                            <div className="flex items-center gap-2 px-1">
+                                <input
+                                    type="checkbox"
+                                    id="is_autopay"
+                                    name="is_autopay"
+                                    checked={isAutopay}
+                                    onChange={(e) => setIsAutopay(e.target.checked)}
+                                    className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                                />
+                                <Label htmlFor="is_autopay" className="cursor-pointer text-sm font-normal">
+                                    🔄 Cuenta autopagable <span className="text-muted-foreground">(sin fecha fija, revisión cada 15 días)</span>
+                                </Label>
+                            </div>
+
+                            {/* Correo Propio */}
+                            <div className="rounded-lg border border-border/40 bg-[#0d0d0d] p-3 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="is_owned_email_edit"
+                                        checked={isOwnedEmail}
+                                        onCheckedChange={(v) => setIsOwnedEmail(v === true)}
+                                    />
+                                    <label htmlFor="is_owned_email_edit" className="text-sm font-medium text-foreground cursor-pointer select-none">
+                                        Guardar como Correo Propio (Activo)
+                                    </label>
+                                </div>
+                                {isOwnedEmail && (
+                                    <div className="space-y-1.5 pl-6">
+                                        <Label className="text-xs text-muted-foreground">Contraseña del Correo</Label>
+                                        <div className="relative">
+                                            <Input
+                                                type={showEmailPass ? 'text' : 'password'}
+                                                value={emailPassword}
+                                                onChange={e => setEmailPassword(e.target.value)}
+                                                placeholder="Contraseña del email (Gmail/Hotmail)"
+                                                className="pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowEmailPass(!showEmailPass)}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                                            >
+                                                {showEmailPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground/60">Se guardará en tu inventario de Correos Propios</p>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Invitación Familia */}
                             {isFamilyAccount && (
                                 <div className="rounded-lg border border-[#86EFAC]/20 bg-[#86EFAC]/5 p-3 space-y-3">
@@ -688,6 +767,35 @@ export function EditAccountModal({ account }: { account: Account }) {
                                 </div>
                             )}
 
+                            {/* OBS / Instrucciones */}
+                            <div className="space-y-2 border-t border-border/50 pt-4">
+                                <Label htmlFor="instructions_edit" className="flex items-center gap-2">
+                                    📝 OBS / Instrucciones
+                                    <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                                </Label>
+                                <textarea
+                                    id="instructions_edit"
+                                    value={instructions}
+                                    onChange={(e) => setInstructions(e.target.value)}
+                                    placeholder="Ej: Para acceder ir a configuración → Perfil → Ingresar código de pantalla..."
+                                    rows={3}
+                                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/50 placeholder:text-muted-foreground"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="send_instructions_edit"
+                                        checked={sendInstructions}
+                                        onChange={(e) => setSendInstructions(e.target.checked)}
+                                        className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                                    />
+                                    <Label htmlFor="send_instructions_edit" className="cursor-pointer text-sm font-normal">
+                                        Enviar instrucciones automáticamente al vender
+                                    </Label>
+                                </div>
+                            </div>
+
+                            {/* Observación */}
                             <div className="space-y-2">
                                 <Label htmlFor="notes">Observación</Label>
                                 <Textarea
