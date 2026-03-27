@@ -5,21 +5,43 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/utils/phone';
+import { waitForRandomDelay, checkHourlyLimit } from '@/lib/rate-limiter';
 
 // ==========================================
-// Test Whitelist — only these numbers receive automated messages
-// Set to empty array [] to disable and send to ALL customers
+// Whitelist — reads from app_config (key: 'phone_whitelist')
+// Value: comma-separated phone numbers, e.g. "+595973442773,0981123456"
+// Empty or missing = ALL customers receive automated messages
 // ==========================================
-const TEST_WHITELIST: string[] = []; // Vacío = todos los clientes reciben mensajes automáticos
 
 /**
  * Check if a phone number is allowed to receive automated messages.
- * Returns true if whitelist is empty (disabled) or if the phone is in the list.
+ * Reads 'phone_whitelist' from app_config in the database.
+ * Returns true if the whitelist is empty/missing (send to everyone).
  */
-export function isPhoneWhitelisted(phone: string): boolean {
-    if (TEST_WHITELIST.length === 0) return true; // Whitelist disabled
-    const normalized = normalizePhone(phone);
-    return TEST_WHITELIST.some(w => normalizePhone(w) === normalized);
+export async function isPhoneWhitelisted(phone: string): Promise<boolean> {
+    try {
+        const supabase = await waSupabase();
+        const { data } = await supabase
+            .from('app_config' as any)
+            .select('value')
+            .eq('key', 'phone_whitelist')
+            .single();
+
+        const raw: string = (data as any)?.value || '';
+        const list = raw
+            .split(',')
+            .map((p: string) => p.trim())
+            .filter(Boolean);
+
+        // Empty list = whitelist disabled → allow everyone
+        if (list.length === 0) return true;
+
+        const normalized = normalizePhone(phone);
+        return list.some((w: string) => normalizePhone(w) === normalized);
+    } catch {
+        // On DB error, fail-open (allow message to be sent)
+        return true;
+    }
 }
 
 // Untyped supabase client for whatsapp tables (not yet in database.types.ts)
@@ -455,9 +477,44 @@ export async function sendText(
         templateKey?: string;
         customerId?: string;
         saleId?: string;
+        skipRateLimiting?: boolean;
     }
 ): Promise<SendResult> {
+    let delayApplied = 0;
+
     try {
+        // ── Anti-ban: check hourly rate limit ──
+        if (!options?.skipRateLimiting) {
+            const hourlyCheck = await checkHourlyLimit();
+            if (!hourlyCheck.allowed) {
+                console.warn(
+                    `[WhatsApp] Rate limit reached: ${hourlyCheck.sent}/${hourlyCheck.limit} msgs/hour. Blocking send.`
+                );
+                // Log the rate-limited attempt
+                try {
+                    const supabase = await waSupabase();
+                    await supabase.from('whatsapp_send_log').insert({
+                        template_key: options?.templateKey || null,
+                        phone: formatPhone(phone),
+                        message,
+                        instance_used: null,
+                        status: 'failed',
+                        customer_id: options?.customerId || null,
+                        sale_id: options?.saleId || null,
+                        delay_applied_ms: 0,
+                        rate_limited: true,
+                    });
+                } catch { /* non-fatal */ }
+                return {
+                    success: false,
+                    error: `Rate limit exceeded: ${hourlyCheck.sent}/${hourlyCheck.limit} messages this hour`,
+                };
+            }
+
+            // ── Anti-ban: random delay 8-25 seconds ──
+            delayApplied = await waitForRandomDelay();
+        }
+
         const instanceName = await pickInstance(options?.instanceName);
         const formattedPhone = formatPhone(phone);
 
@@ -472,7 +529,7 @@ export async function sendText(
 
         const data = await res.json();
 
-        // Log the message
+        // Log the message with anti-ban metadata
         try {
             const supabase = await waSupabase();
             await supabase.from('whatsapp_send_log').insert({
@@ -483,6 +540,8 @@ export async function sendText(
                 status: res.ok ? 'sent' : 'failed',
                 customer_id: options?.customerId || null,
                 sale_id: options?.saleId || null,
+                delay_applied_ms: delayApplied,
+                rate_limited: false,
             });
         } catch {
             // Don't fail if logging fails

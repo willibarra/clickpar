@@ -22,6 +22,24 @@ import { BatchSendModal } from "./batch-send-modal";
 type FilterType = 'all' | 'expired' | 'today' | '3days';
 type ClientFilterType = 'all' | 'expired' | 'today' | '3days';
 
+const MESES_CORTOS = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
+
+/** Formateador determinístico para evitar hydration mismatch con toLocaleDateString */
+function formatDateES(date: Date, opts: { year?: boolean; time?: boolean } = {}): string {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = MESES_CORTOS[date.getMonth()];
+    let str = `${d}-${m}`;
+    if (opts.year) str += `, ${String(date.getFullYear()).slice(-2)}`;
+    if (opts.time) {
+        const hh = date.getHours();
+        const mm = String(date.getMinutes()).padStart(2, '0');
+        const ampm = hh >= 12 ? 'p. m.' : 'a. m.';
+        const h12 = hh % 12 || 12;
+        str += `, ${h12}:${mm} ${ampm}`;
+    }
+    return str;
+}
+
 function getDaysUntil(dateStr: string | null): number {
     if (!dateStr) return 999;
     const today = new Date();
@@ -622,7 +640,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         {/* Vencimiento */}
                                         <div className="text-sm font-medium tabular-nums">
                                             {account.renewal_date
-                                                ? new Date(account.renewal_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: '2-digit' })
+                                                ? formatDateES(new Date(account.renewal_date + 'T12:00:00'), { year: true })
                                                 : '—'}
                                         </div>
                                         {/* Estado */}
@@ -850,7 +868,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         </div>
                                         {/* Vencimiento */}
                                         <div className="text-sm">
-                                            {sub.expiryDate ? new Date(sub.expiryDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' }) : '—'}
+                                            {sub.expiryDate ? formatDateES(new Date(sub.expiryDate + 'T12:00:00')) : '—'}
                                         </div>
                                         {/* Estado */}
                                         <div>
@@ -876,11 +894,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                             {sub.lastNotified ? (
                                                 <div
                                                     className="flex items-center gap-1 text-xs text-[#86EFAC] cursor-default"
-                                                    title={`${sub.lastNotified.template === 'vencimiento_hoy' ? 'Aviso día de vencimiento' : 'Aviso previo'} · ${new Date(sub.lastNotified.sentAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+                                                    title={`${sub.lastNotified.template === 'vencimiento_hoy' ? 'Aviso día de vencimiento' : 'Aviso previo'} · ${formatDateES(new Date(sub.lastNotified.sentAt), { time: true })}`}
                                                 >
                                                     <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
                                                     <span>
-                                                        {new Date(sub.lastNotified.sentAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                                        {formatDateES(new Date(sub.lastNotified.sentAt))}
                                                     </span>
                                                 </div>
                                             ) : (

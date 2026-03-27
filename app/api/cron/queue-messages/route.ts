@@ -8,7 +8,7 @@ import {
     makeIdempotencyKey,
     MessageType,
 } from '@/lib/queue-helpers';
-import { getPlatformDisplayName } from '@/lib/whatsapp';
+import { getPlatformDisplayName, isPhoneWhitelisted } from '@/lib/whatsapp';
 export const dynamic = 'force-dynamic';
 
 
@@ -29,21 +29,26 @@ export async function POST(request: NextRequest) {
     const todayStr = formatDate(today);
     const tomorrowStr = formatDate(addDays(today, 1));
     const yesterdayStr = formatDate(addDays(today, -1));
-    const twoDaysAgoStr = formatDate(addDays(today, -2));
 
     const results = {
         queued: 0,
         skipped_no_phone: 0,
-        cancelled: 0,
+        skipped_whitelist: 0,
         errors: [] as string[],
     };
 
-    // Define date ranges and their message types
-    const dateRanges: { dateStr: string; filterDate: string; type: MessageType; templateKey: string }[] = [
-        { dateStr: tomorrowStr, filterDate: tomorrowStr, type: 'pre_expiry', templateKey: 'pre_vencimiento' },
-        { dateStr: todayStr, filterDate: todayStr, type: 'expiry_today', templateKey: 'vencimiento_hoy' },
-        { dateStr: yesterdayStr, filterDate: yesterdayStr, type: 'expired_yesterday', templateKey: 'vencimiento_vencido' },
-        { dateStr: twoDaysAgoStr, filterDate: twoDaysAgoStr, type: 'cancelled', templateKey: '' },
+    // Define date ranges and their message types.
+    // Covers: 7 days, 3 days, 1 day before expiry + same day + 1 day after.
+    // idempotency_key = saleId:type:channel:dateStr → no duplicates across runs.
+    const sevenDaysStr = formatDate(addDays(today, 7));
+    const threeDaysStr = formatDate(addDays(today, 3));
+
+    const dateRanges: { filterDate: string; type: MessageType; templateKey: string; daysLabel: string }[] = [
+        { filterDate: sevenDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '7d' },
+        { filterDate: threeDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '3d' },
+        { filterDate: tomorrowStr,   type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '1d' },
+        { filterDate: todayStr,      type: 'expiry_today',      templateKey: 'vencimiento_hoy',    daysLabel: '0d' },
+        { filterDate: yesterdayStr,  type: 'expired_yesterday', templateKey: 'vencimiento_vencido', daysLabel: '-1d' },
     ];
 
     for (const range of dateRanges) {
@@ -62,35 +67,25 @@ export async function POST(request: NextRequest) {
                 const phone = customer?.phone;
                 const name = customer?.full_name || 'Cliente';
 
-                // ---- Auto-cancel for 2-day-ago ----
-                if (range.type === 'cancelled') {
-                    // Deactivate the sale
-                    await supabase
-                        .from('sales' as any)
-                        .update({ is_active: false })
-                        .eq('id', sale.id);
-
-                    // Free up the slot
-                    if (sale.slot_id) {
-                        await supabase
-                            .from('sale_slots')
-                            .update({ status: 'available' })
-                            .eq('id', sale.slot_id);
-                    }
-
-                    results.cancelled++;
-                }
-
                 if (!phone) {
                     results.skipped_no_phone++;
                     continue;
                 }
 
-                const price = (sale.amount_gs || 0).toLocaleString();
+                // Skip phones not in whitelist (if whitelist is active)
+                if (!await isPhoneWhitelisted(phone)) {
+                    results.skipped_whitelist++;
+                    continue;
+                }
+
                 const instanceName = customer?.whatsapp_instance || null;
 
+                // Use filterDate + daysLabel in idempotency key to distinguish
+                // 7-day vs 3-day vs 1-day pre_expiry messages for the same sale.
+                const idempotencyDate = `${range.filterDate}:${range.daysLabel}`;
+
                 // Queue WhatsApp message
-                const waKey = makeIdempotencyKey(sale.id, range.type, 'whatsapp', todayStr);
+                const waKey = makeIdempotencyKey(sale.id, range.type, 'whatsapp', idempotencyDate);
                 const { error: waErr } = await supabase
                     .from('message_queue' as any)
                     .upsert({
@@ -111,48 +106,21 @@ export async function POST(request: NextRequest) {
                     }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
 
                 if (waErr) {
-                    results.errors.push(`wa-queue: ${name} - ${waErr.message}`);
-                } else {
-                    results.queued++;
-                }
-
-                // Queue Kommo message
-                const kommoKey = makeIdempotencyKey(sale.id, range.type, 'kommo', todayStr);
-                const { error: kommoErr } = await supabase
-                    .from('message_queue' as any)
-                    .upsert({
-                        customer_id: sale.customer_id,
-                        sale_id: sale.id,
-                        message_type: range.type,
-                        channel: 'kommo',
-                        phone,
-                        customer_name: name,
-                        platform: displayPlatform,
-                        template_key: null,
-                        status: 'pending',
-                        instance_name: null,
-                        scheduled_at: new Date().toISOString(),
-                        retry_count: 0,
-                        max_retries: 3,
-                        idempotency_key: kommoKey,
-                    }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
-
-                if (kommoErr) {
-                    results.errors.push(`kommo-queue: ${name} - ${kommoErr.message}`);
+                    results.errors.push(`wa-queue [${range.daysLabel}]: ${name} - ${waErr.message}`);
                 } else {
                     results.queued++;
                 }
             }
         } catch (e: any) {
-            results.errors.push(`range-${range.type}: ${e.message}`);
+            results.errors.push(`range-${range.type}-${range.daysLabel}: ${e.message}`);
         }
     }
 
     // Log summary as internal notification
-    if (results.queued > 0 || results.cancelled > 0) {
+    if (results.queued > 0) {
         await supabase.from('notifications' as any).insert({
             type: 'queue_messages',
-            message: `📋 Cola de mensajes: ${results.queued} encolados, ${results.cancelled} cancelados, ${results.skipped_no_phone} sin teléfono`,
+            message: `📋 Cola de mensajes: ${results.queued} encolados | ${results.skipped_no_phone} sin teléfono | ${results.skipped_whitelist} en whitelist`,
             is_read: false,
         });
     }

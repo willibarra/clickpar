@@ -7,7 +7,6 @@ import { QueueViewer } from '@/components/automatizaciones/queue-viewer';
 import { N8NStatusCard } from '@/components/automatizaciones/n8n-status-card';
 import { ExecutionLog } from '@/components/automatizaciones/execution-log';
 import { RetroactiveQueueCard } from '@/components/automatizaciones/retroactive-queue-card';
-import { ScheduledSendCard } from '@/components/automatizaciones/scheduled-send-card';
 
 interface StatsData {
     counts: {
@@ -76,8 +75,6 @@ export default function AutomatizacionesPage() {
                                 onRefresh={fetchStats}
                             />
                         )}
-
-                        <ScheduledSendCard onComplete={fetchStats} />
 
                         <RetroactiveQueueCard onComplete={fetchStats} />
                     </div>

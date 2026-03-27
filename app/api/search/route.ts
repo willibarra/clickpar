@@ -36,11 +36,12 @@ export async function GET(request: NextRequest) {
             .or(`full_name.ilike.${pattern},phone.ilike.${phonePattern}`)
             .limit(limit);
 
-        // 2. Search mother accounts by email, platform, supplier_name
+        // 2. Search mother accounts by email, platform, supplier_name (exclude soft-deleted)
         const { data: accounts } = await supabase
             .from('mother_accounts')
             .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_slots(*)')
             .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${phonePattern}`)
+            .is('deleted_at', null)
             .order('platform')
             .limit(limit);
 

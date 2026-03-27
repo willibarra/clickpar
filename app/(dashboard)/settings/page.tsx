@@ -1,5 +1,7 @@
 'use client';
 
+import buildInfo from '@/lib/build-info.json';
+
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle } from 'lucide-react';
@@ -434,11 +436,12 @@ export default function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-4 text-sm">
                         <div>
                             <p className="text-muted-foreground">Versión</p>
-                            <p className="font-medium text-foreground">ClickPar v1.1.0</p>
+                            <p className="font-medium text-foreground">ClickPar v{buildInfo.version}</p>
                         </div>
                         <div>
-                            <p className="text-muted-foreground">Framework</p>
-                            <p className="font-medium text-foreground">Next.js 16</p>
+                            <p className="text-muted-foreground">Última actualización</p>
+                            <p className="font-medium text-foreground">{buildInfo.deployDate}</p>
+                            <p className="text-xs text-muted-foreground">{buildInfo.deployTime}</p>
                         </div>
                         <div>
                             <p className="text-muted-foreground">Base de Datos</p>

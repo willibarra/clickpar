@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         const normalizedPhone = normalizePhone(phone);
 
         // Respect whitelist
-        if (!isPhoneWhitelisted(normalizedPhone)) {
+        if (!await isPhoneWhitelisted(normalizedPhone)) {
             console.log(`[N8N Send] Skipping ${normalizedPhone} — not in whitelist`);
             return NextResponse.json({ success: false, skipped: true, reason: 'not_whitelisted' });
         }

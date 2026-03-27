@@ -357,9 +357,13 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                             <p className="text-sm font-medium text-foreground truncate">
                                                                 {customer.full_name || 'Sin nombre'}
                                                             </p>
-                                                            {customer.customer_type === 'creador' && (
+                                                            {customer.customer_type === 'creador' ? (
                                                                 <span className="inline-flex items-center rounded-full bg-[#818CF8]/15 border border-[#818CF8]/30 px-1.5 py-0.5 text-[9px] font-semibold text-[#818CF8]">
                                                                     🎬 Creador
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center rounded-full bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-1.5 py-0.5 text-[9px] font-semibold text-[#3B82F6]">
+                                                                    👤 Cliente
                                                                 </span>
                                                             )}
                                                         </div>

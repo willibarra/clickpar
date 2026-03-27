@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
                 const result = await sendText(body.phone, body.message, {
                     instanceName: body.instanceName,
                     templateKey: 'test',
+                    skipRateLimiting: true,
                 });
                 return NextResponse.json(result);
             }

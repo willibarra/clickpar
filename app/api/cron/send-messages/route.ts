@@ -7,19 +7,21 @@ import {
     MessageQueueRow,
 } from '@/lib/queue-helpers';
 import { sendText } from '@/lib/whatsapp';
+import { checkHourlyLimit, createBatchController } from '@/lib/rate-limiter';
 export const dynamic = 'force-dynamic';
 
-
-const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 30_000; // 30 seconds between batches (anti-spam)
 
 /**
  * POST /api/cron/send-messages
  *
  * Phase 3 of the message queue pipeline.
  * Reads composed messages and sends them via WhatsApp or Kommo.
- * Processes in batches of 5 with 2 second delays between batches.
- * Automatic retries up to max_retries.
+ *
+ * Anti-ban protections:
+ * - Batches of 10 messages with 5-minute pauses between batches
+ * - Sequential sending within each batch (sendText applies 8-25s random delay)
+ * - Hourly rate limit check (30 msgs/hour) before each batch
+ * - Automatic retries up to max_retries
  */
 export async function POST(request: NextRequest) {
     const authError = verifyCronSecret(request);
@@ -45,42 +47,57 @@ export async function POST(request: NextRequest) {
         (m: any) => m.retry_count < m.max_retries
     ) as MessageQueueRow[];
 
-    const results = { sent: 0, failed: 0, retrying: 0, errors: [] as string[] };
+    const results = {
+        sent: 0,
+        failed: 0,
+        retrying: 0,
+        rate_limited: 0,
+        errors: [] as string[],
+    };
 
-    // Process in batches of BATCH_SIZE
-    for (let i = 0; i < messages.length; i += BATCH_SIZE) {
-        if (i > 0) {
-            // Delay between batches
-            await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    const batchCtrl = createBatchController();
+
+    // Process messages sequentially with batch control
+    // sendText() handles per-message random delay (8-25s)
+    // batchCtrl handles batch pauses (5 min every 10 messages)
+    for (const msg of messages) {
+        // Check hourly rate limit before each message
+        const hourlyCheck = await checkHourlyLimit();
+        if (!hourlyCheck.allowed) {
+            console.warn(
+                `[SendMessages] Hourly rate limit reached (${hourlyCheck.sent}/${hourlyCheck.limit}). ` +
+                `Stopping pipeline. ${results.sent} sent so far.`
+            );
+            results.rate_limited = messages.length - results.sent - results.failed - results.retrying;
+            break;
         }
 
-        const batch = messages.slice(i, i + BATCH_SIZE);
-        const settled = await Promise.allSettled(
-            batch.map(msg => sendSingleMessage(msg, supabase))
-        );
+        // Batch pause (5 min every 10 messages)
+        await batchCtrl.beforeSend();
 
-        for (let j = 0; j < settled.length; j++) {
-            const result = settled[j];
-            if (result.status === 'fulfilled') {
-                if (result.value.success) {
-                    results.sent++;
-                } else if (result.value.retrying) {
-                    results.retrying++;
-                } else {
-                    results.failed++;
-                }
+        try {
+            const result = await sendSingleMessage(msg, supabase);
+            if (result.success) {
+                results.sent++;
+            } else if (result.retrying) {
+                results.retrying++;
             } else {
                 results.failed++;
-                results.errors.push(`batch-error: ${result.reason}`);
             }
+        } catch (e: any) {
+            results.failed++;
+            results.errors.push(`send-error: ${e.message}`);
         }
     }
 
     // Log summary
     if (results.sent > 0 || results.failed > 0) {
+        const rateLimitNote = results.rate_limited > 0
+            ? ` | ${results.rate_limited} ⏸️ (rate limited)`
+            : '';
         await supabase.from('notifications' as any).insert({
             type: 'send_messages',
-            message: `📬 Mensajes enviados: ${results.sent} ✅ | ${results.failed} ❌ | ${results.retrying} 🔄`,
+            message: `📬 Mensajes enviados: ${results.sent} ✅ | ${results.failed} ❌ | ${results.retrying} 🔄${rateLimitNote}`,
             is_read: false,
         });
     }
@@ -148,6 +165,7 @@ async function sendWhatsApp(
         return { success: false, retrying: false };
     }
 
+    // sendText now handles anti-ban delay internally (8-25s random delay)
     const result = await sendText(msg.phone, msg.message_body, {
         instanceName: msg.instance_name || undefined,
         templateKey: msg.template_key || undefined,
@@ -165,6 +183,15 @@ async function sendWhatsApp(
             })
             .eq('id', msg.id);
         return { success: true, retrying: false };
+    }
+
+    // If rate limited, don't count as failure — reset to composed for next run
+    if (result.error?.includes('Rate limit exceeded')) {
+        await supabase
+            .from('message_queue' as any)
+            .update({ status: 'composed', error: result.error })
+            .eq('id', msg.id);
+        return { success: false, retrying: true };
     }
 
     return await handleFailure(msg, supabase, result.error || 'WhatsApp send failed');

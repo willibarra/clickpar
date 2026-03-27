@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     for (const msg of messages) {
         try {
             // Whitelist filter — skip phones not in test list
-            if (msg.phone && !isPhoneWhitelisted(msg.phone)) {
+            if (msg.phone && !await isPhoneWhitelisted(msg.phone)) {
                 await supabase
                     .from('message_queue' as any)
                     .update({ status: 'skipped', error: 'Phone not in test whitelist' })

@@ -32,8 +32,16 @@ export default function PortalDashboard() {
 
     useEffect(() => {
         fetch('/api/portal/services')
-            .then((r) => r.json())
+            .then((r) => {
+                // If API returns 401, redirect to login immediately
+                if (r.status === 401) {
+                    window.location.href = '/cliente/login';
+                    return null;
+                }
+                return r.json();
+            })
             .then((data) => {
+                if (!data) return; // redirecting
                 if (data.success) {
                     setServices(data.services);
                     setCustomerName(data.customer?.name || '');
@@ -41,6 +49,11 @@ export default function PortalDashboard() {
                     setCreatorSlug(data.customer?.creatorSlug || null);
                     setPanelDisabled(data.customer?.panelDisabled ?? false);
                 } else {
+                    // If error is auth-related, redirect to login
+                    if (data.error === 'No autenticado' || data.error?.includes('autenticado')) {
+                        window.location.href = '/cliente/login';
+                        return;
+                    }
                     setError(data.error || 'Error al cargar servicios');
                 }
             })

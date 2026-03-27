@@ -3,15 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Tv, History, HelpCircle, LogOut, Zap } from 'lucide-react';
+import { Tv, HelpCircle, LogOut, Zap } from 'lucide-react';
 
 const navItems = [
     { href: '/cliente', label: 'Servicios', icon: Tv },
-    { href: '/cliente/historial', label: 'Historial', icon: History },
     { href: '/cliente/soporte', label: 'Soporte', icon: HelpCircle },
 ];
 
-export function PortalHeader({ userName }: { userName?: string }) {
+export function PortalHeader({ userName, userRole }: { userName?: string; userRole?: string }) {
     const router = useRouter();
     const supabase = createClient();
 
@@ -32,8 +31,8 @@ export function PortalHeader({ userName }: { userName?: string }) {
                 </Link>
                 <div className="flex items-center gap-3">
                     {userName && (
-                        <span className="text-sm text-muted-foreground hidden sm:block">
-                            {userName}
+                        <span className="text-sm text-muted-foreground">
+                            {userName}{userRole ? ` - ${userRole}` : ''}
                         </span>
                     )}
                     <button
