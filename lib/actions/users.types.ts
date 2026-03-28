@@ -1,5 +1,5 @@
 // Tipos de roles disponibles (deben coincidir con el enum user_role de la DB)
-export type UserRole = 'super_admin' | 'staff' | 'customer' | 'affiliate';
+export type UserRole = 'super_admin' | 'staff' | 'customer' | 'affiliate' | 'reseller';
 
 export interface UserProfile {
     id: string;
@@ -44,4 +44,5 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<string, boolean>> = {
     },
     customer: Object.fromEntries(Object.keys(AVAILABLE_PERMISSIONS).map(k => [k, false])),
     affiliate: Object.fromEntries(Object.keys(AVAILABLE_PERMISSIONS).map(k => [k, false])),
+    reseller: Object.fromEntries(Object.keys(AVAILABLE_PERMISSIONS).map(k => [k, false])),
 };

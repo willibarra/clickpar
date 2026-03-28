@@ -20,7 +20,7 @@ export default async function CreatorSlugPage({
     // 1. Look up the creator by slug
     const { data: customer } = await supabase
         .from('customers')
-        .select('id, full_name, creator_slug')
+        .select('id, full_name, creator_slug, creator_whatsapp')
         .eq('creator_slug', slug)
         .single();
 
@@ -41,7 +41,11 @@ export default async function CreatorSlugPage({
     });
 
     // 3. Build the WhatsApp redirect URL
-    const waNumber = process.env.WHATSAPP_BUSINESS_NUMBER || '595973000000';
+    // Priority: creator's personal number > env variable > hardcoded fallback
+    const waNumber =
+        (customer as any).creator_whatsapp ||
+        process.env.WHATSAPP_BUSINESS_NUMBER ||
+        '595973000000';
     const creatorName = (customer as any).full_name || slug;
 
     const messageTemplate =

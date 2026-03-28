@@ -38,6 +38,7 @@ interface Customer {
     id: string;
     full_name: string;
     phone: string;
+    customer_type?: string;
 }
 
 
@@ -95,6 +96,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const [defaultPrice, setDefaultPrice] = useState<number | null>(null);
     const [duration, setDuration] = useState<string>(String(daysUntilSameDayNextMonth()));
     const [priceOverridden, setPriceOverridden] = useState(false);
+    const [isCreadorCustomer, setIsCreadorCustomer] = useState(false);
 
     // Family account fields
     const [familyAccessType, setFamilyAccessType] = useState<'credentials' | 'invite'>('credentials');
@@ -120,9 +122,9 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             // Fetch customers
             supabase
                 .from('customers')
-                .select('id, full_name, phone')
+                .select('id, full_name, phone, customer_type')
                 .order('full_name', { ascending: true })
-                .then(({ data }) => setCustomers(data || []));
+                .then(({ data }) => setCustomers((data as Customer[]) || []));
 
             supabase
                 .from('platforms')
@@ -294,11 +296,27 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const handleSelectCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
         setCustomerSearch('');
+        // Si es creador, auto-setear precio 0 y duración infinita (canje)
+        const esCreador = customer.customer_type === 'creador';
+        setIsCreadorCustomer(esCreador);
+        if (esCreador) {
+            setSalePrice('0');
+            setDuration('9999');
+            setPriceOverridden(false);
+        }
     };
 
     const handleClearCustomer = () => {
         setSelectedCustomer(null);
         setCustomerSearch('');
+        setIsCreadorCustomer(false);
+        // Restaurar precio default
+        if (selectedPlatform) {
+            const plat = dbPlatforms.find(p => p.name === selectedPlatform);
+            const price = plat?.default_slot_price_gs || 30000;
+            setSalePrice(price.toString());
+        }
+        setDuration(String(daysUntilSameDayNextMonth()));
     };
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -352,7 +370,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                     customerId: selectedCustomer.id,
                     price: Number(salePrice),
                     specificSlotId: selectedSlotId,
-                    durationDays: parseInt(duration) || 30,
+                    durationDays: isCreadorCustomer ? undefined : (parseInt(duration) || 30),
+                    isCanje: isCreadorCustomer,
                     // Family account fields (only sent when applicable)
                     familyAccessType: isFamilyPlatform ? familyAccessType : undefined,
                     clientEmail: isFamilyPlatform && clientEmail ? clientEmail : undefined,
@@ -395,6 +414,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setClientEmail('');
         setClientPassword('');
         setFamilyAccessType('credentials');
+        setIsCreadorCustomer(false);
+        setDuration(String(daysUntilSameDayNextMonth()));
     };
 
     const selectedFullAccount = fullAccounts.find(a => a.id === selectedFullAccountId);
@@ -428,7 +449,11 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                             {selectedPlatform} {saleMode === 'full' ? '(Cuenta Completa)' : ''} → {selectedCustomer?.full_name || 'Cliente'}
                         </p>
                         <p className="text-lg font-semibold text-[#86EFAC] mt-1">
-                            Gs. {Number(salePrice).toLocaleString('es-PY')}
+                            {isCreadorCustomer ? (
+                                <span className="text-[#818CF8]">🎬 Canje — Gs. 0</span>
+                            ) : (
+                                `Gs. ${Number(salePrice).toLocaleString('es-PY')}`
+                            )}
                         </p>
                         <div className="flex gap-2 justify-center mt-4">
                             <Button
@@ -808,48 +833,58 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                             )}
 
                             {/* Precio y Duración */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="sale_price_gs" className="flex items-center gap-2">
-                                        Precio (Gs.)
-                                        {saleMode === 'full' && selectedFullAccount && (
-                                            <Badge variant="outline" className="text-xs text-[#F97316] border-[#F97316]/30">
-                                                {selectedFullAccount.max_slots} perfiles
-                                            </Badge>
-                                        )}
-                                        {priceOverridden && (
-                                            <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
-                                                Modificado
-                                            </Badge>
-                                        )}
-                                    </Label>
-                                    <div className="relative">
-                                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            {isCreadorCustomer ? (
+                                <div className="rounded-lg border border-[#818CF8]/40 bg-[#818CF8]/10 p-4 flex items-center gap-3">
+                                    <span className="text-2xl">🎬</span>
+                                    <div>
+                                        <p className="text-sm font-semibold text-[#818CF8]">Canje — Precio Gs. 0</p>
+                                        <p className="text-xs text-muted-foreground">Este creador recibe acceso sin vencimiento ni costo</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sale_price_gs" className="flex items-center gap-2">
+                                            Precio (Gs.)
+                                            {saleMode === 'full' && selectedFullAccount && (
+                                                <Badge variant="outline" className="text-xs text-[#F97316] border-[#F97316]/30">
+                                                    {selectedFullAccount.max_slots} perfiles
+                                                </Badge>
+                                            )}
+                                            {priceOverridden && (
+                                                <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-400/30">
+                                                    Modificado
+                                                </Badge>
+                                            )}
+                                        </Label>
+                                        <div className="relative">
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                id="sale_price_gs"
+                                                name="sale_price_gs"
+                                                type="number"
+                                                value={salePrice}
+                                                onChange={(e) => handlePriceChange(e.target.value)}
+                                                placeholder={defaultPrice?.toString() || '0'}
+                                                className="pl-9"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="duration_days">Duración (días)</Label>
                                         <Input
-                                            id="sale_price_gs"
-                                            name="sale_price_gs"
+                                            id="duration_days"
+                                            name="duration_days"
                                             type="number"
-                                            value={salePrice}
-                                            onChange={(e) => handlePriceChange(e.target.value)}
-                                            placeholder={defaultPrice?.toString() || '0'}
-                                            className="pl-9"
+                                            value={duration}
+                                            onChange={(e) => setDuration(e.target.value)}
+                                            min={1}
                                             required
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="duration_days">Duración (días)</Label>
-                                    <Input
-                                        id="duration_days"
-                                        name="duration_days"
-                                        type="number"
-                                        value={duration}
-                                        onChange={(e) => setDuration(e.target.value)}
-                                        min={1}
-                                        required
-                                    />
-                                </div>
-                            </div>
+                            )}
 
                         </div>
 

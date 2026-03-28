@@ -173,6 +173,9 @@ export async function middleware(request: NextRequest) {
         if (role === 'customer') {
             return NextResponse.redirect(new URL('/cliente', request.url));
         }
+        if (role === 'reseller') {
+            return NextResponse.redirect(new URL('/reseller', request.url));
+        }
         return NextResponse.redirect(new URL('/staff/login', request.url));
     }
 
@@ -180,6 +183,17 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/cliente')) {
         if (!user) {
             return NextResponse.redirect(new URL('/cliente/login', request.url));
+        }
+        return supabaseResponse;
+    }
+
+    // Reseller routes — require auth as reseller (or super_admin)
+    if (pathname.startsWith('/reseller')) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/staff/login', request.url));
+        }
+        if (role !== 'reseller' && role !== 'super_admin') {
+            return NextResponse.redirect(new URL('/', request.url));
         }
         return supabaseResponse;
     }
@@ -199,6 +213,9 @@ export async function middleware(request: NextRequest) {
     // Only super_admin and staff can access admin routes
     // If role is undefined but user is authenticated, allow through (role lookup may have failed)
     if (role !== 'super_admin' && role !== 'staff' && role !== undefined) {
+        if (role === 'reseller') {
+            return NextResponse.redirect(new URL('/reseller', request.url));
+        }
         return NextResponse.redirect(new URL('/cliente', request.url));
     }
 

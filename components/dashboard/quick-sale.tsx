@@ -31,6 +31,7 @@ interface SelectedCustomer {
     id: string;
     full_name: string;
     phone: string;
+    customer_type?: string;
 }
 
 interface Platform {
@@ -95,6 +96,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     const [newCustomerName, setNewCustomerName] = useState('');
     const [newCustomerPhone, setNewCustomerPhone] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
+    const [isCreadorCustomer, setIsCreadorCustomer] = useState(false);
 
     const supabase = createClient();
 
@@ -183,7 +185,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
             const isPhoneQuery = digits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
             const phoneQ = isPhoneQuery ? digits : q;
             const { data } = await (supabase.from('customers') as any)
-                .select('id, full_name, phone')
+                .select('id, full_name, phone, customer_type')
                 .or(`full_name.ilike.%${q}%,phone.ilike.%${phoneQ}%`)
                 .limit(8);
             setCustomerResults(data || []);
@@ -196,6 +198,10 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         setSelectedCustomer(c);
         setCustomerSearch('');
         setCustomerResults([]);
+        // Si es creador, auto-setear precio 0 (canje)
+        const esCreador = c.customer_type === 'creador';
+        setIsCreadorCustomer(esCreador);
+        if (esCreador) setPrice(0);
     };
 
     const handleCreateInlineCustomer = async () => {
@@ -285,6 +291,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                     platformPrice: price,
                     specificSlotId: selectedSlot?.id,
                     deliveryDate: deliveryDate || undefined,
+                    isCanje: isCreadorCustomer,
                 });
 
                 if (result.error) {
@@ -326,6 +333,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         setErrorMsg('');
         setDeliveryDate('');
         setSaleCredentials(null);
+        setIsCreadorCustomer(false);
     };
 
     const getComboLabel = () => {
@@ -817,7 +825,7 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                                 <label className="text-sm text-muted-foreground">
                                     {saleMode === 'combo' ? 'Precio Total del Combo:' : 'Precio:'}
                                 </label>
-                                {saleMode === 'individual' && (
+                                {saleMode === 'individual' && !isCreadorCustomer && (
                                     <button
                                         onClick={() => setIsOverridePrice(!isOverridePrice)}
                                         className="flex items-center gap-1 text-xs text-[#86EFAC] hover:underline"
@@ -827,7 +835,15 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                                     </button>
                                 )}
                             </div>
-                            {saleMode === 'combo' ? (
+                            {isCreadorCustomer ? (
+                                <div className="rounded-lg border border-[#818CF8]/40 bg-[#818CF8]/10 p-3 flex items-center gap-3">
+                                    <span className="text-xl">🎬</span>
+                                    <div>
+                                        <p className="text-sm font-semibold text-[#818CF8]">Canje — Gs. 0</p>
+                                        <p className="text-xs text-muted-foreground">Creador — sin vencimiento ni costo</p>
+                                    </div>
+                                </div>
+                            ) : saleMode === 'combo' ? (
                                 /* Combo: always editable */
                                 <div className="space-y-1">
                                     <Input

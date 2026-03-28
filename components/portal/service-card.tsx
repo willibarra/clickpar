@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Check, Search } from 'lucide-react';
+import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink } from 'lucide-react';
 import { CodeIframeModal } from './code-iframe-modal';
 
 interface ServiceCardProps {
@@ -16,6 +16,7 @@ interface ServiceCardProps {
     supplierName?: string | null;
     needsCode?: boolean;
     codeUrl?: string | null;
+    isCanje?: boolean;
 }
 
 const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
@@ -32,11 +33,9 @@ const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
     iCloud: { emoji: '☁️', gradient: 'from-sky-400 to-sky-600' },
 };
 
-// Code lookup is now dynamic based on provider_support_config
-// No hardcoded platform list needed
-
-function getExpiryBadge(expiresAt: string | null) {
-    if (!expiresAt) return { label: 'Sin vencimiento', color: 'bg-muted text-muted-foreground' };
+function getExpiryBadge(expiresAt: string | null, isCanje?: boolean) {
+    if (isCanje) return { label: '🎬 Canje — Sin vencimiento', color: 'bg-[#818CF8]/20 text-[#818CF8]', daysLeft: null };
+    if (!expiresAt) return { label: 'Sin vencimiento', color: 'bg-muted text-muted-foreground', daysLeft: null };
 
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -44,11 +43,11 @@ function getExpiryBadge(expiresAt: string | null) {
     exp.setHours(0, 0, 0, 0);
     const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (daysLeft < 0) return { label: `Vencido hace ${Math.abs(daysLeft)}d`, color: 'bg-red-500/20 text-red-400' };
-    if (daysLeft === 0) return { label: 'Vence hoy', color: 'bg-red-500/20 text-red-400 animate-pulse' };
-    if (daysLeft <= 3) return { label: `Vence en ${daysLeft}d`, color: 'bg-orange-500/20 text-orange-400' };
-    if (daysLeft <= 7) return { label: `Vence en ${daysLeft}d`, color: 'bg-yellow-500/20 text-yellow-400' };
-    return { label: `${daysLeft} días restantes`, color: 'bg-emerald-500/20 text-emerald-400' };
+    if (daysLeft < 0) return { label: `Vencido hace ${Math.abs(daysLeft)}d`, color: 'bg-red-500/20 text-red-400', daysLeft };
+    if (daysLeft === 0) return { label: 'Vence hoy', color: 'bg-red-500/20 text-red-400 animate-pulse', daysLeft };
+    if (daysLeft <= 3) return { label: `Vence en ${daysLeft}d`, color: 'bg-orange-500/20 text-orange-400', daysLeft };
+    if (daysLeft <= 7) return { label: `Vence en ${daysLeft}d`, color: 'bg-yellow-500/20 text-yellow-400', daysLeft };
+    return { label: `${daysLeft} días restantes`, color: 'bg-emerald-500/20 text-emerald-400', daysLeft };
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -93,11 +92,62 @@ function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: strin
     );
 }
 
-export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl }: ServiceCardProps) {
+function RenewButton({ saleId }: { saleId: string }) {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleRenew = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/pagopar/crear-pago', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sale_id: saleId }),
+            });
+            const data = await res.json();
+            if (data.success && data.paymentUrl) {
+                // Open PagoPar payment page in new tab
+                window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                setError(data.error || 'Error al generar el pago');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-2">
+            <button
+                onClick={handleRenew}
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#86EFAC] to-[#6EE7B7] px-6 py-2.5 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
+            >
+                {loading ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                    <ExternalLink className="h-4 w-4" />
+                )}
+                {loading ? 'Generando pago…' : 'Renovar ahora'}
+            </button>
+            {error && (
+                <p className="text-center text-xs text-red-400">{error}</p>
+            )}
+        </div>
+    );
+}
+
+export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl, isCanje }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
     const platformInfo = PLATFORM_ICONS[platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
-    const expiryBadge = getExpiryBadge(expiresAt);
+    const expiryBadge = getExpiryBadge(expiresAt, isCanje);
     const showVerCode = needsCode && codeUrl;
+
+    // Show Renovar button when <= 7 days remaining or expired (and not a canje)
+    const showRenovar = !isCanje && saleId && expiryBadge.daysLeft !== null && expiryBadge.daysLeft <= 7;
 
     const handleShowPassword = () => {
         if (!showPassword) {
@@ -114,9 +164,11 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
         setShowPassword(!showPassword);
     };
 
-    const formattedDate = expiresAt
-        ? new Date(expiresAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
-        : null;
+    const formattedDate = isCanje
+        ? null
+        : expiresAt
+            ? new Date(expiresAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
+            : null;
 
     return (
         <div className="overflow-hidden rounded-2xl border border-border/50 bg-card transition-all hover:border-border">
@@ -192,6 +244,9 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                         <span className="font-medium text-foreground">{formattedDate}</span>
                     </div>
                 )}
+
+                {/* Renovar button — only when <= 7 days or expired */}
+                {showRenovar && <RenewButton saleId={saleId!} />}
             </div>
         </div>
     );

@@ -281,3 +281,59 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ============================================
+-- 8. SISTEMA DE TICKETS DE SOPORTE
+-- ============================================
+
+-- Enums para tickets
+CREATE TYPE ticket_type AS ENUM ('cuenta_caida', 'no_conecta', 'cambio_correo', 'pin_olvidado', 'otro');
+CREATE TYPE ticket_status AS ENUM ('abierto', 'en_proceso', 'resuelto', 'cerrado');
+CREATE TYPE ticket_channel AS ENUM ('whatsapp', 'panel', 'sistema_automatico');
+
+-- Tabla de tickets
+CREATE TABLE support_tickets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES profiles(id),
+  subscription_id UUID REFERENCES subscriptions(id),
+  mother_account_id UUID REFERENCES mother_accounts(id),
+  tipo ticket_type NOT NULL DEFAULT 'otro',
+  descripcion TEXT,
+  estado ticket_status DEFAULT 'abierto',
+  canal_origen ticket_channel DEFAULT 'panel',
+  staff_asignado_id UUID REFERENCES profiles(id),
+  resolucion TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+-- Índices
+CREATE INDEX idx_tickets_customer ON support_tickets(customer_id);
+CREATE INDEX idx_tickets_estado ON support_tickets(estado);
+CREATE INDEX idx_tickets_tipo ON support_tickets(tipo);
+CREATE INDEX idx_tickets_created ON support_tickets(created_at DESC);
+CREATE INDEX idx_tickets_mother ON support_tickets(mother_account_id);
+
+-- Trigger updated_at
+CREATE TRIGGER update_tickets_updated_at
+  BEFORE UPDATE ON support_tickets
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- RLS
+ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Customers can view own tickets" ON support_tickets
+  FOR SELECT USING (customer_id = auth.uid());
+
+CREATE POLICY "Customers can insert own tickets" ON support_tickets
+  FOR INSERT WITH CHECK (customer_id = auth.uid());
+
+CREATE POLICY "Admins can manage tickets" ON support_tickets
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'staff'))
+  );
+
+-- Service role bypass (para cron jobs y webhooks)
+CREATE POLICY "Service role bypass tickets" ON support_tickets
+  FOR ALL USING (auth.role() = 'service_role');

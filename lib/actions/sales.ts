@@ -19,6 +19,7 @@ interface QuickSaleData {
     durationDays?: number;
     deliveryDate?: string;  // fecha de entrega personalizada (YYYY-MM-DD)
     notes?: string;
+    isCanje?: boolean;      // si true: precio 0, sin fecha de vencimiento
     // Family account fields
     familyAccessType?: 'credentials' | 'invite';
     clientEmail?: string;
@@ -143,25 +144,30 @@ export async function createQuickSale(data: QuickSaleData) {
             };
         }
 
-        // 3. Crear venta + marcar slot como vendido
+        // 3a. Calcular fechas: si es canje, end_date = null
         let startDate: Date;
-        let endDate: Date;
-        if (data.deliveryDate) {
+        let endDateStr: string | null;
+        if (data.isCanje) {
+            startDate = new Date();
+            endDateStr = null; // sin vencimiento
+        } else if (data.deliveryDate) {
             startDate = new Date(data.deliveryDate + 'T12:00:00');
             const durationDays = data.durationDays || 30;
-            endDate = new Date(startDate);
+            const endDate = new Date(startDate);
             endDate.setDate(endDate.getDate() + durationDays);
+            endDateStr = endDate.toISOString().split('T')[0];
         } else {
             startDate = new Date();
             const durationDays = data.durationDays || 30;
-            endDate = new Date(startDate);
+            const endDate = new Date(startDate);
             endDate.setDate(endDate.getDate() + durationDays);
+            endDateStr = endDate.toISOString().split('T')[0];
         }
 
         const slotId = slotToSell.slot_id || slotToSell.id;
         const startDateStr = startDate.toISOString().split('T')[0];
-        const endDateStr = endDate.toISOString().split('T')[0];
         const originalPrice = slotToSell.slot_price_gs || data.price;
+        const finalPrice = data.isCanje ? 0 : data.price;
 
         // 3. Crear venta + marcar slot ATÓMICAMENTE (usa FOR UPDATE para evitar race conditions)
         let newSaleId: string;
@@ -169,12 +175,12 @@ export async function createQuickSale(data: QuickSaleData) {
         const { data: atomicResult, error: atomicError } = await (supabase as any).rpc('create_sale_atomic', {
             p_customer_id: customerId,
             p_slot_id: slotId,
-            p_amount_gs: data.price,
+            p_amount_gs: finalPrice,
             p_start_date: startDateStr,
             p_end_date: endDateStr,
             p_payment_method: 'cash',
             p_original_price_gs: originalPrice,
-            p_override_price: data.price !== originalPrice,
+            p_override_price: finalPrice !== originalPrice,
         });
 
         if (atomicError) {
@@ -184,13 +190,14 @@ export async function createQuickSale(data: QuickSaleData) {
                     .insert({
                         customer_id: customerId,
                         slot_id: slotId,
-                        amount_gs: data.price,
+                        amount_gs: finalPrice,
                         original_price_gs: originalPrice,
-                        override_price: data.price !== originalPrice,
+                        override_price: finalPrice !== originalPrice,
                         start_date: startDateStr,
                         end_date: endDateStr,
                         is_active: true,
                         payment_method: 'cash',
+                        is_canje: data.isCanje || false,
                     })
                     .select('id')
                     .single();
@@ -209,6 +216,12 @@ export async function createQuickSale(data: QuickSaleData) {
             }
         } else {
             newSaleId = atomicResult as string;
+            // El RPC atómico no soporta is_canje — actualizarlo si es canje
+            if (data.isCanje) {
+                await (supabase.from('sales') as any)
+                    .update({ is_canje: true })
+                    .eq('id', newSaleId);
+            }
         }
 
 
@@ -221,7 +234,9 @@ export async function createQuickSale(data: QuickSaleData) {
                 await new Promise(r => setTimeout(r, 2000));
 
                 const slotId = slotToSell.slot_id || slotToSell.id;
-                const expDateStr = endDate.toLocaleDateString('es-PY');
+                const expDateStr = endDateStr
+                    ? new Date(endDateStr + 'T12:00:00').toLocaleDateString('es-PY')
+                    : 'Sin vencimiento';
 
                 // == FAMILY ACCOUNT FLOW ==
                 if (data.familyAccessType && data.clientEmail) {
@@ -380,7 +395,9 @@ export async function createQuickSale(data: QuickSaleData) {
             const acct = slotForCopy?.mother_accounts;
             if (acct?.send_instructions && acct?.instructions) saleInstructions = acct.instructions;
 
-            const expDateStr = endDate.toLocaleDateString('es-PY');
+            const expDateStr = endDateStr
+                ? new Date(endDateStr + 'T12:00:00').toLocaleDateString('es-PY')
+                : 'Sin vencimiento';
 
             if (data.familyAccessType && data.clientEmail) {
                 // Family flow: return client email/password

@@ -17,6 +17,7 @@ interface Customer {
     customer_type?: string;
     whatsapp_instance?: string | null;
     creator_slug?: string | null;
+    creator_whatsapp?: string | null;
     panel_disabled?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [copied, setCopied] = useState(false);
     const [customerType, setCustomerType] = useState(customer.customer_type || 'cliente');
     const [slugInput, setSlugInput] = useState(customer.creator_slug || '');
+    const [waInput, setWaInput] = useState(customer.creator_whatsapp || '');
     const [copiedLink, setCopiedLink] = useState(false);
     const [creatorStats, setCreatorStats] = useState<{ total: number; last30Days: number } | null>(null);
     const [panelDisabled, setPanelDisabled] = useState(customer.panel_disabled ?? false);
@@ -259,6 +261,28 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                         </button>
                                     </div>
                                 )}
+
+                                {/* WhatsApp redirect number */}
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="creator_whatsapp" className="text-xs font-medium">Número WhatsApp de destino</Label>
+                                    <Input
+                                        id="creator_whatsapp"
+                                        name="creator_whatsapp"
+                                        value={waInput}
+                                        onChange={(e) => {
+                                            // Only allow digits and optional leading +
+                                            const clean = e.target.value.replace(/[^\d]/g, '');
+                                            setWaInput(clean);
+                                        }}
+                                        placeholder="595981234567"
+                                        className="font-mono text-sm"
+                                        maxLength={20}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Solo números, sin espacios ni +. Ej: <code>595981234567</code>.
+                                        Si está vacío, se usa el número global de ClickPar.
+                                    </p>
+                                </div>
 
                                 {/* Stats badge */}
                                 {creatorStats && (

@@ -66,7 +66,7 @@ export async function GET() {
 
     // Step 1: Get active sales
     const { data: sales, error: salesError } = await (admin.from('sales') as any)
-        .select('id, amount_gs, start_date, end_date, is_active, slot_id')
+        .select('id, amount_gs, start_date, end_date, is_active, slot_id, is_canje')
         .eq('customer_id', customer.id)
         .eq('is_active', true)
         .order('end_date', { ascending: true });
@@ -160,6 +160,7 @@ export async function GET() {
             supplierName: account?.supplier_name || null,
             needsCode: providerConfig?.needs_code || false,
             codeUrl: providerConfig?.code_url || null,
+            isCanje: sale.is_canje || false,
         };
     });
 

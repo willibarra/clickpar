@@ -1049,3 +1049,125 @@ export async function sendRenewalToN8N(data: RenewalN8NData): Promise<boolean> {
         return false;
     }
 }
+
+// ==========================================
+// Ticket Notification Functions
+// ==========================================
+
+/**
+ * Send ticket creation confirmation to the customer.
+ */
+export async function sendTicketConfirmation(params: {
+    customerPhone: string;
+    customerName: string;
+    ticketId: string;
+}): Promise<SendResult> {
+    const message = [
+        `✅ *Tu ticket fue creado*`,
+        ``,
+        `Hola ${params.customerName.split(' ')[0]}! 👋`,
+        `Tu reporte fue registrado con el número:`,
+        `🎫 *Ticket #${params.ticketId}*`,
+        ``,
+        `Nuestro equipo lo revisará y te contactará en breve.`,
+        `¡Gracias por avisarnos! 🙏`,
+    ].join('\n');
+
+    return sendText(params.customerPhone, message, {
+        templateKey: 'ticket_confirmacion',
+        skipRateLimiting: true,
+    });
+}
+
+/**
+ * Send ticket resolved notification to the customer.
+ */
+export async function sendTicketResolved(params: {
+    customerPhone: string;
+    customerName: string;
+    ticketId: string;
+    resolucion: string;
+}): Promise<SendResult> {
+    const message = [
+        `✅ *Tu problema fue resuelto*`,
+        ``,
+        `Hola ${params.customerName.split(' ')[0]}! 👋`,
+        `Tu ticket *#${params.ticketId}* fue atendido.`,
+        ``,
+        `📝 *Resolución:*`,
+        params.resolucion,
+        ``,
+        `Si tenés otro problema, escribinos "AYUDA" o desde tu panel en clickpar.net`,
+    ].join('\n');
+
+    return sendText(params.customerPhone, message, {
+        templateKey: 'ticket_resuelto',
+        skipRateLimiting: true,
+    });
+}
+
+/**
+ * Send new ticket alert to staff.
+ * Uses staff_alert_phone from app_config or STAFF_ALERT_PHONE env var.
+ */
+export async function sendStaffTicketAlert(params: {
+    ticketId: string;
+    customerName: string;
+    customerPhone: string;
+    platform: string;
+    tipo: string;
+    descripcion: string;
+    canal: string;
+}): Promise<SendResult> {
+    // Translate tipo to Spanish
+    const tipoLabels: Record<string, string> = {
+        cuenta_caida: '🔴 Cuenta caída (URGENTE)',
+        no_conecta: '❌ No conecta',
+        cambio_correo: '📧 Cambio de correo',
+        pin_olvidado: '🔢 PIN olvidado',
+        otro: '❓ Otro',
+    };
+    const tipoLabel = tipoLabels[params.tipo] || params.tipo;
+
+    const canalLabel = params.canal === 'whatsapp' ? 'WhatsApp'
+        : params.canal === 'panel' ? 'Panel cliente'
+        : 'Sistema Automático';
+
+    const message = [
+        `🎫 *TICKET NUEVO #${params.ticketId}*`,
+        ``,
+        `👤 *Cliente:* ${params.customerName}${params.customerPhone ? ` (+${params.customerPhone})` : ''}`,
+        params.platform ? `📺 *Servicio:* ${params.platform}` : null,
+        `⚠️ *Problema:* ${tipoLabel}`,
+        params.descripcion ? `📝 "${params.descripcion}"` : null,
+        `📡 *Canal:* ${canalLabel}`,
+        ``,
+        `🔗 Ver en panel: clickpar.shop/tickets/${params.ticketId}`,
+    ].filter(Boolean).join('\n');
+
+    // Get staff phone from config or env
+    let staffPhone: string | null = null;
+    try {
+        const supabase = await waSupabase();
+        const { data } = await supabase
+            .from('app_config' as any)
+            .select('value')
+            .eq('key', 'staff_alert_phone')
+            .single();
+        staffPhone = (data as any)?.value || null;
+    } catch { /* ignore */ }
+
+    if (!staffPhone) {
+        staffPhone = process.env.STAFF_ALERT_PHONE || null;
+    }
+
+    if (!staffPhone) {
+        console.warn('[WhatsApp] No staff_alert_phone configured for ticket alerts');
+        return { success: false, error: 'No staff phone configured' };
+    }
+
+    return sendText(staffPhone, message, {
+        templateKey: 'ticket_staff_alerta',
+        skipRateLimiting: true,
+    });
+}

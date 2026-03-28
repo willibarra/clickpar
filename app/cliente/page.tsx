@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ServiceCard } from '@/components/portal/service-card';
-import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap, Lock } from 'lucide-react';
+import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap, Lock, History, CreditCard, Clock } from 'lucide-react';
 
 interface Service {
     saleId: string;
@@ -18,7 +18,30 @@ interface Service {
     supplierName: string | null;
     needsCode: boolean;
     codeUrl: string | null;
+    isCanje: boolean;
 }
+
+interface Payment {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    origin_source: string;
+    created_at: string;
+}
+
+const ORIGIN_LABEL: Record<string, string> = {
+    pagopar: '💳 PagoPar',
+    manual: '🤝 Manual',
+    manual_upload: '📤 Comprobante',
+    android_sms_gateway: '📱 SMS Gateway',
+};
+
+const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+    verified: { label: 'Confirmado', color: 'bg-emerald-500/15 text-emerald-400' },
+    pending: { label: 'Pendiente', color: 'bg-yellow-500/15 text-yellow-400' },
+    rejected: { label: 'Rechazado', color: 'bg-red-500/15 text-red-400' },
+};
 
 export default function PortalDashboard() {
     const [services, setServices] = useState<Service[]>([]);
@@ -30,10 +53,13 @@ export default function PortalDashboard() {
     const [copiedSlug, setCopiedSlug] = useState(false);
     const [panelDisabled, setPanelDisabled] = useState(false);
 
+    // Payment history
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [paymentsLoading, setPaymentsLoading] = useState(true);
+
     useEffect(() => {
         fetch('/api/portal/services')
             .then((r) => {
-                // If API returns 401, redirect to login immediately
                 if (r.status === 401) {
                     window.location.href = '/cliente/login';
                     return null;
@@ -41,7 +67,7 @@ export default function PortalDashboard() {
                 return r.json();
             })
             .then((data) => {
-                if (!data) return; // redirecting
+                if (!data) return;
                 if (data.success) {
                     setServices(data.services);
                     setCustomerName(data.customer?.name || '');
@@ -49,7 +75,6 @@ export default function PortalDashboard() {
                     setCreatorSlug(data.customer?.creatorSlug || null);
                     setPanelDisabled(data.customer?.panelDisabled ?? false);
                 } else {
-                    // If error is auth-related, redirect to login
                     if (data.error === 'No autenticado' || data.error?.includes('autenticado')) {
                         window.location.href = '/cliente/login';
                         return;
@@ -59,12 +84,21 @@ export default function PortalDashboard() {
             })
             .catch(() => setError('Error de conexión'))
             .finally(() => setLoading(false));
+
+        // Load payment history
+        fetch('/api/portal/payments')
+            .then((r) => r.json())
+            .then((data) => {
+                if (data.success) setPayments(data.payments);
+            })
+            .catch(() => {})
+            .finally(() => setPaymentsLoading(false));
     }, []);
 
     const expiringSoon = services.filter((s) => {
         if (!s.expiresAt) return false;
         const days = Math.ceil((new Date(s.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        return days >= 0 && days <= 3;
+        return days >= 0 && days <= 7;
     });
 
     const handleCopySlug = async () => {
@@ -93,7 +127,6 @@ export default function PortalDashboard() {
         );
     }
 
-    // Fix 3 — Panel disabled: show "Plan vencido" screen
     if (panelDisabled) {
         return (
             <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center px-4">
@@ -122,7 +155,7 @@ export default function PortalDashboard() {
 
     return (
         <div className="space-y-6">
-            {/* Creator URL banner — only for creadores with a slug */}
+            {/* Creator URL banner */}
             {customerType === 'creador' && creatorSlug && (
                 <div className="overflow-hidden rounded-2xl border border-[#818CF8]/40 bg-gradient-to-r from-[#818CF8]/10 to-[#86EFAC]/10">
                     <div className="flex items-center gap-2 border-b border-[#818CF8]/20 bg-[#818CF8]/10 px-4 py-2">
@@ -163,7 +196,7 @@ export default function PortalDashboard() {
                 </p>
             </div>
 
-            {/* Expiring soon alert */}
+            {/* Expiring soon alert — now triggers at 7 days */}
             {expiringSoon.length > 0 && (
                 <div className="flex items-start gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4">
                     <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-400" />
@@ -172,7 +205,7 @@ export default function PortalDashboard() {
                             {expiringSoon.length} servicio{expiringSoon.length !== 1 ? 's' : ''} por vencer
                         </p>
                         <p className="mt-1 text-xs text-orange-400/80">
-                            Renová a tiempo para no perder acceso. Escribinos al 0994 540 904.
+                            Usá el botón <strong>Renovar</strong> en tu servicio para pagar online con PagoPar.
                         </p>
                     </div>
                 </div>
@@ -194,6 +227,7 @@ export default function PortalDashboard() {
                             supplierName={service.supplierName}
                             needsCode={service.needsCode}
                             codeUrl={service.codeUrl}
+                            isCanje={service.isCanje}
                         />
                     ))}
                 </div>
@@ -214,6 +248,58 @@ export default function PortalDashboard() {
                     >
                         Contratar vía WhatsApp
                     </a>
+                </div>
+            )}
+
+            {/* Payment history */}
+            {(paymentsLoading || payments.length > 0) && (
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                        <History className="h-4 w-4" />
+                        <h2 className="text-sm font-medium uppercase tracking-wider">Historial de pagos</h2>
+                    </div>
+
+                    {paymentsLoading ? (
+                        <div className="flex justify-center py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : (
+                        <div className="overflow-hidden rounded-2xl border border-border/50 bg-card divide-y divide-border/30">
+                            {payments.map((p) => {
+                                const statusCfg = STATUS_STYLE[p.status] || STATUS_STYLE.pending;
+                                const originLabel = ORIGIN_LABEL[p.origin_source] || p.origin_source;
+                                const dateStr = new Date(p.created_at).toLocaleDateString('es-PY', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                });
+                                const amountFormatted = new Intl.NumberFormat('es-PY').format(p.amount);
+                                return (
+                                    <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-muted/50">
+                                            <CreditCard className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-foreground">
+                                                Gs. {amountFormatted}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <span className="text-xs text-muted-foreground">{originLabel}</span>
+                                                <span className="text-muted-foreground/40">·</span>
+                                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    {dateStr}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusCfg.color}`}>
+                                            {statusCfg.label}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -1,0 +1,33 @@
+# ============================================================
+# VARIABLES PARA SISTEMA DE VERIFICACIÓN DE PAGOS BANCARIOS
+# Agregar a tu .env.local y al panel de variables de n8n
+# ============================================================
+
+# ── Correos bancarios (configurar en n8n como Credentials) ──
+EMAIL_1_USER=clickparnet@gmail.com
+EMAIL_1_PASS=mggdptzmuzygmjo             # App Password (sin espacios)
+
+# ── Número del owner para alertas WhatsApp ──────────────────
+# Formato sin +, con código de país. Ej: 595981123456
+OWNER_PHONE=595981XXXXXX
+
+# ── ClickPar API (para llamadas desde n8n) ──────────────────
+CLICKPAR_URL=https://clickpar.shop
+# N8N_SECRET ya debe existir en tu .env:
+# N8N_SECRET=clickpar-n8n-2024
+
+# ── Supabase (para HTTP Requests directos desde n8n) ────────
+# SUPABASE_URL ya debe existir en tu .env
+# SUPABASE_SERVICE_ROLE_KEY ya debe existir en tu .env
+
+# ============================================================
+# PASOS PARA ACTIVAR GMAIL IMAP
+# ============================================================
+# 1. Gmail → Settings → Forwarding and POP/IMAP → Enable IMAP
+# 2. Google Account → Security → 2-Step Verification (activar)
+# 3. Google Account → Security → App Passwords
+#    → Seleccionar "Mail" + "Other (Custom name)" → "ClickPar n8n"
+#    → Copiar la contraseña de 16 caracteres a EMAIL_1_PASS
+#
+# Host IMAP: imap.gmail.com | Port: 993 | SSL: ON
+# ============================================================

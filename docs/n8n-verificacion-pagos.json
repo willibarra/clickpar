@@ -1,0 +1,522 @@
+{
+  "name": "ClickPar - Verificación de Pagos Bancarios",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "⏰ Cron - Cada 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "mailbox": "INBOX",
+        "limit": 20,
+        "simple": false,
+        "options": {
+          "unseen": true,
+          "allowUnauthorizedCerts": true
+        },
+        "credentials": {
+          "imap": {
+            "host": "imap.gmail.com",
+            "port": 993,
+            "secure": true,
+            "user": "={{ $env.EMAIL_1_USER }}",
+            "password": "={{ $env.EMAIL_1_PASS }}"
+          }
+        }
+      },
+      "id": "imap-correo-1",
+      "name": "📧 IMAP - clickparnet@gmail.com",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "credentials": {
+        "imap": {
+          "name": "Gmail - clickparnet",
+          "id": "imap-cred-1"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "filter-bank-sender",
+              "leftValue": "={{ $json.from }}",
+              "rightValue": "={{ [\n  'notificaciones@itau.com.py',\n  'alertas@itau.com.py',\n  'noreply@itau.com.py',\n  'notificaciones@continental.com.py',\n  'alertas@continental.com.py',\n  'mensajes@bancopop.com.py',\n  'notificaciones@vision.com.py',\n  'noreply@bcp.com.py',\n  'notificaciones@gnbsudameris.com.py'\n].some(sender => $json.from.toLowerCase().includes(sender)) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "filter-bank",
+      "name": "🏦 Filtro - Remitente bancario",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// EXTRACCIÓN DE DATOS DEL CORREO BANCARIO\n// Soporta formatos de Itaú, Continental, BCP, Visión, GNB, etc.\n// ============================================\n\nconst items = [];\n\nfor (const item of $input.all()) {\n  const emailText = (item.json.textPlain || item.json.text || item.json.html || '').replace(/<[^>]*>/g, ' ');\n  const emailSubject = item.json.subject || '';\n  const emailFrom = item.json.from || '';\n  const emailDate = item.json.date || new Date().toISOString();\n  const emailId = item.json.uid || item.json.messageId || '';\n  const accountEmail = item.json.to || '';\n\n  const fullText = emailSubject + ' ' + emailText;\n\n  // ── Monto en Guaraníes ──────────────────────────\n  // Formatos: Gs. 150.000, Gs 150000, PYG 150,000, G. 150.000\n  let amount = null;\n  const amountPatterns = [\n    /(?:Gs\\.?|PYG|G\\.)\\s*([\\d.,]+)/i,\n    /(?:monto|importe|transferencia|acreditación|crédito)(?:[^\\d]*)?([\\d.,]+)\\s*(?:Gs|PYG)?/i,\n    /([\\d]{3,}(?:[.,][\\d]{3})*)/,  // Fallback: any number with thousands separator\n  ];\n  \n  for (const pattern of amountPatterns) {\n    const match = fullText.match(pattern);\n    if (match) {\n      // Clean up number: remove dots as thousands separators, keep decimal comma\n      let cleaned = match[1].replace(/\\./g, '').replace(',', '.');\n      const parsed = parseFloat(cleaned);\n      if (!isNaN(parsed) && parsed > 1000) { // Minimum 1000 Gs to avoid false positives\n        amount = Math.round(parsed); // Round to integer (Guaraní has no decimals)\n        break;\n      }\n    }\n  }\n\n  // ── Nombre del Pagador ──────────────────────────\n  let payerName = null;\n  const payerPatterns = [\n    /(?:ordenante|remitente|de|from|pagador|cliente)(?:[:\\s]+)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\\s]{3,50})/i,\n    /(?:nombre)(?:[:\\s]+)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\\s]{3,50})/i,\n  ];\n  for (const pattern of payerPatterns) {\n    const match = fullText.match(pattern);\n    if (match) {\n      payerName = match[1].trim().substring(0, 60);\n      break;\n    }\n  }\n\n  // ── Referencia/Comprobante ───────────────────────\n  let reference = null;\n  const refPatterns = [\n    /(?:referencia|comprobante|nro\\.?|número|operación|transacción|ref)(?:[:\\s#]+)([A-Z0-9\\-]{4,30})/i,\n    /(?:ID|N°)(?:[:\\s]+)([A-Z0-9\\-]{4,30})/i,\n  ];\n  for (const pattern of refPatterns) {\n    const match = fullText.match(pattern);\n    if (match) {\n      reference = match[1].trim();\n      break;\n    }\n  }\n\n  // ── Banco emisor ────────────────────────────────\n  let bank = 'Desconocido';\n  if (emailFrom.includes('itau')) bank = 'Itaú';\n  else if (emailFrom.includes('continental')) bank = 'Continental';\n  else if (emailFrom.includes('bcp') || emailFrom.includes('bancopop')) bank = 'BCP/Bancop';\n  else if (emailFrom.includes('vision')) bank = 'Visión';\n  else if (emailFrom.includes('gnb') || emailFrom.includes('sudameris')) bank = 'GNB Sudameris';\n\n  // ── Validación mínima ───────────────────────────\n  if (!amount) {\n    console.log(`[ClickPar] Email sin monto detectado (from: ${emailFrom}, subj: ${emailSubject})`);\n    // Skip this email — not parseable\n    continue;\n  }\n\n  items.push({\n    json: {\n      email_id: emailId,\n      account_email: accountEmail,\n      from: emailFrom,\n      subject: emailSubject,\n      date: emailDate,\n      amount,\n      payer_name: payerName,\n      reference,\n      bank,\n      raw_text: emailText.substring(0, 500), // first 500 chars for debug\n    }\n  });\n}\n\nreturn items;"
+      },
+      "id": "extract-data",
+      "name": "🔍 Extraer datos (regex)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/transactions?status=eq.pending&amount=gte.={{ $json.amount - 500 }}&amount=lte.={{ $json.amount + 500 }}&select=id,amount,customer_id,subscription_id,created_at,profiles(id,full_name,phone_number)&order=created_at.desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-search",
+      "name": "🗄️ Supabase - Buscar pendientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Attach the Supabase search results to the email extraction data\n// The previous node (HTTP Request) returns an array of matching transactions\n\nconst emailData = $('🔍 Extraer datos (regex)').first().json;\nconst matches = $input.all().map(i => i.json);\n\nreturn [{\n  json: {\n    ...emailData,\n    matches,\n    match_count: matches.length,\n  }\n}];"
+      },
+      "id": "attach-matches",
+      "name": "📎 Combinar datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.match_count }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "exacto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.match_count }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "largerThan"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "multiple"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.match_count }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sin_match"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "router",
+      "name": "🔀 Router - ¿Cuántas coincidencias?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for auto-verification\nconst data = $input.first().json;\nconst match = data.matches[0];\nconst excedente = data.amount - match.amount;\n\nreturn [{\n  json: {\n    ...data,\n    transaction_id: match.id,\n    subscription_id: match.subscription_id,\n    customer: match.profiles,\n    matched_amount: match.amount,\n    excedente: excedente > 500 ? excedente : 0,\n    notes: `Auto-verificado por n8n. Banco: ${data.bank}. Ref: ${data.reference || 'N/D'}. Pagador: ${data.payer_name || 'N/D'}.`,\n  }\n}];"
+      },
+      "id": "prepare-autoverify",
+      "name": "⚙️ Preparar auto-verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CLICKPAR_URL }}/api/pagos/verificar-manual",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "secret",
+              "value": "={{ $env.N8N_SECRET }}"
+            },
+            {
+              "name": "transaction_id",
+              "value": "={{ $json.transaction_id }}"
+            },
+            {
+              "name": "action",
+              "value": "approve"
+            },
+            {
+              "name": "subscription_id",
+              "value": "={{ $json.subscription_id }}"
+            },
+            {
+              "name": "notes",
+              "value": "={{ $json.notes }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "auto-verify-call",
+      "name": "✅ Auto-verificar en ClickPar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Notify owner if excedente was detected\nconst data = $('⚙️ Preparar auto-verify').first().json;\nconst result = $input.first().json;\n\nif (data.excedente > 500) {\n  return [{\n    json: {\n      send: true,\n      phone: $env.OWNER_PHONE,\n      message: [\n        `⚠️ *Pago verificado con excedente*`,\n        ``,\n        `👤 Cliente: ${data.customer?.full_name || 'Desconocido'}`,\n        `💰 Esperado: Gs. ${Number(data.matched_amount).toLocaleString('es-PY')}`,\n        `💵 Recibido: Gs. ${Number(data.amount).toLocaleString('es-PY')}`,\n        `➕ Excedente: *Gs. ${Number(data.excedente).toLocaleString('es-PY')}*`,\n        `🏦 Banco: ${data.bank}`,\n        `📋 Ref: ${data.reference || 'N/D'}`,\n        ``,\n        `_La suscripción fue renovada automáticamente._`,\n      ].join('\\n'),\n    }\n  }];\n}\n\nreturn [{ json: { send: false } }];"
+      },
+      "id": "check-excedente",
+      "name": "💸 Verificar excedente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 140]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-excedente",
+      "name": "❓ ¿Hay excedente?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [2660, 140]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CLICKPAR_URL }}/api/n8n/send-message",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-excedente",
+      "name": "📲 Notificar excedente al owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build escalation message for owner — multiple matches\nconst data = $input.first().json;\n\nconst matchesList = data.matches.map((m, i) => \n  `${i+1}. ${m.profiles?.full_name || 'Sin nombre'} — Gs. ${Number(m.amount).toLocaleString('es-PY')} (ID: ${m.id.substring(0,8)}...)`\n).join('\\n');\n\nreturn [{\n  json: {\n    phone: $env.OWNER_PHONE,\n    message: [\n      `⚠️ *Pago bancario - Revisión manual requerida*`,\n      ``,\n      `Recibí una transferencia de *Gs. ${Number(data.amount).toLocaleString('es-PY')}* pero hay *${data.match_count} clientes* con ese monto pendiente.`,\n      ``,\n      `🏦 Banco: ${data.bank}`,\n      `👤 Pagador: ${data.payer_name || 'No detectado'}`,\n      `📋 Ref: ${data.reference || 'No detectada'}`,\n      ``,\n      `🔎 *Coincidencias encontradas:*`,\n      matchesList,\n      ``,\n      `Para verificar manualmente, respondé con el ID de la transacción o usá el panel de admin.`,\n    ].join('\\n'),\n  }\n}];"
+      },
+      "id": "build-multiple-msg",
+      "name": "⚙️ Mensaje múltiples coincidencias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build alert message for owner — no match found\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    phone: $env.OWNER_PHONE,\n    message: [\n      `❓ *Transferencia bancaria sin coincidencia*`,\n      ``,\n      `Recibí un pago que no pudo asignarse automáticamente:`,\n      ``,\n      `💰 Monto: *Gs. ${Number(data.amount).toLocaleString('es-PY')}*`,\n      `🏦 Banco: ${data.bank}`,\n      `👤 Pagador: ${data.payer_name || 'No detectado'}`,\n      `📋 Ref: ${data.reference || 'No detectada'}`,\n      `📅 Fecha: ${data.date}`,\n      ``,\n      `⚠️ No hay ninguna suscripción pendiente por ese monto (±500 Gs).`,\n      `Revisá si es un pago adelantado o un cliente nuevo.`,\n    ].join('\\n'),\n  }\n}];"
+      },
+      "id": "build-nomatch-msg",
+      "name": "⚙️ Mensaje sin coincidencia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 460]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CLICKPAR_URL }}/api/n8n/send-message",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-owner-multiple",
+      "name": "📲 Notificar owner (múltiple)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CLICKPAR_URL }}/api/n8n/send-message",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-owner-nomatch",
+      "name": "📲 Notificar owner (sin match)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mark emails as read using IMAP mark-seen\n// This prevents reprocessing the same emails\n// NOTE: You need to implement mark-seen via IMAP after reading.\n// n8n's IMAP node automatically marks as read when 'markSeen' is enabled on the read operation.\n// If not auto-marked, you can use the HTTP Request node to call Gmail API or just log here.\nconsole.log('[ClickPar] Email processed — should be marked as read:', $json.email_id || 'unknown');\nreturn $input.all();"
+      },
+      "id": "mark-read",
+      "name": "✉️ Marcar email como leído",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "⏰ Cron - Cada 5 min": {
+      "main": [
+        [
+          { "node": "📧 IMAP - clickparnet@gmail.com", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📧 IMAP - clickparnet@gmail.com": {
+      "main": [
+        [{ "node": "🏦 Filtro - Remitente bancario", "type": "main", "index": 0 }]
+      ]
+    },
+    "🏦 Filtro - Remitente bancario": {
+      "main": [
+        [{ "node": "🔍 Extraer datos (regex)", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔍 Extraer datos (regex)": {
+      "main": [
+        [{ "node": "🗄️ Supabase - Buscar pendientes", "type": "main", "index": 0 }]
+      ]
+    },
+    "🗄️ Supabase - Buscar pendientes": {
+      "main": [
+        [{ "node": "📎 Combinar datos", "type": "main", "index": 0 }]
+      ]
+    },
+    "📎 Combinar datos": {
+      "main": [
+        [{ "node": "🔀 Router - ¿Cuántas coincidencias?", "type": "main", "index": 0 }]
+      ]
+    },
+    "🔀 Router - ¿Cuántas coincidencias?": {
+      "main": [
+        [{ "node": "⚙️ Preparar auto-verify", "type": "main", "index": 0 }],
+        [{ "node": "⚙️ Mensaje múltiples coincidencias", "type": "main", "index": 0 }],
+        [{ "node": "⚙️ Mensaje sin coincidencia", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Preparar auto-verify": {
+      "main": [
+        [{ "node": "✅ Auto-verificar en ClickPar", "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ Auto-verificar en ClickPar": {
+      "main": [
+        [{ "node": "💸 Verificar excedente", "type": "main", "index": 0 }]
+      ]
+    },
+    "💸 Verificar excedente": {
+      "main": [
+        [{ "node": "❓ ¿Hay excedente?", "type": "main", "index": 0 }]
+      ]
+    },
+    "❓ ¿Hay excedente?": {
+      "main": [
+        [{ "node": "📲 Notificar excedente al owner", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Mensaje múltiples coincidencias": {
+      "main": [
+        [{ "node": "📲 Notificar owner (múltiple)", "type": "main", "index": 0 }]
+      ]
+    },
+    "📲 Notificar owner (múltiple)": {
+      "main": [
+        [{ "node": "✉️ Marcar email como leído", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Mensaje sin coincidencia": {
+      "main": [
+        [{ "node": "📲 Notificar owner (sin match)", "type": "main", "index": 0 }]
+      ]
+    },
+    "📲 Notificar owner (sin match)": {
+      "main": [
+        [{ "node": "✉️ Marcar email como leído", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0,
+  "tags": [
+    { "name": "ClickPar", "createdAt": "2026-03-27T00:00:00Z" },
+    { "name": "Pagos", "createdAt": "2026-03-27T00:00:00Z" }
+  ]
+}

@@ -13,6 +13,11 @@ import {
     Search,
     ListChecks,
     Info,
+    TicketCheck,
+    CheckCircle2,
+    XCircle,
+    AlertCircle,
+    Send,
 } from 'lucide-react';
 import { CodeIframeModal } from '@/components/portal/code-iframe-modal';
 
@@ -169,10 +174,44 @@ function PlatformHelpCard({ item }: { item: HelpItem }) {
     );
 }
 
+const TICKET_TYPES = [
+    { value: 'no_conecta', label: '❌ No conecta / No carga' },
+    { value: 'cambio_correo', label: '📧 Necesito cambio de correo' },
+    { value: 'pin_olvidado', label: '🔢 PIN olvidado' },
+    { value: 'otro', label: '❓ Otro problema' },
+];
+
+const ESTADO_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+    abierto: { label: 'Abierto', icon: AlertCircle, color: 'text-yellow-400' },
+    en_proceso: { label: 'En proceso', icon: Loader2, color: 'text-blue-400' },
+    resuelto: { label: 'Resuelto', icon: CheckCircle2, color: 'text-[#86EFAC]' },
+    cerrado: { label: 'Cerrado', icon: XCircle, color: 'text-muted-foreground' },
+};
+
 export default function SoportePage() {
     const [helpItems, setHelpItems] = useState<HelpItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Ticket form state
+    const [ticketTipo, setTicketTipo] = useState('no_conecta');
+    const [ticketDesc, setTicketDesc] = useState('');
+    const [ticketSubmitting, setTicketSubmitting] = useState(false);
+    const [ticketSuccess, setTicketSuccess] = useState<string | null>(null);
+    const [ticketError, setTicketError] = useState<string | null>(null);
+
+    // Ticket history
+    const [tickets, setTickets] = useState<any[]>([]);
+    const [ticketsLoading, setTicketsLoading] = useState(true);
+
+    const loadTickets = () => {
+        setTicketsLoading(true);
+        fetch('/api/tickets')
+            .then(r => r.json())
+            .then(data => { if (data.tickets) setTickets(data.tickets); })
+            .catch(() => {})
+            .finally(() => setTicketsLoading(false));
+    };
 
     useEffect(() => {
         fetch('/api/portal/support')
@@ -186,7 +225,36 @@ export default function SoportePage() {
             })
             .catch(() => setError('Error de conexión'))
             .finally(() => setLoading(false));
+
+        loadTickets();
     }, []);
+
+    const handleTicketSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setTicketSubmitting(true);
+        setTicketError(null);
+        setTicketSuccess(null);
+        try {
+            const res = await fetch('/api/tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo: ticketTipo, descripcion: ticketDesc, canal_origen: 'panel' }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                const id = data.ticket?.id?.slice(0, 8).toUpperCase();
+                setTicketSuccess(`✅ Ticket #${id} creado. Te contactamos en breve.`);
+                setTicketDesc('');
+                loadTickets();
+            } else {
+                setTicketError(data.error || 'Error al crear el ticket');
+            }
+        } catch {
+            setTicketError('Error de conexión');
+        } finally {
+            setTicketSubmitting(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -213,6 +281,134 @@ export default function SoportePage() {
                     Ayuda personalizada para tus servicios activos
                 </p>
             </div>
+
+            {/* ── REPORTAR UN PROBLEMA ── */}
+            <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
+                <div className="flex items-center gap-2 border-b border-border/30 bg-muted/30 px-5 py-3.5">
+                    <TicketCheck className="h-4 w-4 text-[#86EFAC]" />
+                    <span className="text-sm font-semibold text-foreground">Reportar un Problema</span>
+                </div>
+                <form onSubmit={handleTicketSubmit} className="space-y-4 p-5">
+                    {/* Tipo selector */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            ¿Qué problema tenés?
+                        </label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {TICKET_TYPES.map((opt) => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setTicketTipo(opt.value)}
+                                    className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm text-left transition-all ${
+                                        ticketTipo === opt.value
+                                            ? 'border-[#86EFAC]/60 bg-[#86EFAC]/10 text-foreground font-medium'
+                                            : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border'
+                                    }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Descripción (opcional)
+                        </label>
+                        <textarea
+                            value={ticketDesc}
+                            onChange={(e) => setTicketDesc(e.target.value)}
+                            placeholder="Contanos más detalles de tu problema…"
+                            rows={3}
+                            className="w-full resize-none rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#86EFAC]/50 focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/30"
+                        />
+                    </div>
+
+                    {/* Feedback messages */}
+                    {ticketSuccess && (
+                        <div className="flex items-center gap-2 rounded-xl bg-[#86EFAC]/10 border border-[#86EFAC]/30 px-4 py-3 text-sm text-[#86EFAC]">
+                            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                            {ticketSuccess}
+                        </div>
+                    )}
+                    {ticketError && (
+                        <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400">
+                            <XCircle className="h-4 w-4 flex-shrink-0" />
+                            {ticketError}
+                        </div>
+                    )}
+
+                    <button
+                        type="submit"
+                        disabled={ticketSubmitting}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#86EFAC] px-6 py-3 text-sm font-semibold text-black transition-all hover:bg-[#86EFAC]/90 active:scale-95 disabled:opacity-60"
+                    >
+                        {ticketSubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Send className="h-4 w-4" />
+                        )}
+                        {ticketSubmitting ? 'Enviando…' : 'Enviar ticket'}
+                    </button>
+                </form>
+            </div>
+
+            {/* ── MIS TICKETS ── */}
+            {(ticketsLoading || tickets.length > 0) && (
+                <div className="space-y-3">
+                    <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                        Mis Tickets
+                    </h2>
+                    {ticketsLoading ? (
+                        <div className="flex justify-center py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {tickets.map((t: any) => {
+                                const cfg = ESTADO_CONFIG[t.estado] || ESTADO_CONFIG.abierto;
+                                const Icon = cfg.icon;
+                                const tipoLabels: Record<string, string> = {
+                                    cuenta_caida: 'Cuenta caída',
+                                    no_conecta: 'No conecta',
+                                    cambio_correo: 'Cambio correo',
+                                    pin_olvidado: 'PIN olvidado',
+                                    otro: 'Otro',
+                                };
+                                return (
+                                    <div key={t.id} className="flex items-start gap-3 rounded-xl border border-border/40 bg-card px-4 py-3">
+                                        <Icon className={`mt-0.5 h-4 w-4 flex-shrink-0 ${cfg.color}`} />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-mono text-muted-foreground">
+                                                    #{t.id.slice(0, 8).toUpperCase()}
+                                                </span>
+                                                <span className={`text-xs font-medium ${cfg.color}`}>
+                                                    {cfg.label}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm font-medium text-foreground">
+                                                {tipoLabels[t.tipo] || t.tipo}
+                                            </p>
+                                            {t.descripcion && (
+                                                <p className="text-xs text-muted-foreground mt-0.5 truncate">{t.descripcion}</p>
+                                            )}
+                                            {t.estado === 'resuelto' && t.resolucion && (
+                                                <p className="text-xs text-[#86EFAC] mt-1">✅ {t.resolucion}</p>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                            {new Date(t.created_at).toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Personalized help per service */}
             {helpItems.length > 0 ? (

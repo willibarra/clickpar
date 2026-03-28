@@ -88,11 +88,10 @@ export default function StaffLoginPage() {
                 }
             }
 
-            // Supabase login — pass captchaToken if available
+            // Supabase login (captcha already verified independently)
             const { error: authError } = await supabase.auth.signInWithPassword({
                 email,
                 password,
-                options: captchaToken ? { captchaToken } : undefined,
             });
 
             if (authError) {

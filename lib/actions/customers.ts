@@ -91,6 +91,10 @@ export async function updateCustomer(id: string, formData: FormData) {
     const rawSlug = (formData.get('creator_slug') as string)?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || null;
     const creatorSlug = customerType === 'creador' && rawSlug ? rawSlug : null;
 
+    // Creator WhatsApp redirect: only digits, only stored for creador type
+    const rawCreatorWa = (formData.get('creator_whatsapp') as string)?.trim().replace(/[^\d]/g, '') || null;
+    const creatorWhatsapp = customerType === 'creador' && rawCreatorWa ? rawCreatorWa : null;
+
     // Validate slug uniqueness
     if (creatorSlug) {
         const { data: existingSlug } = await (supabase.from('customers') as any)
@@ -123,6 +127,7 @@ export async function updateCustomer(id: string, formData: FormData) {
             customer_type: customerType,
             whatsapp_instance: whatsappInstance,
             creator_slug: creatorSlug,
+            creator_whatsapp: creatorWhatsapp,
             panel_disabled: panelDisabled,
         })
         .eq('id', id);
