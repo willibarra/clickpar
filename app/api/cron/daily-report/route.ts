@@ -139,12 +139,12 @@ export async function GET(request: NextRequest) {
                     : Promise.resolve({ data: [] }),
             ]);
 
-            const custMap = new Map((custRes.data || []).map((c: any) => [c.id, c.full_name || 'Sin nombre']));
-            const slotMap = new Map((slotRes.data || []).map((s: any) => [s.id, s.mother_accounts?.platform || '?']));
+            const custMap = new Map<string, string>((custRes.data || []).map((c: any) => [String(c.id), String(c.full_name || 'Sin nombre')]));
+            const slotMap = new Map<string, string>((slotRes.data || []).map((s: any) => [String(s.id), String(s.mother_accounts?.platform || '?')]));
 
             return salesData.map((s: any) => ({
-                customerName: (custMap.get(s.customer_id) as string) || 'Sin nombre',
-                platform: (slotMap.get(s.slot_id) as string) || '?',
+                customerName: custMap.get(s.customer_id) || 'Sin nombre',
+                platform: slotMap.get(s.slot_id) || '?',
             }));
         }
 
