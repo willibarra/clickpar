@@ -1,0 +1,74 @@
+name: Auto Version Bump & Build Info
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'lib/build-info.json'
+      - 'package.json'
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bump patch version & generate build-info
+        id: version
+        run: |
+          # Read current version from package.json
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT"
+
+          # Split into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          # Increment patch
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "New version: $NEW_VERSION"
+
+          # Update package.json version
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Generate build-info.json with UTC timestamp (Argentina = UTC-3)
+          DEPLOY_DATE=$(date -u +"%d/%m/%Y")
+          DEPLOY_TIME=$(date -u +"%H:%M UTC")
+
+          cat > lib/build-info.json << EOF
+          {
+            "version": "$NEW_VERSION",
+            "deployDate": "$DEPLOY_DATE",
+            "deployTime": "$DEPLOY_TIME",
+            "deployedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json lib/build-info.json
+          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }} [skip ci]"
+          git push
