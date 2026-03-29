@@ -329,7 +329,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 toast.success('Aviso enviado por WhatsApp ✅');
                 router.refresh();
             } else {
-                toast.error('Error al enviar', { description: result.error });
+                toast.error('Error al enviar', { description: typeof result.error === 'string' ? result.error : JSON.stringify(result.error) });
             }
         } finally {
             setSendingNotice(prev => { const n = new Set(prev); n.delete(saleId); return n; });

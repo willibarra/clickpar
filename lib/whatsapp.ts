@@ -555,10 +555,20 @@ export async function sendText(
             };
         }
 
+        const rawErr = data?.response?.message?.[0];
+        let errMsg: string;
+        if (rawErr && typeof rawErr === 'object' && rawErr.exists === false) {
+            // Evolution API: number not registered on WhatsApp
+            errMsg = `El número ${rawErr.number || formattedPhone} no está registrado en WhatsApp`;
+        } else if (rawErr) {
+            errMsg = typeof rawErr === 'string' ? rawErr : JSON.stringify(rawErr);
+        } else {
+            errMsg = `Error ${res.status}: no se pudo enviar el mensaje`;
+        }
         return {
             success: false,
             instanceUsed: instanceName,
-            error: data?.response?.message?.[0] || 'Failed to send message',
+            error: errMsg,
         };
     } catch (err: any) {
         return {

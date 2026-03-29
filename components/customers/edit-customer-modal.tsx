@@ -9,6 +9,7 @@ import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, Bar
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
+import { PhoneInputWithCheck } from './phone-input-with-check';
 
 interface Customer {
     id: string;
@@ -192,7 +193,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
 
                         <div className="space-y-2">
                             <Label htmlFor="phone_number">Teléfono (WhatsApp)</Label>
-                            <Input
+                            <PhoneInputWithCheck
                                 id="phone_number"
                                 name="phone_number"
                                 defaultValue={customer.phone_number || ''}

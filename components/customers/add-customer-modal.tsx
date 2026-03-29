@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Plus, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createCustomer } from '@/lib/actions/customers';
+import { PhoneInputWithCheck } from './phone-input-with-check';
 
 export function AddCustomerModal() {
     const [open, setOpen] = useState(false);
@@ -76,7 +77,7 @@ export function AddCustomerModal() {
 
                         <div className="space-y-2">
                             <Label htmlFor="phone_number">Teléfono (WhatsApp)</Label>
-                            <Input
+                            <PhoneInputWithCheck
                                 id="phone_number"
                                 name="phone_number"
                                 placeholder="+595 9XX XXX XXX"
