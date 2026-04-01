@@ -12,6 +12,8 @@ import { AddAccountModal } from '@/components/inventory/add-account-modal';
 import { PlatformIcon } from '@/components/ui/platform-icon';
 import { BulkEditModal } from '@/components/inventory/bulk-edit-modal';
 import { BulkPriceModal } from '@/components/inventory/bulk-price-modal';
+import { InventoryDataActions } from '@/components/inventory/inventory-data-actions';
+import { CopySlotsModal } from '@/components/inventory/copy-slots-modal';
 
 interface Slot {
     id: string;
@@ -53,6 +55,7 @@ interface InventoryViewProps {
     accounts: Account[];
     platformColors: Record<string, { bg: string; text: string; gradient: string }>;
     statusColors: Record<string, string>;
+    initialSearch?: string;
 }
 
 type SortField = 'platform' | 'email' | 'available' | 'renewal_date' | 'created_at';
@@ -125,9 +128,9 @@ function CopyableEmail({ email, supplierName }: { email: string; supplierName?: 
 
 // ── Main component ───────────────────────────────
 
-export function InventoryView({ accounts, platformColors, statusColors }: InventoryViewProps) {
+export function InventoryView({ accounts, platformColors, statusColors, initialSearch }: InventoryViewProps) {
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(initialSearch || '');
     const [platformFilter, setPlatformFilter] = useState<string>('all');
     const [supplierFilter, setSupplierFilter] = useState<string>('all');
     const [sortField, setSortField] = useState<SortField>('platform');
@@ -139,6 +142,7 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkEditOpen, setBulkEditOpen] = useState(false);
     const [bulkPriceOpen, setBulkPriceOpen] = useState(false);
+    const [copySlotsOpen, setCopySlotsOpen] = useState(false);
 
     function toggleSelect(id: string) {
         setSelectedIds(prev => {
@@ -293,6 +297,9 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                         <Tag className="h-3.5 w-3.5" />
                         Precios libres
                     </Button>
+
+                    <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+                    <InventoryDataActions accounts={filteredAccounts} />
 
                     {/* View Toggle */}
                     <div className="flex rounded-lg border border-border bg-card">
@@ -575,24 +582,59 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                                             <td className="px-4 py-3">
                                                 <CopyableEmail email={account.email} supplierName={account.supplier_name} />
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                            <td className="px-4 py-2">
+                                                <div className="space-y-1 min-w-[260px]">
                                                     {[...slots].sort((a, b) => {
                                                         const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
                                                         const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
                                                         return numA - numB;
-                                                    }).map((slot) => (
-                                                        <SlotDetailsModal
-                                                            key={slot.id}
-                                                            slot={slot}
-                                                            account={{
-                                                                platform: account.platform,
-                                                                email: account.email,
-                                                                password: account.password,
-                                                            }}
-                                                            accountStatus={account.status}
-                                                        />
-                                                    ))}
+                                                    }).map((slot) => {
+                                                        const activeSale = slot.sales?.find(s => s.is_active);
+                                                        const customer = activeSale?.customers;
+                                                        const endDate = activeSale?.end_date;
+                                                        const statusDotColor =
+                                                            slot.status === 'available' ? '#86EFAC'
+                                                            : slot.status === 'sold' ? '#F97316'
+                                                            : slot.status === 'reserved' ? '#EAB308'
+                                                            : '#EF4444';
+                                                        return (
+                                                            <SlotDetailsModal
+                                                                key={slot.id}
+                                                                slot={slot}
+                                                                account={{
+                                                                    platform: account.platform,
+                                                                    email: account.email,
+                                                                    password: account.password,
+                                                                }}
+                                                                accountStatus={account.status}
+                                                                trigger={
+                                                                    <button className="w-full flex items-center gap-2 rounded-md bg-[#111]/60 hover:bg-[#1a1a1a] border border-border/30 hover:border-border px-2.5 py-1.5 transition-colors text-left group">
+                                                                        {/* Status dot */}
+                                                                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusDotColor }} />
+                                                                        {/* Slot name/email */}
+                                                                        <span className="text-sm font-medium text-foreground truncate flex-1 max-w-[130px]">
+                                                                            {slot.slot_identifier || 'Sin nombre'}
+                                                                        </span>
+                                                                        {/* Customer info */}
+                                                                        {customer ? (
+                                                                            <>
+                                                                                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                                                                                    {customer.full_name || customer.phone || '—'}
+                                                                                </span>
+                                                                                {endDate && (
+                                                                                    <span className="text-[10px] text-muted-foreground/70 flex-shrink-0">
+                                                                                        {new Date(endDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                                                                    </span>
+                                                                                )}
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-[10px] text-muted-foreground/50 italic">libre</span>
+                                                                        )}
+                                                                    </button>
+                                                                }
+                                                            />
+                                                        );
+                                                    })}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-center">
@@ -656,6 +698,15 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                     </Button>
                     <Button
                         size="sm"
+                        variant="outline"
+                        className="border-[#86EFAC] text-[#86EFAC] hover:bg-[#86EFAC]/10 font-medium"
+                        onClick={() => setCopySlotsOpen(true)}
+                    >
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Copiar Slots
+                    </Button>
+                    <Button
+                        size="sm"
                         variant="ghost"
                         className="text-muted-foreground hover:text-foreground"
                         onClick={clearSelection}
@@ -665,12 +716,19 @@ export function InventoryView({ accounts, platformColors, statusColors }: Invent
                 </div>
             )}
 
-            {/* BulkEdit Modal */}
             <BulkEditModal
                 open={bulkEditOpen}
                 onClose={() => setBulkEditOpen(false)}
                 selectedIds={Array.from(selectedIds)}
                 onSuccess={() => { clearSelection(); }}
+            />
+
+            {/* CopySlots Modal */}
+            <CopySlotsModal
+                open={copySlotsOpen}
+                onClose={() => setCopySlotsOpen(false)}
+                accounts={sortedAccounts}
+                selectedIds={Array.from(selectedIds)}
             />
 
             {/* BulkPrice Modal */}

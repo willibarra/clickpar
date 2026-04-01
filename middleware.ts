@@ -122,10 +122,7 @@ export async function middleware(request: NextRequest) {
                     );
                     supabaseResponse = NextResponse.next({ request });
                     cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, {
-                            ...options,
-                            maxAge: 7 * 24 * 60 * 60, // 7 days session limit
-                        })
+                        supabaseResponse.cookies.set(name, value, options)
                     );
                 },
             },

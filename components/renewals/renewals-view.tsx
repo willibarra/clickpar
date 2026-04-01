@@ -91,6 +91,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Client tab state
     const [clientFilter, setClientFilter] = useState<ClientFilterType>('all');
     const [clientSearch, setClientSearch] = useState('');
+    const [clientPlatformFilter, setClientPlatformFilter] = useState<string>('all');
     const [clientSelected, setClientSelected] = useState<Set<string>>(new Set());
     const [showClientModal, setShowClientModal] = useState(false);
     const [clientAmount, setClientAmount] = useState('');
@@ -99,6 +100,10 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [clientCurrentPage, setClientCurrentPage] = useState(1);
     const [showReleaseModal, setShowReleaseModal] = useState(false);
     const [showBatchSendModal, setShowBatchSendModal] = useState(false);
+    // Client sorting
+    type ClientSortCol = 'expiry' | 'customer' | 'platform' | 'status' | 'amount';
+    const [clientSortCol, setClientSortCol] = useState<ClientSortCol>('expiry');
+    const [clientSortDir, setClientSortDir] = useState<'asc' | 'desc'>('asc');
     const [sendingNotice, setSendingNotice] = useState<Set<string>>(new Set());
 
     // No Renovar modal state
@@ -111,6 +116,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         availableDestinations: any[];
         canAutoMove: boolean;
     } | null>(null);
+    const [movedClientsForWA, setMovedClientsForWA] = useState<any[]>([]);
 
     // Enrich subscriptions with expiry info
     const enrichedSubs = useMemo(() => {
@@ -119,11 +125,11 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             const expiryDate = sub.end_date || getExpiryDate(sub.start_date);
             const daysUntilExpiry = getDaysUntil(expiryDate);
             return { ...sub, expiryDate, daysUntilExpiry };
-        }).sort((a: any, b: any) => a.daysUntilExpiry - b.daysUntilExpiry);
+        });
     }, [subscriptions]);
 
-    // Filter client subscriptions
-    const filteredSubs = useMemo(() => {
+    // Unique platforms for client filter chips (derived from enrichedSubs filtered by status+search, no platform filter)
+    const clientSubsForPlatformFilter = useMemo(() => {
         return enrichedSubs.filter((sub: any) => {
             if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= 0) return false; }
             else if (clientFilter === 'today') { if (sub.daysUntilExpiry !== 0) return false; }
@@ -131,7 +137,6 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (clientSearch.trim()) {
                 const q = clientSearch.toLowerCase();
                 const c = sub.customer;
-                // If query looks like a phone number, compare digits only
                 const qDigits = q.replace(/\D/g, '');
                 const isPhoneSearch = qDigits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
                 if (isPhoneSearch) {
@@ -143,6 +148,50 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             return true;
         });
     }, [enrichedSubs, clientFilter, clientSearch]);
+
+    const uniqueClientPlatforms = useMemo(() => {
+        const set = new Set<string>();
+        clientSubsForPlatformFilter.forEach((sub: any) => {
+            const platform = sub.slot?.mother_account?.platform;
+            if (platform) set.add(platform);
+        });
+        return Array.from(set).sort();
+    }, [clientSubsForPlatformFilter]);
+
+    // Filter client subscriptions (including platform filter)
+    const filteredSubs = useMemo(() => {
+        const filtered = clientSubsForPlatformFilter.filter((sub: any) => {
+            if (clientPlatformFilter !== 'all') {
+                if (sub.slot?.mother_account?.platform !== clientPlatformFilter) return false;
+            }
+            return true;
+        });
+        // Sort: primary by selected column, secondary always by vencimiento
+        return filtered.sort((a: any, b: any) => {
+            const dir = clientSortDir === 'asc' ? 1 : -1;
+            let primary = 0;
+            if (clientSortCol === 'expiry' || primary === 0) {
+                // When sorting by expiry, just sort by days
+                if (clientSortCol === 'expiry') return dir * (a.daysUntilExpiry - b.daysUntilExpiry);
+            }
+            if (clientSortCol === 'customer') {
+                const na = (a.customer?.full_name || a.customer?.phone || '').toLowerCase();
+                const nb = (b.customer?.full_name || b.customer?.phone || '').toLowerCase();
+                primary = na.localeCompare(nb);
+            } else if (clientSortCol === 'platform') {
+                const pa = (a.slot?.mother_account?.platform || '').toLowerCase();
+                const pb = (b.slot?.mother_account?.platform || '').toLowerCase();
+                primary = pa.localeCompare(pb);
+            } else if (clientSortCol === 'status') {
+                primary = a.daysUntilExpiry - b.daysUntilExpiry;
+            } else if (clientSortCol === 'amount') {
+                primary = (a.amount_gs || 0) - (b.amount_gs || 0);
+            }
+            if (primary !== 0) return dir * primary;
+            // Tiebreaker: always vencimiento asc
+            return a.daysUntilExpiry - b.daysUntilExpiry;
+        });
+    }, [clientSubsForPlatformFilter, clientPlatformFilter, clientSortCol, clientSortDir]);
 
     // Client stats
     const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < 0).length;
@@ -390,6 +439,8 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         if (!noRenovarData) return;
         startTransition(async () => {
             let moves: Array<{ saleId: string; oldSlotId: string; newSlotId: string }> = [];
+            const clientsToNotify: any[] = [];
+
             if (autoMove && noRenovarData.canAutoMove) {
                 // Pair each active client with an available destination slot
                 moves = noRenovarData.activeClients.map((client, i) => ({
@@ -397,6 +448,21 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                     oldSlotId: client.slotId,
                     newSlotId: noRenovarData.availableDestinations[i].slotId,
                 }));
+                // Prepare clients for WA notification after move
+                noRenovarData.activeClients.forEach((client, i) => {
+                    const dest = noRenovarData.availableDestinations[i];
+                    if (client.customer?.phone) {
+                        clientsToNotify.push({
+                            sale_id: client.saleId,
+                            phone: client.customer.phone,
+                            customer_name: client.customer.full_name || client.customer.phone,
+                            platform: dest?.platform || client.platform,
+                            end_date: client.endDate,
+                            amount: client.amountGs,
+                            days: client.endDate ? Math.ceil((new Date(client.endDate + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / (1000*60*60*24)) : -1,
+                        });
+                    }
+                });
             }
             const result = await confirmNoRenovar(Array.from(provSelected), moves);
             if (result.success) {
@@ -406,6 +472,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 setNoRenovarData(null);
                 setProvSelected(new Set());
                 router.refresh();
+                // Si hay clientes movidos con teléfono, ofrecer envío de WA
+                if (clientsToNotify.length > 0) {
+                    setMovedClientsForWA(clientsToNotify);
+                    setShowBatchSendModal(true);
+                }
             } else {
                 toast.error('Error', { description: result.error });
             }
@@ -808,6 +879,39 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             )}
                         </div>
 
+                        {/* Platform / account filter chips for clients */}
+                        {uniqueClientPlatforms.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Cuenta:</span>
+                                <button
+                                    onClick={() => { setClientPlatformFilter('all'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                        clientPlatformFilter === 'all'
+                                            ? 'bg-white/10 text-white ring-1 ring-white/30'
+                                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Todas
+                                </button>
+                                {uniqueClientPlatforms.map(platform => {
+                                    const count = clientSubsForPlatformFilter.filter((s: any) => s.slot?.mother_account?.platform === platform).length;
+                                    return (
+                                        <button
+                                            key={platform}
+                                            onClick={() => { setClientPlatformFilter(platform); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                                clientPlatformFilter === platform
+                                                    ? 'bg-[#86EFAC] text-black'
+                                                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {platform} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
                             <div className="grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
@@ -817,11 +921,38 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         onCheckedChange={toggleAllClients}
                                     />
                                 </div>
-                                <div>Cliente</div>
-                                <div>Plataforma / Perfil</div>
-                                <div>Vencimiento</div>
-                                <div>Estado</div>
-                                <div>Monto</div>
+                                {([
+                                    { col: 'customer' as const, label: 'Cliente' },
+                                    { col: 'platform' as const, label: 'Plataforma / Perfil' },
+                                    { col: 'expiry' as const, label: 'Vencimiento' },
+                                    { col: 'status' as const, label: 'Estado' },
+                                    { col: 'amount' as const, label: 'Monto' },
+                                ] as { col: ClientSortCol; label: string }[]).map(({ col, label }) => (
+                                    <button
+                                        key={col}
+                                        onClick={() => {
+                                            if (clientSortCol === col) {
+                                                setClientSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                            } else {
+                                                setClientSortCol(col);
+                                                setClientSortDir('asc');
+                                            }
+                                            setClientCurrentPage(1);
+                                        }}
+                                        className={`flex items-center gap-1 text-left transition-colors hover:text-foreground ${
+                                            clientSortCol === col ? 'text-[#86EFAC]' : ''
+                                        }`}
+                                    >
+                                        {label}
+                                        {clientSortCol === col ? (
+                                            clientSortDir === 'asc'
+                                                ? <ChevronUp className="h-3 w-3 flex-shrink-0" />
+                                                : <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                                        ) : (
+                                            <span className="h-3 w-3 flex-shrink-0 opacity-0 group-hover:opacity-40"><ChevronUp className="h-3 w-3" /></span>
+                                        )}
+                                    </button>
+                                ))}
                                 <div>Aviso WA</div>
                                 <div></div>
                             </div>
@@ -1208,18 +1339,23 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 onClose={() => {
                     setShowBatchSendModal(false);
                     setClientSelected(new Set());
+                    setMovedClientsForWA([]);
                 }}
-                clients={enrichedSubs
-                    .filter((s: any) => clientSelected.has(s.id))
-                    .map((s: any) => ({
-                        sale_id: s.id,
-                        phone: s.customer?.phone || '',
-                        customer_name: s.customer?.full_name || s.customer?.phone || '',
-                        platform: s.slot?.mother_account?.platform || 'Plataforma',
-                        end_date: s.expiryDate,
-                        amount: s.amount_gs,
-                        days: s.daysUntilExpiry,
-                    }))}
+                clients={
+                    movedClientsForWA.length > 0
+                        ? movedClientsForWA
+                        : enrichedSubs
+                            .filter((s: any) => clientSelected.has(s.id))
+                            .map((s: any) => ({
+                                sale_id: s.id,
+                                phone: s.customer?.phone || '',
+                                customer_name: s.customer?.full_name || s.customer?.phone || '',
+                                platform: s.slot?.mother_account?.platform || 'Plataforma',
+                                end_date: s.expiryDate,
+                                amount: s.amount_gs,
+                                days: s.daysUntilExpiry,
+                            }))
+                }
             />
 
             {/* ── Modal: Posible Autopay ── */}

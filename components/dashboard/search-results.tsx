@@ -5,7 +5,7 @@ import {
     User, Monitor, Truck, Phone, Loader2, SearchX, ArrowLeft,
     Repeat, Save, Check, Eye, EyeOff, Clock, Copy, Pencil, X,
     ChevronDown, ChevronUp, UserCircle, Search, ArrowUpDown,
-    Plus, Trash2, Shield, ShieldCheck
+    Plus, Trash2, Shield, ShieldCheck, Lock, ExternalLink
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,10 +29,15 @@ interface ServiceInfo {
     account_password: string;
     mother_account_id: string;
     renewal_date: string;
+    sale_type: string; // 'profile' | 'complete' (familia)
     sale_end_date: string;
     amount: number;
     start_date: string;
     is_combo?: boolean;
+    is_family?: boolean;
+    mother_platform?: string;
+    client_email?: string;
+    client_password?: string;
 }
 
 interface SlotCustomer {
@@ -51,6 +56,7 @@ interface SlotDetail {
     status: string;
     pin_code: string;
     customer: SlotCustomer | null;
+    is_family?: boolean;
 }
 
 interface SearchResult {
@@ -65,6 +71,7 @@ interface SearchResult {
     renewal_date?: string;
     purchase_cost_gs?: number;
     sale_price_gs?: number;
+    sale_type?: string; // 'profile' | 'complete'
     supplier_name?: string;
     supplier_phone?: string;
     services?: ServiceInfo[];
@@ -72,6 +79,7 @@ interface SearchResult {
     availableSlots?: number;
     soldSlots?: number;
     slots?: SlotDetail[];
+    is_family?: boolean;
 }
 
 type SortField = 'platform' | 'email' | 'password' | 'sale_price_gs' | 'renewal_date' | 'days';
@@ -276,11 +284,21 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
     // Usar el end_date del cliente (su slot), no el renewal_date de la madre
     const customerExpiry = svc.sale_end_date || svc.renewal_date;
 
-    const copyText = () =>
-        `${svc.platform}\nUsuario: ${email}\nClave: ${password}\nPantalla: ${slotName}${pin ? `\nPIN: ${pin}` : ''}\nVence: ${formatDate(customerExpiry)}\nPrecio: ${formatGs(Number(amount))}`;
+    const copyText = () => {
+        if (isFamilyAccount) {
+            // For family accounts, only share client-facing credentials
+            return [
+                `${svc.platform} (Plan Familiar)`,
+                `Correo: ${svc.client_email || slotName}`,
+                `Contraseña: ${svc.client_password || pin}`,
+                `Vence: ${formatDate(customerExpiry)}`,
+            ].filter(Boolean).join('\n');
+        }
+        return `${svc.platform}\nUsuario: ${email}\nClave: ${password}\nPantalla: ${slotName}${pin ? `\nPIN: ${pin}` : ''}\nVence: ${formatDate(customerExpiry)}\nPrecio: ${formatGs(Number(amount))}`;
+    };
 
-    // Detectar si es cuenta familia (slot_identifier es un email)
-    const isFamilyAccount = (slotName || '').includes('@');
+    // Detectar si es cuenta familia (usando el flag del API, o fallback al heurístico)
+    const isFamilyAccount = svc.is_family || (slotName || '').includes('@');
 
     /* ── COMPACT VIEW ──────────────────────────────────────── */
     if (!editing) {
@@ -301,24 +319,38 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                                 )}
                             </div>
                         </div>
-                        {/* Acceso cuenta madre (email + clave) */}
-                        <div className="truncate">
-                            <span className="text-xs text-muted-foreground block">Acceso</span>
-                            <span className="text-sm text-muted-foreground truncate block">{email || '—'}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-muted-foreground block">Clave</span>
-                            <VisiblePassword value={password} />
-                        </div>
-                        {/* Solo cuentas familia: mostrar perfil del cliente */}
-                        {isFamilyAccount && (
-                            <div className="truncate">
-                                <span className="text-xs text-muted-foreground block">Perfil</span>
-                                <div className="flex items-center gap-1">
-                                    <span className="text-sm text-foreground truncate block font-medium">{slotName}</span>
-                                    {pin && <span className="text-[10px] text-muted-foreground">(PIN: {pin})</span>}
+                        {/* Para cuentas FAMILIA: mostrar correo/contraseña FINAL del cliente (no la madre) */}
+                        {isFamilyAccount ? (
+                            <>
+                                <div className="truncate">
+                                    <span className="text-xs text-blue-400 block">Correo final</span>
+                                    <span className="text-sm text-foreground truncate block font-medium">{svc.client_email || slotName}</span>
                                 </div>
-                            </div>
+                                <div>
+                                    <span className="text-xs text-blue-400 block">Contraseña final</span>
+                                    <VisiblePassword value={svc.client_password || pin} />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {/* Acceso cuenta madre (email + clave) */}
+                                <div className="truncate">
+                                    <span className="text-xs text-muted-foreground block">Acceso</span>
+                                    <span className="text-sm text-muted-foreground truncate block">{email || '—'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-xs text-muted-foreground block">Clave</span>
+                                    <VisiblePassword value={password} />
+                                </div>
+                                {/* Perfil del cliente */}
+                                <div className="truncate">
+                                    <span className="text-xs text-muted-foreground block">Perfil</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-sm text-foreground truncate block font-medium">{slotName}</span>
+                                        {pin && <span className="text-[10px] text-muted-foreground">(PIN: {pin})</span>}
+                                    </div>
+                                </div>
+                            </>
                         )}
                         <div>
                             <span className="text-xs text-muted-foreground block">Vencimiento</span>
@@ -576,11 +608,12 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
     const allSlotsSorted = [...(account.slots || [])].sort((a, b) => extractSlotNum(a) - extractSlotNum(b));
 
     const isQuarantined = account.status === 'quarantine';
+    const isFamily = account.is_family || false;
 
     return (
         <Card className={`border-border bg-card overflow-hidden ${isQuarantined ? 'opacity-60 border-yellow-500/30' : ''}`}>
             <CardContent className="p-0">
-                {/* ── COMPACT INFO ROW — Plataforma, Usuario, Clave(visible), P.Venta, Vencimiento, Días ── */}
+                {/* ── COMPACT INFO ROW — Plataforma, Usuario, Clave, Proveedor, Vencimiento, Días ── */}
                 <div className="flex items-center gap-3 px-4 py-3">
                     <div className="w-1.5 h-10 rounded-full flex-shrink-0" style={{ backgroundColor: isQuarantined ? '#EAB308' : color }} />
 
@@ -608,9 +641,9 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                             <span className="text-xs text-muted-foreground block">Clave</span>
                             <VisiblePassword value={password} />
                         </div>
-                        <div>
-                            <span className="text-xs text-muted-foreground block">P. Venta</span>
-                            <span className="text-sm font-semibold text-[#86EFAC]">{formatGs(Number(salePrice))}</span>
+                        <div className="truncate">
+                            <span className="text-xs text-muted-foreground block">Proveedor</span>
+                            <span className="text-sm text-foreground truncate block">{supplierName || '—'}</span>
                         </div>
                         <div>
                             <span className="text-xs text-muted-foreground block">Vencimiento</span>
@@ -623,7 +656,6 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <CopyButton getText={copyText} />
                         {isQuarantined && !reactivated && (
                             <button
                                 onClick={async () => {
@@ -644,14 +676,12 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                 {reactivated ? 'Reactivada' : 'Reactivar'}
                             </button>
                         )}
-                        <button
-                            onClick={() => setEditing(!editing)}
-                            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${editing ? 'bg-yellow-500/20 text-yellow-500' : 'bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20'
-                                }`}
+                        <Link
+                            href={`/inventory?q=${encodeURIComponent(email || account.platform || '')}`}
+                            className="flex items-center gap-1 rounded-md bg-[#818CF8]/10 px-2.5 py-1 text-xs font-medium text-[#818CF8] hover:bg-[#818CF8]/20 transition-colors"
                         >
-                            {editing ? <X className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                            {editing ? 'Cerrar' : 'Editar'}
-                        </button>
+                            <ExternalLink className="h-3 w-3" /> Gestionar
+                        </Link>
                     </div>
                 </div>
 
@@ -705,12 +735,23 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                     <div key={slot.id} className="flex items-center gap-2 rounded-md bg-[#111] px-3 py-2 border border-border/30">
                                         {/* Status dot */}
                                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusColors[slot.status] || '#666' }} />
-                                        {/* Perfil */}
-                                        <span className="text-sm font-medium text-foreground w-16 flex-shrink-0 truncate">{slot.identifier || 'Sin nombre'}</span>
+                                        {/* Perfil / Correo Final */}
+                                        {isFamily ? (
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                                <span className="text-[10px] text-blue-400">Correo final</span>
+                                                <span className="text-sm font-medium text-foreground truncate">{slot.identifier || 'Sin correo'}</span>
+                                                {slot.pin_code && (
+                                                    <span className="text-[10px] text-muted-foreground truncate">Clave: {slot.pin_code}</span>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="text-sm font-medium text-foreground w-16 flex-shrink-0 truncate">{slot.identifier || 'Sin nombre'}</span>
+                                        )}
                                         {/* Customer info */}
                                         {slot.customer ? (
                                             <>
-                                                <span className="text-sm text-foreground flex-1 truncate">{slot.customer.customer_name}</span>
+                                                {!isFamily && <span className="text-sm text-foreground flex-1 truncate">{slot.customer.customer_name}</span>}
+                                                {isFamily && <span className="text-sm text-foreground flex-1 truncate">{slot.customer.customer_name}</span>}
                                                 <span className="text-xs text-muted-foreground w-28 flex-shrink-0 truncate">{slot.customer.customer_phone || '—'}</span>
                                                 <span className="text-xs text-muted-foreground w-20 flex-shrink-0">
                                                     {slot.customer.end_date
@@ -771,7 +812,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                         type="text"
                                         value={newSlotName}
                                         onChange={e => setNewSlotName(e.target.value)}
-                                        placeholder="Nombre (ej: Perfil 5)"
+                                        placeholder={isFamily ? 'correo@gmail.com' : 'Nombre (ej: Perfil 5)'}
                                         className="bg-[#1a1a1a] border border-border/50 rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-[#818CF8]/50 focus:outline-none flex-1"
                                         autoFocus
                                     />
@@ -779,7 +820,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                         type="text"
                                         value={newSlotPin}
                                         onChange={e => setNewSlotPin(e.target.value)}
-                                        placeholder="PIN (opcional)"
+                                        placeholder={isFamily ? 'Contraseña final' : 'PIN (opcional)'}
                                         className="bg-[#1a1a1a] border border-border/50 rounded px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-[#818CF8]/50 focus:outline-none w-28"
                                     />
                                     <button
@@ -996,15 +1037,25 @@ function SlotCustomerRow({ slot, accountEmail, accountPassword, renewalDate, pla
     slot: SlotDetail; accountEmail: string; accountPassword: string; renewalDate: string; platform: string; onSwap?: () => void;
 }) {
     const cust = slot.customer!;
+    const custExpiry = cust.end_date || renewalDate;
+    const custDays = custExpiry ? daysRemaining(custExpiry) : null;
     const copyText = () =>
-        `${platform}\nUsuario: ${accountEmail}\nClave: ${accountPassword}\nPantalla: ${slot.identifier}${slot.pin_code ? `\nPIN: ${slot.pin_code}` : ''}\nVence: ${formatDate(renewalDate)}`;
+        `${platform}\nUsuario: ${accountEmail}\nClave: ${accountPassword}\nPantalla: ${slot.identifier}${slot.pin_code ? `\nPIN: ${slot.pin_code}` : ''}\nVence: ${formatDate(custExpiry)}`;
 
     return (
-        <div className="flex items-center gap-3 rounded-md bg-[#111] px-3 py-2 border border-border/30">
+        <div className="flex items-center gap-2.5 rounded-md bg-[#111] px-3 py-2 border border-border/30">
             <div className="w-2 h-2 rounded-full bg-[#F97316] flex-shrink-0" />
-            <span className="text-sm font-medium text-foreground min-w-[80px]">{slot.identifier || '—'}</span>
-            {slot.pin_code && <span className="text-xs text-muted-foreground">PIN: {slot.pin_code}</span>}
-            <span className="text-muted-foreground">·</span>
+            {/* Correo del slot/miembro */}
+            <span className="text-sm font-medium text-foreground truncate min-w-[100px] max-w-[180px]">{slot.identifier || '—'}</span>
+            {/* PIN con icono candado (sin palabra PIN) */}
+            {slot.pin_code && (
+                <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0" title="PIN">
+                    <Lock className="h-3 w-3" />
+                    <span>{slot.pin_code}</span>
+                </span>
+            )}
+            <span className="text-muted-foreground flex-shrink-0">·</span>
+            {/* Nombre y teléfono del cliente */}
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                 <UserCircle className="h-3.5 w-3.5 text-[#F97316] flex-shrink-0" />
                 <span className="text-sm text-foreground truncate">{cust.customer_name}</span>
@@ -1012,6 +1063,15 @@ function SlotCustomerRow({ slot, accountEmail, accountPassword, renewalDate, pla
                     <span className="text-xs text-muted-foreground flex-shrink-0">{cust.customer_phone}</span>
                 )}
             </div>
+            {/* Vencimiento de la suscripción del cliente */}
+            <span className="text-xs text-muted-foreground flex-shrink-0">{formatDate(custExpiry)}</span>
+            {/* Días restantes con color */}
+            {custDays !== null && (
+                <span className={`text-xs font-mono font-bold flex-shrink-0 ${custDays <= 3 ? 'text-red-400' : custDays <= 7 ? 'text-yellow-400' : 'text-[#86EFAC]'}`}>
+                    {custDays}d
+                </span>
+            )}
+            {/* Precio */}
             <span className="text-sm font-semibold text-[#86EFAC] flex-shrink-0">{formatGs(cust.amount)}</span>
             <CopyButton getText={copyText} size="xs" />
             <SearchPhoneButton phone={cust.customer_phone} />
@@ -1023,6 +1083,206 @@ function SlotCustomerRow({ slot, accountEmail, accountPassword, renewalDate, pla
                 >
                     <Repeat className="h-3 w-3" />
                 </button>
+            )}
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CUSTOMER INVENTORY VIEW
+   Jerárquica: cuenta madre arriba → slots abajo → cliente buscado resaltado
+   ═══════════════════════════════════════════════════════════════ */
+
+function CustomerInventoryView({ customer, onSwap, onSaved }: {
+    customer: SearchResult;
+    onSwap: (svc: ServiceInfo) => void;
+    onSaved: () => void;
+}) {
+    const services = customer.services || [];
+
+    // Group services by mother_account_id so each account appears once
+    const grouped = new Map<string, { accountEmail: string; accountPassword: string; platform: string; renewalDate: string; saleType: string; svcs: ServiceInfo[] }>();
+    services.forEach(svc => {
+        const key = svc.mother_account_id || svc.sale_id;
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                accountEmail: svc.account_email,
+                accountPassword: svc.account_password,
+                platform: svc.platform,
+                renewalDate: svc.renewal_date,
+                saleType: svc.sale_type || 'profile',
+                svcs: [],
+            });
+        }
+        grouped.get(key)!.svcs.push(svc);
+    });
+
+    return (
+        <div className="space-y-3">
+            {/* ── Customer identity header ── */}
+            <div className="flex items-center gap-3 px-1">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full flex-shrink-0"
+                    style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)' }}>
+                    <User className="h-4 w-4 text-[#F97316]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-base text-white truncate">{customer.title}</p>
+                    {customer.subtitle && (
+                        <div className="flex items-center gap-1.5 text-xs mt-0.5" style={{ color: '#8b8ba7' }}>
+                            <Phone className="h-3 w-3 flex-shrink-0" />
+                            <span>{customer.subtitle}</span>
+                        </div>
+                    )}
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: '#8b8ba7' }}>
+                    {services.length} servicio{services.length !== 1 ? 's' : ''}
+                </span>
+            </div>
+
+            {services.length === 0 ? (
+                <p className="ml-12 text-xs italic" style={{ color: '#8b8ba7' }}>Sin servicios activos</p>
+            ) : (
+                <div className="ml-12 space-y-3">
+                    {[...grouped.entries()].map(([key, group]) => {
+                        const acctColor = platformColors[group.platform] || '#86EFAC';
+                        const isFamily = group.saleType === 'complete';
+                        const expiry = group.renewalDate;
+                        const daysLeft = expiry ? daysRemaining(expiry) : null;
+
+                        return (
+                            <div key={key} className="rounded-xl overflow-hidden"
+                                style={{ border: '1px solid rgba(134,239,172,0.25)', background: '#0d1117' }}>
+
+                                {/* ── Cuenta Madre Header ── */}
+                                <div className="flex items-center gap-3 px-4 py-3"
+                                    style={{ background: 'rgba(134,239,172,0.05)', borderBottom: '1px solid rgba(134,239,172,0.15)' }}>
+                                    <div className="w-1.5 h-10 rounded-full flex-shrink-0" style={{ backgroundColor: acctColor }} />
+
+                                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5 items-center">
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider block" style={{ color: '#8b8ba7' }}>Cuenta Madre</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-sm font-bold text-white">{group.platform}</span>
+                                                <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                                                    style={{ background: isFamily ? 'rgba(249,115,22,0.12)' : 'rgba(134,239,172,0.12)', color: isFamily ? '#F97316' : '#86EFAC', border: `1px solid ${isFamily ? 'rgba(249,115,22,0.25)' : 'rgba(134,239,172,0.25)'}` }}>
+                                                    {isFamily ? '👨‍👩‍👧 Familia' : '🖥️ Perfiles'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="truncate">
+                                            <span className="text-[10px] uppercase tracking-wider block" style={{ color: '#8b8ba7' }}>Usuario</span>
+                                            <span className="text-sm text-white truncate block cursor-pointer hover:text-[#818CF8] transition-colors"
+                                                title="Click para copiar"
+                                                onClick={async () => { if (group.accountEmail) await navigator.clipboard.writeText(group.accountEmail); }}>
+                                                {group.accountEmail || '—'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider block" style={{ color: '#8b8ba7' }}>Clave</span>
+                                            <VisiblePassword value={group.accountPassword} />
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider block" style={{ color: '#8b8ba7' }}>Vence Cuenta</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-white">{formatDate(expiry)}</span>
+                                                {daysLeft !== null && (
+                                                    <span className={`text-xs font-mono font-bold ${daysLeft <= 3 ? 'text-red-400' : daysLeft <= 7 ? 'text-yellow-400' : 'text-[#86EFAC]'}`}>
+                                                        {daysLeft}d
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <CopyButton getText={() => `${group.platform}\nUsuario: ${group.accountEmail}\nClave: ${group.accountPassword}\nVence: ${formatDate(expiry)}`} />
+                                </div>
+
+                                {/* ── Slots / Miembros de esta cuenta ── */}
+                                <div className="px-4 py-2 space-y-1.5">
+                                    {group.svcs.map((svc, i) => {
+                                        const custExpiry = svc.sale_end_date || svc.renewal_date;
+                                        const custDays = custExpiry ? daysRemaining(custExpiry) : null;
+
+                                        return (
+                                            <div key={`${svc.sale_id}-${i}`}
+                                                className="rounded-lg px-3 py-2.5 transition-all"
+                                                style={{
+                                                    background: 'rgba(249,115,22,0.06)',
+                                                    border: '1.5px solid rgba(249,115,22,0.4)',
+                                                }}>
+                                                <div className="flex items-center gap-3">
+                                                    {/* Star + searched badge */}
+                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                        <span className="text-[#F97316] text-sm">★</span>
+                                                        <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                                                            style={{ background: 'rgba(249,115,22,0.15)', color: '#F97316', border: '1px solid rgba(249,115,22,0.3)' }}>
+                                                            Buscado
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Slot info */}
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-sm font-semibold text-white">
+                                                                {isFamily ? '👤 Miembro:' : '🖥️'}
+                                                                {' '}
+                                                                <span className="text-[#F97316]">{svc.slot_identifier || '—'}</span>
+                                                            </span>
+                                                            {svc.pin_code && !isFamily && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: '#8b8ba7' }}>
+                                                                    PIN: {svc.pin_code}
+                                                                </span>
+                                                            )}
+                                                            {svc.is_combo && (
+                                                                <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                                                                    style={{ background: 'rgba(129,140,248,0.15)', color: '#818CF8', border: '1px solid rgba(129,140,248,0.3)' }}>
+                                                                    Combo
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                                            <span className="text-[11px]" style={{ color: '#8b8ba7' }}>
+                                                                Vence: <span className="text-white">{formatDate(custExpiry)}</span>
+                                                            </span>
+                                                            {custDays !== null && (
+                                                                <span className={`text-xs font-mono font-bold ${custDays <= 3 ? 'text-red-400' : custDays <= 7 ? 'text-yellow-400' : 'text-[#86EFAC]'}`}>
+                                                                    {custDays}d
+                                                                </span>
+                                                            )}
+                                                            <span className="text-xs font-semibold text-[#86EFAC]">{formatGs(svc.amount)}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Actions */}
+                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                        <CopyButton size="xs" getText={() =>
+                                                            `${svc.platform}\nUsuario: ${svc.account_email}\nClave: ${svc.account_password}${!isFamily ? `\nPantalla: ${svc.slot_identifier}` : ''}${svc.pin_code ? `\nPIN: ${svc.pin_code}` : ''}\nVence: ${formatDate(custExpiry)}\nPrecio: ${formatGs(svc.amount)}`
+                                                        } />
+                                                        <ExtendSaleModal
+                                                            saleId={svc.sale_id}
+                                                            currentEndDate={svc.sale_end_date || svc.renewal_date}
+                                                            customerName={customer.title}
+                                                            platform={svc.platform}
+                                                            onSuccess={onSaved}
+                                                        />
+                                                        <button
+                                                            onClick={() => onSwap(svc)}
+                                                            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+                                                            style={{ background: 'rgba(249,115,22,0.1)', color: '#F97316' }}
+                                                            title="Intercambiar servicio"
+                                                        >
+                                                            <Repeat className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             )}
         </div>
     );
@@ -1229,47 +1489,16 @@ export function SearchResults({ query }: { query: string }) {
                 <SortBar sortField={sortField} sortDir={sortDir} onSort={toggleSort} pageSize={pageSize} onPageSize={setPageSize} />
             )}
 
-            {/* ── CUSTOMERS ── */}
+            {/* ── CUSTOMERS: Vista Jerárquica Inventario ── */}
             {customers.length > 0 && (
                 <Section icon={<User className="h-3.5 w-3.5 text-[#F97316]" />} label="Clientes" count={customers.length} color="#F97316">
                     {customers.map(c => (
-                        <Card key={c.id} className="border-border bg-card">
-                            <CardContent className="p-4">
-                                <div className="flex items-start justify-between gap-4 mb-3">
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F97316]/20 flex-shrink-0">
-                                            <User className="h-5 w-5 text-[#F97316]" />
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-base">{c.title}</p>
-                                            {c.subtitle && (
-                                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                                                    <Phone className="h-3.5 w-3.5" /><span>{c.subtitle}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">
-                                        {c.services?.length || 0} servicio{(c.services?.length || 0) !== 1 ? 's' : ''}
-                                    </span>
-                                </div>
-
-                                {c.services && c.services.length > 0 ? (
-                                    <div className="space-y-2 ml-[52px]">
-                                        {c.services.map((svc, i) => (
-                                            <CustomerServiceRow
-                                                key={`${svc.sale_id}-${i}`}
-                                                svc={svc}
-                                                onSwap={() => handleSwap(svc, c.id, c.title)}
-                                                onSaved={fetchResults}
-                                            />
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="ml-[52px] text-xs text-muted-foreground/60">Sin servicios activos</p>
-                                )}
-                            </CardContent>
-                        </Card>
+                        <CustomerInventoryView
+                            key={c.id}
+                            customer={c}
+                            onSwap={(svc) => handleSwap(svc, c.id, c.title)}
+                            onSaved={fetchResults}
+                        />
                     ))}
                 </Section>
             )}
@@ -1291,6 +1520,7 @@ export function SearchResults({ query }: { query: string }) {
                                 account_password: acct.password || '',
                                 mother_account_id: acct.id,
                                 renewal_date: acct.renewal_date || '',
+                                sale_type: acct.sale_type || 'profile',
                                 sale_end_date: '',
                                 amount: slot.customer.amount,
                                 start_date: slot.customer.start_date || '',

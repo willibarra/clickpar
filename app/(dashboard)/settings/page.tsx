@@ -4,7 +4,7 @@ import buildInfo from '@/lib/build-info.json';
 
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -386,6 +386,29 @@ export default function SettingsPage() {
                     <WhatsAppSettingsPanel />
                 </div>
             </CollapsibleSection>
+
+            {/* 6.5. Gestión de Crisis (Admin) */}
+            {isAdmin && (
+                <CollapsibleSection
+                    icon={<AlertTriangle className="h-5 w-5" />}
+                    iconColor="text-red-500"
+                    title="Centro de Contingencia (Gestión de Crisis)"
+                    description="Comando de comunicación masiva para caídas de servicio"
+                >
+                    <CardContent className="pt-4">
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Accede al panel dedicado para identificar y notificar a clientes afectados por caídas masivas en proveedores.
+                        </p>
+                        <Button 
+                            className="bg-red-500 text-white hover:bg-red-600 w-full md:w-auto" 
+                            onClick={() => window.location.href = '/crisis'}
+                        >
+                            <AlertTriangle className="mr-2 h-4 w-4" />
+                            Abrir Panel de Crisis
+                        </Button>
+                    </CardContent>
+                </CollapsibleSection>
+            )}
 
             {/* 4. Soporte — guías por plataforma */}
             {isAdmin && (

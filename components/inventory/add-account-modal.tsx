@@ -422,8 +422,12 @@ export function AddAccountModal() {
             }
             formData.delete('purchase_date');
 
-            // Inject custom slots as JSON if enabled
-            if (customizeSlots && customSlots.some(s => s.name || s.pin)) {
+            // Inject custom slots as JSON
+            // For family accounts: always inject if any slot has data (correo/contraseña final)
+            // For regular accounts: only inject if customization checkbox is checked
+            if (isFamilyAccount && customSlots.some(s => s.name || s.pin)) {
+                formData.set('custom_slots', JSON.stringify(customSlots));
+            } else if (!isFamilyAccount && customizeSlots && customSlots.some(s => s.name || s.pin)) {
                 formData.set('custom_slots', JSON.stringify(customSlots));
             }
 
@@ -465,6 +469,7 @@ export function AddAccountModal() {
     }
 
     const slotLabel = selectedPlatform?.business_type === 'family_account' ? 'Miembros' : 'Perfiles';
+    const isFamilyAccount = selectedPlatform?.business_type === 'family_account';
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -683,8 +688,8 @@ export function AddAccountModal() {
                                         <Input
                                             id="email"
                                             name="email"
-                                            type="email"
-                                            placeholder="cuenta@gmail.com"
+                                            type="text"
+                                            placeholder="cuenta@gmail.com o usuario123"
                                             required={!bulkMode}
                                         />
                                     </div>
@@ -880,12 +885,12 @@ export function AddAccountModal() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="invite_address" className="text-sm">Dirección de la Invitación <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                                    <Label htmlFor="invite_address" className="text-sm">Ubicación / Dirección <span className="text-muted-foreground font-normal">(opcional)</span></Label>
                                     <Input
                                         id="invite_address"
                                         value={inviteAddress}
                                         onChange={(e) => setInviteAddress(e.target.value)}
-                                        placeholder="Egyptian National Railways, Mersa Matruh..."
+                                        placeholder="Ciudad, País..."
                                         className="text-sm"
                                     />
                                 </div>
@@ -918,52 +923,97 @@ export function AddAccountModal() {
                             </div>
                         </div>
 
-                        {/* Divider: Custom Slots Toggle */}
-                        <div className="flex items-center gap-3 pt-2 border-t border-border">
-                            <input
-                                type="checkbox"
-                                id="customize_slots"
-                                checked={customizeSlots}
-                                onChange={(e) => setCustomizeSlots(e.target.checked)}
-                                className="h-4 w-4 rounded border-border accent-[#86EFAC]"
-                            />
-                            <Label htmlFor="customize_slots" className="cursor-pointer text-sm">
-                                Personalizar nombres y PINs de {slotLabel.toLowerCase()}
-                            </Label>
-                        </div>
-
-                        {/* Custom Slot Fields */}
-                        {customizeSlots && (
-                            <div className="space-y-2 rounded-lg border border-border p-3 bg-muted/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                    Asigna nombre y PIN a cada {slotLabel.toLowerCase().slice(0, -1)}
-                                </p>
-                                {customSlots.map((slot, i) => (
-                                    <div key={i} className="grid grid-cols-[auto_1fr_1fr] gap-2 items-center">
-                                        <span className="text-xs text-muted-foreground w-6 text-center">
-                                            {i + 1}
-                                        </span>
-                                        <div className="relative">
-                                            <User className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                                            <Input
-                                                value={slot.name}
-                                                onChange={(e) => updateCustomSlot(i, 'name', e.target.value)}
-                                                placeholder={`Nombre perfil ${i + 1}`}
-                                                className="h-8 text-sm pl-7"
-                                            />
+                        {/* Slot customization section */}
+                        {isFamilyAccount ? (
+                            // ── FAMILIA: Correos y contraseñas de clientes finales ──
+                            <div className="space-y-3 pt-2 border-t border-border">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-2 w-2 rounded-full bg-blue-400" />
+                                    <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide">
+                                        Datos de Clientes Finales
+                                    </p>
+                                    <span className="text-xs text-muted-foreground font-normal">(se guardan en los slots)</span>
+                                </div>
+                                <div className="space-y-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+                                    <p className="text-[10px] text-muted-foreground mb-2">
+                                        Ingresa el correo y contraseña que le darás a cada cliente. Estos son los datos que recibirá por WhatsApp.
+                                    </p>
+                                    {customSlots.map((slot, i) => (
+                                        <div key={i} className="grid grid-cols-[auto_1fr_1fr] gap-2 items-center">
+                                            <span className="text-xs text-muted-foreground w-6 text-center font-mono">
+                                                {i + 1}
+                                            </span>
+                                            <div className="relative">
+                                                <User className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                                <Input
+                                                    value={slot.name}
+                                                    onChange={(e) => updateCustomSlot(i, 'name', e.target.value)}
+                                                    placeholder={`correo${i + 1}@gmail.com`}
+                                                    className="h-8 text-sm pl-7"
+                                                />
+                                            </div>
+                                            <div className="relative">
+                                                <Lock className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                                <Input
+                                                    value={slot.pin}
+                                                    onChange={(e) => updateCustomSlot(i, 'pin', e.target.value)}
+                                                    placeholder="Contraseña final"
+                                                    className="h-8 text-sm pl-7"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="relative">
-                                            <Lock className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                                            <Input
-                                                value={slot.pin}
-                                                onChange={(e) => updateCustomSlot(i, 'pin', e.target.value)}
-                                                placeholder="PIN"
-                                                className="h-8 text-sm pl-7"
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
+                        ) : (
+                            // ── NON-FAMILIA: Checkbox + Personalizar nombres y PINs ──
+                            <>
+                                <div className="flex items-center gap-3 pt-2 border-t border-border">
+                                    <input
+                                        type="checkbox"
+                                        id="customize_slots"
+                                        checked={customizeSlots}
+                                        onChange={(e) => setCustomizeSlots(e.target.checked)}
+                                        className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                                    />
+                                    <Label htmlFor="customize_slots" className="cursor-pointer text-sm">
+                                        Personalizar nombres y PINs de {slotLabel.toLowerCase()}
+                                    </Label>
+                                </div>
+
+                                {customizeSlots && (
+                                    <div className="space-y-2 rounded-lg border border-border p-3 bg-muted/30">
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                            Asigna nombre y PIN a cada {slotLabel.toLowerCase().slice(0, -1)}
+                                        </p>
+                                        {customSlots.map((slot, i) => (
+                                            <div key={i} className="grid grid-cols-[auto_1fr_1fr] gap-2 items-center">
+                                                <span className="text-xs text-muted-foreground w-6 text-center">
+                                                    {i + 1}
+                                                </span>
+                                                <div className="relative">
+                                                    <User className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                                    <Input
+                                                        value={slot.name}
+                                                        onChange={(e) => updateCustomSlot(i, 'name', e.target.value)}
+                                                        placeholder={`Nombre perfil ${i + 1}`}
+                                                        className="h-8 text-sm pl-7"
+                                                    />
+                                                </div>
+                                                <div className="relative">
+                                                    <Lock className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                                    <Input
+                                                        value={slot.pin}
+                                                        onChange={(e) => updateCustomSlot(i, 'pin', e.target.value)}
+                                                        placeholder="PIN"
+                                                        className="h-8 text-sm pl-7"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         {/* OBS / Instrucciones */}

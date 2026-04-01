@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, ReactElement } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ interface SlotDetailsModalProps {
         password: string;
     };
     accountStatus?: string;
+    trigger?: ReactElement;
 }
 
 interface CustomerResult {
@@ -60,7 +61,7 @@ function getActiveCustomerFromSales(sales?: SlotSale[]): { id: string; full_name
     };
 }
 
-export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsModalProps) {
+export function SlotDetailsModal({ slot, account, accountStatus, trigger }: SlotDetailsModalProps) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -293,18 +294,20 @@ export function SlotDetailsModal({ slot, account, accountStatus }: SlotDetailsMo
     return (
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setConfirmDelete(false); }}>
             <DialogTrigger asChild>
-                <button
-                    className={`rounded px-2 py-1 text-xs font-medium transition-all hover:scale-105 hover:ring-2 hover:ring-white/30 ${statusColor}`}
-                    title={customerNameTooltip}
-                    disabled={isQuarantine && slot.status === 'available'}
-                >
-                    {slot.slot_identifier?.replace('Perfil ', 'P').replace('Miembro ', 'M') || 'S'}
-                    {inlineCustomer?.full_name && slot.status === 'sold' && (
-                        <span className="ml-1 opacity-70 text-[10px]">
-                            · {inlineCustomer.full_name.split(' ')[0]}
-                        </span>
-                    )}
-                </button>
+                {trigger ?? (
+                    <button
+                        className={`rounded px-2 py-1 text-xs font-medium transition-all hover:scale-105 hover:ring-2 hover:ring-white/30 ${statusColor}`}
+                        title={customerNameTooltip}
+                        disabled={isQuarantine && slot.status === 'available'}
+                    >
+                        {slot.slot_identifier?.replace('Perfil ', 'P').replace('Miembro ', 'M') || 'S'}
+                        {inlineCustomer?.full_name && slot.status === 'sold' && (
+                            <span className="ml-1 opacity-70 text-[10px]">
+                                · {inlineCustomer.full_name.split(' ')[0]}
+                            </span>
+                        )}
+                    </button>
+                )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[450px] bg-card border-border">
                 <DialogHeader>

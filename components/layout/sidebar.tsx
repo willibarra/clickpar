@@ -19,6 +19,7 @@ import {
   Store,
   Inbox,
   TicketCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -36,7 +37,7 @@ const allNavItems = [
   { href: '/automatizaciones', label: 'Automatizaciones', icon: Zap, adminOnly: true },
   { href: '/resellers', label: 'Revendedores', icon: Store, adminOnly: true },
   { href: '/stock-requests', label: 'Solicitudes Stock', icon: Inbox, adminOnly: true },
-  { href: '/settings', label: 'Ajustes', icon: Settings, adminOnly: true },
+  { href: '/settings', label: 'Configuración', icon: Settings, adminOnly: true },
 ];
 
 

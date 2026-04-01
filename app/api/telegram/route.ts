@@ -34,7 +34,17 @@ type ConvoState =
     | { step: 'nueva_cuenta_email'; platform: string }
     | { step: 'nueva_cuenta_password'; platform: string; email: string }
     | { step: 'nueva_cuenta_slots'; platform: string; email: string; password: string }
-    | { step: 'nueva_cuenta_confirmar'; platform: string; email: string; password: string; maxSlots: number };
+    | { step: 'nueva_cuenta_confirmar'; platform: string; email: string; password: string; maxSlots: number }
+    // CRUD Clientes
+    | { step: 'editar_cliente_valor'; clienteId: string; clienteNombre: string; field: string; fieldLabel: string }
+    | { step: 'eliminar_cliente_confirm'; clienteId: string; clienteNombre: string }
+    // CRUD Cuentas Madres
+    | { step: 'editar_cuenta_valor'; cuentaId: string; cuentaNombre: string; field: string; fieldLabel: string }
+    | { step: 'eliminar_cuenta_confirm'; cuentaId: string; cuentaNombre: string }
+    | { step: 'renovar_cuenta_fecha'; cuentaId: string; cuentaNombre: string }
+    | { step: 'renovar_cuenta_precio'; cuentaId: string; cuentaNombre: string; nuevaFecha: string }
+    // Cancelar servicio
+    | { step: 'cancelar_servicio_confirm'; saleId: string; clienteNombre: string; platform: string };
 
 const sessions = new Map<number, ConvoState>();
 
@@ -129,8 +139,16 @@ async function handleMessage(chatId: number, userId: number, text: string, first
             return;
         }
 
+        if (text.startsWith('/dashboard') || text.startsWith('/resumen_mes')) {
+            await handleDashboard(chatId);
+            return;
+        }
         if (text.startsWith('/inventario')) {
             await handleInventario(chatId);
+            return;
+        }
+        if (text.startsWith('/cuentas')) {
+            await handleCuentasMadres(chatId, 0);
             return;
         }
         if (text.startsWith('/vencimientos')) {
@@ -250,9 +268,72 @@ async function handleMessage(chatId: number, userId: number, text: string, first
             return;
         }
 
+        // --- Editar campo de cliente ---
+        if (state.step === 'editar_cliente_valor') {
+            await handleGuardarCampoCliente(chatId, state.clienteId, state.clienteNombre, state.field, state.fieldLabel, text);
+            resetState(chatId);
+            return;
+        }
+        // --- Confirmar eliminación de cliente ---
+        if (state.step === 'eliminar_cliente_confirm') {
+            if (text.trim().toUpperCase() === 'ELIMINAR') {
+                await handleConfirmarEliminarCliente(chatId, state.clienteId, state.clienteNombre);
+            } else {
+                await sendMessage(chatId, '❌ Cancelado. Escribí exactamente ELIMINAR para confirmar.', { buttons: BACK_BUTTON });
+            }
+            resetState(chatId);
+            return;
+        }
+        // --- Editar campo de cuenta madre ---
+        if (state.step === 'editar_cuenta_valor') {
+            await handleGuardarCampoCuenta(chatId, state.cuentaId, state.cuentaNombre, state.field, state.fieldLabel, text);
+            resetState(chatId);
+            return;
+        }
+        // --- Confirmar eliminación de cuenta madre ---
+        if (state.step === 'eliminar_cuenta_confirm') {
+            if (text.trim().toUpperCase() === 'ELIMINAR') {
+                await handleConfirmarEliminarCuenta(chatId, state.cuentaId, state.cuentaNombre);
+            } else {
+                await sendMessage(chatId, '❌ Cancelado. Escribí exactamente ELIMINAR para confirmar.', { buttons: BACK_BUTTON });
+            }
+            resetState(chatId);
+            return;
+        }
+        // --- Renovar cuenta madre - fecha ---
+        if (state.step === 'renovar_cuenta_fecha') {
+            let fecha = text.trim();
+            const ddmm = fecha.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (ddmm) fecha = `${ddmm[3]}-${ddmm[2].padStart(2,'0')}-${ddmm[1].padStart(2,'0')}`;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                await sendMessage(chatId, '⚠️ Formato inválido. Usá DD/MM/YYYY (ej: 15/04/2025):');
+                return;
+            }
+            setState(chatId, { step: 'renovar_cuenta_precio', cuentaId: state.cuentaId, cuentaNombre: state.cuentaNombre, nuevaFecha: fecha });
+            await sendMessage(chatId, `💰 ¿Cuánto pagaste por la renovación de *${safeMd(state.cuentaNombre)}*?\n\n(En Gs, ej: 150000 — o 0 si no querés registrar el gasto)\n(Escribí /cancelar para volver)`);
+            return;
+        }
+        // --- Renovar cuenta madre - precio ---
+        if (state.step === 'renovar_cuenta_precio') {
+            const monto = parseInt(text.replace(/\D/g, '')) || 0;
+            await handleConfirmarRenovar(chatId, state.cuentaId, state.cuentaNombre, state.nuevaFecha, monto);
+            resetState(chatId);
+            return;
+        }
+        // --- Cancelar servicio confirm ---
+        if (state.step === 'cancelar_servicio_confirm') {
+            if (text.trim().toUpperCase() === 'CANCELAR') {
+                await handleConfirmarCancelarServicio(chatId, state.saleId, state.clienteNombre, state.platform);
+            } else {
+                await sendMessage(chatId, '❌ Operación cancelada.', { buttons: BACK_BUTTON });
+            }
+            resetState(chatId);
+            return;
+        }
+
         // Default: show menu
         await sendMessage(chatId,
-            `Usá los botones del menú o escribí un comando como /inventario, /vencimientos, /ventas.`,
+            `Usá los botones del menú o escribí: /dashboard /inventario /vencimientos /ventas /clientes /cuentas`,
             { buttons: MAIN_MENU_BUTTONS }
         );
     } catch (err: any) {
@@ -269,6 +350,9 @@ async function handleCallback(chatId: number, data: string, firstName: string) {
     try {
         // Main menu commands
         switch (data) {
+            case 'cmd:dashboard':
+                await handleDashboard(chatId);
+                return;
             case 'cmd:inventario':
                 await handleInventario(chatId);
                 return;
@@ -292,13 +376,96 @@ async function handleCallback(chatId: number, data: string, firstName: string) {
             case 'cmd:nueva_cuenta':
                 await handleNuevaCuentaMenu(chatId);
                 return;
-            case 'cmd:menu':
-                resetState(chatId);
-                await sendMessage(chatId,
-                    `👋 Hola ${firstName}! ¿Qué querés hacer?`,
-                    { buttons: MAIN_MENU_BUTTONS }
-                );
+            case 'cmd:cuentas_madres':
+                await handleCuentasMadres(chatId, 0);
                 return;
+            case 'cmd:menu':
+            case 'menu':
+                resetState(chatId);
+                await sendMessage(chatId, `👋 Hola ${firstName}! ¿Qué querés hacer?`, { buttons: MAIN_MENU_BUTTONS });
+                return;
+        }
+
+        // Cuentas madres - paginación
+        if (data.startsWith('cuentas:pagina:')) {
+            await handleCuentasMadres(chatId, parseInt(data.replace('cuentas:pagina:', '')) || 0);
+            return;
+        }
+        // Cuenta madre - ver detalle
+        if (data.startsWith('cuenta:ver:')) {
+            await handleDetalleCuenta(chatId, data.replace('cuenta:ver:', ''));
+            return;
+        }
+        // Cuenta madre - menú editar
+        if (data.startsWith('cuenta:editar:')) {
+            await handleEditarCuentaMenu(chatId, data.replace('cuenta:editar:', ''));
+            return;
+        }
+        // Cuenta madre - campo a editar
+        if (data.startsWith('cuenta:campo:')) {
+            const parts = data.split(':');
+            const id = parts[2]; const field = parts[3]; const fieldLabel = parts.slice(4).join(':');
+            const supabase = await createAdminClient();
+            const { data: c } = await (supabase.from('mother_accounts') as any).select('platform,email').eq('id', id).single();
+            const nombre = c ? `${c.platform} (${c.email || 'sin email'})` : id;
+            setState(chatId, { step: 'editar_cuenta_valor', cuentaId: id, cuentaNombre: nombre, field, fieldLabel });
+            await sendMessage(chatId, `✏️ *Editando ${fieldLabel}*\n\nCuenta: *${safeMd(nombre)}*\n\nIngresá el nuevo valor:\n(Escribí /cancelar para volver)`);
+            return;
+        }
+        // Cuenta madre - renovar
+        if (data.startsWith('cuenta:renovar:')) {
+            const id = data.replace('cuenta:renovar:', '');
+            const supabase = await createAdminClient();
+            const { data: c } = await (supabase.from('mother_accounts') as any).select('platform,email,renewal_date').eq('id', id).single();
+            if (!c) return;
+            const nombre = `${c.platform} (${c.email || 'sin email'})`;
+            setState(chatId, { step: 'renovar_cuenta_fecha', cuentaId: id, cuentaNombre: nombre });
+            await sendMessage(chatId, `🔄 *Renovar cuenta*\n\nCuenta: *${safeMd(nombre)}*\nFecha actual: *${formatDate(c.renewal_date)}*\n\n📅 Ingresá la *nueva fecha de renovación*:\n(Formato DD/MM/YYYY, ej: 15/04/2025)\n(Escribí /cancelar para volver)`);
+            return;
+        }
+        // Cuenta madre - eliminar
+        if (data.startsWith('cuenta:eliminar:')) {
+            const id = data.replace('cuenta:eliminar:', '');
+            const supabase = await createAdminClient();
+            const { data: c } = await (supabase.from('mother_accounts') as any).select('platform,email').eq('id', id).single();
+            if (!c) return;
+            const nombre = `${c.platform} (${c.email || 'sin email'})`;
+            setState(chatId, { step: 'eliminar_cuenta_confirm', cuentaId: id, cuentaNombre: nombre });
+            await sendMessage(chatId, `⚠️ *¿Eliminar cuenta madre?*\n\n📺 *${safeMd(nombre)}*\n\n⚠️ Se eliminarán la cuenta y TODOS sus slots.\n\nPara confirmar escribí exactamente:\n*ELIMINAR*`);
+            return;
+        }
+        // Cliente - menú editar
+        if (data.startsWith('cliente:editar:')) {
+            await handleEditarClienteMenu(chatId, data.replace('cliente:editar:', ''));
+            return;
+        }
+        // Cliente - campo a editar
+        if (data.startsWith('cliente:campo:')) {
+            const parts = data.split(':');
+            const id = parts[2]; const field = parts[3]; const fieldLabel = parts.slice(4).join(':');
+            const supabase = await createAdminClient();
+            const { data: cl } = await (supabase.from('customers') as any).select('full_name').eq('id', id).single();
+            setState(chatId, { step: 'editar_cliente_valor', clienteId: id, clienteNombre: cl?.full_name || id, field, fieldLabel });
+            await sendMessage(chatId, `✏️ *Editando ${fieldLabel}*\n\nCliente: *${safeMd(cl?.full_name || id)}*\n\nIngresá el nuevo valor:\n(Escribí /cancelar para volver)`);
+            return;
+        }
+        // Cliente - eliminar
+        if (data.startsWith('cliente:eliminar:')) {
+            const id = data.replace('cliente:eliminar:', '');
+            const supabase = await createAdminClient();
+            const { data: cl } = await (supabase.from('customers') as any).select('full_name').eq('id', id).single();
+            if (!cl) return;
+            setState(chatId, { step: 'eliminar_cliente_confirm', clienteId: id, clienteNombre: cl.full_name });
+            await sendMessage(chatId, `⚠️ *¿Eliminar cliente?*\n\n👤 *${safeMd(cl.full_name)}*\n\n⚠️ Se eliminará el cliente y su historial.\n\nPara confirmar escribí exactamente:\n*ELIMINAR*`);
+            return;
+        }
+        // Servicio - cancelar
+        if (data.startsWith('servicio:cancelar:')) {
+            const parts = data.split(':');
+            const saleId = parts[2]; const clienteNombre = parts[3] || 'Cliente'; const platform = parts.slice(4).join(':') || 'Servicio';
+            setState(chatId, { step: 'cancelar_servicio_confirm', saleId, clienteNombre, platform });
+            await sendMessage(chatId, `⚠️ *¿Cancelar servicio?*\n\n👤 *${safeMd(clienteNombre)}* — 📺 *${safeMd(platform)}*\n\nPara confirmar escribí exactamente:\n*CANCELAR*`);
+            return;
         }
 
         // Platform selected for sale
@@ -612,11 +779,14 @@ async function handleBuscarCliente(chatId: number, query: string) {
             `📱 ${customer.phone || 'Sin teléfono'}\n` +
             `🛒 Servicios activos: *${activeCount}*`,
             {
-                buttons: activeCount > 0
-                    ? [[
-                        { text: `📋 Ver servicios (${activeCount})`, callback_data: `servicios:${customer.id}` },
-                    ], BACK_BUTTON[0]]
-                    : BACK_BUTTON,
+                buttons: [
+                    ...(activeCount > 0 ? [[{ text: `📋 Ver servicios (${activeCount})`, callback_data: `servicios:${customer.id}` }]] : []),
+                    [
+                        { text: '✏️ Editar', callback_data: `cliente:editar:${customer.id}` },
+                        { text: '🗑️ Eliminar', callback_data: `cliente:eliminar:${customer.id}` },
+                    ],
+                    BACK_BUTTON[0],
+                ],
             }
         );
     }
@@ -665,32 +835,27 @@ async function handleVerServiciosCliente(chatId: number, customerId: string) {
     }
 
     const nombre = customer?.full_name || 'Cliente';
-    const lines: string[] = [];
+    const nombreShort = nombre.split(' ')[0];
 
     for (const sale of rawSales) {
         const slotInfo = slotMap.get(sale.slot_id);
-        const platform = safeMd(slotInfo?.mother_accounts?.platform || 'Plataforma');
+        const platform = slotInfo?.mother_accounts?.platform || 'Plataforma';
         const slot = safeMd(slotInfo?.slot_identifier || 'Perfil');
         const pin = slotInfo?.pin_code ? `🔒 PIN: ${slotInfo.pin_code}\n` : '';
         const days = daysUntil(sale.end_date);
         const emoji = days < 0 ? '🔴' : days === 0 ? '🟠' : days <= 3 ? '🟡' : '🟢';
-        const precio = formatGs(sale.amount_gs || 0);
-        const vence = days < 0
-            ? `vencido hace ${Math.abs(days)}d`
-            : days === 0 ? 'vence HOY'
-            : `vence en ${days}d`;
+        const vence = days < 0 ? `vencido hace ${Math.abs(days)}d` : days === 0 ? 'vence HOY' : `vence en ${days}d`;
 
-        lines.push(
-            `${emoji} *${platform}* — ${slot}\n` +
-            `${pin}` +
-            `💰 ${precio} · ${vence} (${formatDate(sale.end_date)})`
+        await sendMessage(chatId,
+            `${emoji} *${safeMd(platform)}* — ${slot}\n${pin}💰 ${formatGs(sale.amount_gs || 0)} · ${vence} (${formatDate(sale.end_date)})`,
+            {
+                buttons: [
+                    [{ text: '🚫 Cancelar servicio', callback_data: `servicio:cancelar:${sale.id}:${nombreShort}:${platform}` }],
+                    BACK_BUTTON[0],
+                ],
+            }
         );
     }
-
-    await sendMessage(chatId,
-        `📋 *Servicios de ${safeMd(nombre)}*\n\n${lines.join('\n\n')}`,
-        { buttons: BACK_BUTTON }
-    );
 }
 
 async function handleCrearCliente(chatId: number, nombre: string, telefono: string) {
@@ -944,4 +1109,303 @@ async function handleConfirmarNuevaCuenta(
         console.error('[Telegram] handleConfirmarNuevaCuenta error:', err);
         await sendMessage(chatId, `❌ Error inesperado: ${err.message}`, { buttons: BACK_BUTTON, parseMode: 'none' });
     }
+}
+
+// ==========================================
+// NUEVAS FUNCIONES: Dashboard
+// ==========================================
+
+async function handleDashboard(chatId: number) {
+    const supabase = await createAdminClient();
+    const hoy = new Date().toISOString().split('T')[0];
+    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const en7dias = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+    const [
+        { count: cuentasActivas },
+        { count: slotsDisponibles },
+        { count: clientesTotal },
+        { count: serviciosActivos },
+        { data: ingresosData },
+        { count: cuentasPorVencer },
+        { count: serviciosVencidos },
+    ] = await Promise.all([
+        (supabase.from('mother_accounts') as any).select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        (supabase.from('sale_slots') as any).select('id', { count: 'exact', head: true }).eq('status', 'available'),
+        (supabase.from('customers') as any).select('id', { count: 'exact', head: true }),
+        (supabase.from('sales') as any).select('id', { count: 'exact', head: true }).eq('is_active', true),
+        (supabase.from('sales') as any).select('amount_gs').gte('start_date', inicioMes).eq('is_active', true),
+        (supabase.from('mother_accounts') as any).select('id', { count: 'exact', head: true }).eq('status', 'active').lte('renewal_date', en7dias).gte('renewal_date', hoy),
+        (supabase.from('sales') as any).select('id', { count: 'exact', head: true }).eq('is_active', true).lt('end_date', hoy),
+    ]);
+
+    const ingresosMes = (ingresosData || []).reduce((sum: number, s: any) => sum + (s.amount_gs || 0), 0);
+    const fecha = new Date().toLocaleDateString('es-PY', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    await sendMessage(chatId,
+        `📊 *Dashboard ClickPar*\n📅 ${safeMd(fecha)}\n\n` +
+        `🏦 Cuentas Madres activas: *${cuentasActivas ?? 0}*\n` +
+        `📦 Slots disponibles: *${slotsDisponibles ?? 0}*\n` +
+        `👥 Clientes totales: *${clientesTotal ?? 0}*\n` +
+        `✅ Servicios activos: *${serviciosActivos ?? 0}*\n\n` +
+        `💰 Ingresos del mes: *${formatGs(ingresosMes)}*\n\n` +
+        `⚠️ Cuentas vencen en 7 días: *${cuentasPorVencer ?? 0}*\n` +
+        `🔴 Servicios vencidos sin cancelar: *${serviciosVencidos ?? 0}*`,
+        { buttons: BACK_BUTTON }
+    );
+}
+
+// ==========================================
+// NUEVAS FUNCIONES: Cuentas Madres CRUD
+// ==========================================
+
+const CUENTAS_PER_PAGE = 5;
+
+async function handleCuentasMadres(chatId: number, page: number) {
+    const supabase = await createAdminClient();
+    const from = page * CUENTAS_PER_PAGE;
+    const { data, count, error } = await (supabase.from('mother_accounts') as any)
+        .select('id, platform, email, status, renewal_date, max_slots', { count: 'exact' })
+        .order('renewal_date', { ascending: true })
+        .range(from, from + CUENTAS_PER_PAGE - 1);
+
+    if (error) { await sendMessage(chatId, `⚠️ Error: ${error.message}`, { buttons: BACK_BUTTON }); return; }
+    if (!data || data.length === 0) { await sendMessage(chatId, '🏦 *Cuentas Madres*\n\nNo hay cuentas registradas.', { buttons: BACK_BUTTON }); return; }
+
+    const total = count || 0;
+    const totalPages = Math.ceil(total / CUENTAS_PER_PAGE);
+
+    const lines = data.map((c: any) => {
+        const days = daysUntil(c.renewal_date);
+        const st = c.status === 'active' ? '🟢' : c.status === 'expired' ? '🔴' : '🟡';
+        const ren = days < 0 ? '⭕' : days <= 3 ? '🔥' : days <= 7 ? '⚠️' : '';
+        return `${st}${ren} *${safeMd(c.platform)}* — ${safeMd(c.email || 'sin email')}\n   📅 ${formatDate(c.renewal_date)} · ${c.max_slots} slots`;
+    });
+
+    const accountBtns: InlineButton[][] = data.map((c: any) => [{
+        text: `${c.platform} | ${formatDate(c.renewal_date)}`,
+        callback_data: `cuenta:ver:${c.id}`,
+    }]);
+
+    const navRow: InlineButton[] = [];
+    if (page > 0) navRow.push({ text: '◀️ Anterior', callback_data: `cuentas:pagina:${page - 1}` });
+    if (page < totalPages - 1) navRow.push({ text: 'Siguiente ▶️', callback_data: `cuentas:pagina:${page + 1}` });
+    if (navRow.length > 0) accountBtns.push(navRow);
+    accountBtns.push(BACK_BUTTON[0]);
+
+    await sendMessage(chatId,
+        `🏦 *Cuentas Madres* (${from + 1}-${Math.min(from + CUENTAS_PER_PAGE, total)} de ${total})\n\n${lines.join('\n\n')}\n\n_Tocá una cuenta para ver el detalle_`,
+        { buttons: accountBtns }
+    );
+}
+
+async function handleDetalleCuenta(chatId: number, id: string) {
+    const supabase = await createAdminClient();
+    const { data: c, error } = await (supabase.from('mother_accounts') as any)
+        .select('id, platform, email, password, status, renewal_date, max_slots, notes, sale_type, target_billing_day')
+        .eq('id', id).single();
+
+    if (error || !c) { await sendMessage(chatId, '❌ Cuenta no encontrada.', { buttons: BACK_BUTTON }); return; }
+
+    const { count: slotsOcupados } = await (supabase.from('sale_slots') as any)
+        .select('id', { count: 'exact', head: true }).eq('mother_account_id', id).eq('status', 'sold');
+    const { count: slotsLibres } = await (supabase.from('sale_slots') as any)
+        .select('id', { count: 'exact', head: true }).eq('mother_account_id', id).eq('status', 'available');
+
+    const days = daysUntil(c.renewal_date);
+    const renewStatus = days < 0 ? `⭕ Vencida hace ${Math.abs(days)}d` : days === 0 ? '🔥 Vence HOY' : days <= 3 ? `🔥 Vence en ${days}d` : days <= 7 ? `⚠️ Vence en ${days}d` : `✅ Vence en ${days}d`;
+
+    await sendMessage(chatId,
+        `🏦 *${safeMd(c.platform)}*\n\n` +
+        `📧 Email: \`${safeMd(c.email || 'sin email')}\`\n` +
+        `🔒 Pass: \`${safeMd(c.password || 'sin contraseña')}\`\n` +
+        `📋 Slots: ${slotsOcupados ?? 0} ocupados / ${slotsLibres ?? 0} libres / ${c.max_slots} total\n` +
+        `📅 Renovación: ${formatDate(c.renewal_date)} — ${renewStatus}\n` +
+        `🔖 Estado: ${c.status}\n` +
+        `📝 Notas: ${safeMd(c.notes || 'sin notas')}`,
+        {
+            buttons: [
+                [
+                    { text: '✏️ Editar', callback_data: `cuenta:editar:${id}` },
+                    { text: '🔄 Renovar', callback_data: `cuenta:renovar:${id}` },
+                ],
+                [
+                    { text: '🗑️ Eliminar', callback_data: `cuenta:eliminar:${id}` },
+                    { text: '🔙 Volver', callback_data: 'cmd:cuentas_madres' },
+                ],
+            ],
+        }
+    );
+}
+
+async function handleEditarCuentaMenu(chatId: number, id: string) {
+    const supabase = await createAdminClient();
+    const { data: c } = await (supabase.from('mother_accounts') as any)
+        .select('platform, email, password, status, renewal_date, max_slots, notes').eq('id', id).single();
+    if (!c) { await sendMessage(chatId, '❌ Cuenta no encontrada.', { buttons: BACK_BUTTON }); return; }
+
+    await sendMessage(chatId,
+        `✏️ *Editar cuenta*: *${safeMd(c.platform)}*\n\n¿Qué campo querés editar?`,
+        {
+            buttons: [
+                [
+                    { text: '📺 Plataforma', callback_data: `cuenta:campo:${id}:platform:Plataforma` },
+                    { text: '📧 Email', callback_data: `cuenta:campo:${id}:email:Email` },
+                ],
+                [
+                    { text: '🔒 Contraseña', callback_data: `cuenta:campo:${id}:password:Contraseña` },
+                    { text: '📋 Max Slots', callback_data: `cuenta:campo:${id}:max_slots:Max Slots` },
+                ],
+                [
+                    { text: '📅 Fecha Renovación', callback_data: `cuenta:campo:${id}:renewal_date:Fecha de renovación` },
+                    { text: '🔖 Estado', callback_data: `cuenta:campo:${id}:status:Estado (active/expired/dead/review)` },
+                ],
+                [
+                    { text: '📝 Notas', callback_data: `cuenta:campo:${id}:notes:Notas` },
+                ],
+                [{ text: '🔙 Volver', callback_data: `cuenta:ver:${id}` }],
+            ],
+        }
+    );
+}
+
+async function handleGuardarCampoCuenta(chatId: number, cuentaId: string, cuentaNombre: string, field: string, fieldLabel: string, value: string) {
+    const supabase = await createAdminClient();
+    let v: any = value.trim();
+
+    if (field === 'max_slots') {
+        v = parseInt(v.replace(/\D/g, ''));
+        if (!v || v <= 0) { await sendMessage(chatId, '⚠️ Número inválido.', { buttons: BACK_BUTTON }); return; }
+    }
+    if (field === 'status') {
+        const valid = ['active', 'expired', 'dead', 'review'];
+        if (!valid.includes(v.toLowerCase())) { await sendMessage(chatId, `⚠️ Estado inválido. Usá: ${valid.join(', ')}`, { buttons: BACK_BUTTON }); return; }
+        v = v.toLowerCase();
+    }
+    if (field === 'renewal_date') {
+        const ddmm = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmm) v = `${ddmm[3]}-${ddmm[2].padStart(2,'0')}-${ddmm[1].padStart(2,'0')}`;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { await sendMessage(chatId, '⚠️ Fecha inválida. Usá DD/MM/YYYY.', { buttons: BACK_BUTTON }); return; }
+    }
+
+    const { error } = await (supabase.from('mother_accounts') as any).update({ [field]: v }).eq('id', cuentaId);
+    if (error) { await sendMessage(chatId, `❌ Error: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+
+    await sendMessage(chatId, `✅ *${fieldLabel}* actualizado para *${safeMd(cuentaNombre)}*\n\nNuevo valor: *${safeMd(String(v))}*`, { buttons: BACK_BUTTON });
+}
+
+async function handleConfirmarEliminarCuenta(chatId: number, cuentaId: string, cuentaNombre: string) {
+    const supabase = await createAdminClient();
+    // First delete sale_slots (cascade might not be set)
+    await (supabase.from('sale_slots') as any).delete().eq('mother_account_id', cuentaId);
+    const { error } = await (supabase.from('mother_accounts') as any).delete().eq('id', cuentaId);
+    if (error) { await sendMessage(chatId, `❌ Error al eliminar: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+    await sendMessage(chatId, `✅ Cuenta *${safeMd(cuentaNombre)}* eliminada correctamente.`, { buttons: BACK_BUTTON });
+}
+
+async function handleConfirmarRenovar(chatId: number, cuentaId: string, cuentaNombre: string, nuevaFecha: string, monto: number) {
+    const supabase = await createAdminClient();
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .update({ renewal_date: nuevaFecha, status: 'active' }).eq('id', cuentaId);
+    if (error) { await sendMessage(chatId, `❌ Error al renovar: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+
+    if (monto > 0) {
+        await (supabase.from('expenses') as any).insert({
+            description: `Renovación ${cuentaNombre}`,
+            amount_gs: monto,
+            category: 'renewal',
+            date: new Date().toISOString().split('T')[0],
+        });
+    }
+
+    await sendMessage(chatId,
+        `✅ *Cuenta renovada exitosamente!*\n\n🏦 *${safeMd(cuentaNombre)}*\n📅 Nueva fecha: *${formatDate(nuevaFecha)}*\n` +
+        (monto > 0 ? `💰 Gasto registrado: *${formatGs(monto)}*` : `💰 No se registró gasto.`),
+        { buttons: BACK_BUTTON }
+    );
+}
+
+// ==========================================
+// NUEVAS FUNCIONES: Clientes CRUD
+// ==========================================
+
+async function handleEditarClienteMenu(chatId: number, clienteId: string) {
+    const supabase = await createAdminClient();
+    const { data: cl } = await (supabase.from('customers') as any)
+        .select('full_name, phone, email, notes, customer_type').eq('id', clienteId).single();
+    if (!cl) { await sendMessage(chatId, '❌ Cliente no encontrado.', { buttons: BACK_BUTTON }); return; }
+
+    const tipos: Record<string, string> = { cliente: '👤 Cliente', creador: '🎬 Creador', empresa: '🏢 Empresa' };
+
+    await sendMessage(chatId,
+        `✏️ *Editar cliente*: *${safeMd(cl.full_name)}*\n\n` +
+        `📱 Tel: ${cl.phone || '-'} | 📧 Email: ${cl.email || '-'}\n` +
+        `🏷️ Tipo: ${tipos[cl.customer_type] || cl.customer_type}\n` +
+        `📝 Notas: ${cl.notes || 'sin notas'}\n\n¿Qué campo querés editar?`,
+        {
+            buttons: [
+                [
+                    { text: '👤 Nombre', callback_data: `cliente:campo:${clienteId}:full_name:Nombre` },
+                    { text: '📱 Teléfono', callback_data: `cliente:campo:${clienteId}:phone:Teléfono` },
+                ],
+                [
+                    { text: '📧 Email', callback_data: `cliente:campo:${clienteId}:email:Email` },
+                    { text: '📝 Notas', callback_data: `cliente:campo:${clienteId}:notes:Notas` },
+                ],
+                [
+                    { text: '🏷️ Tipo (cliente/creador/empresa)', callback_data: `cliente:campo:${clienteId}:customer_type:Tipo` },
+                ],
+                [{ text: '🔙 Volver', callback_data: 'menu' }],
+            ],
+        }
+    );
+}
+
+async function handleGuardarCampoCliente(chatId: number, clienteId: string, clienteNombre: string, field: string, fieldLabel: string, value: string) {
+    const supabase = await createAdminClient();
+    let v: any = value.trim();
+
+    if (field === 'customer_type') {
+        const valid = ['cliente', 'creador', 'empresa'];
+        if (!valid.includes(v.toLowerCase())) { await sendMessage(chatId, `⚠️ Tipo inválido. Usá: ${valid.join(', ')}`, { buttons: BACK_BUTTON }); return; }
+        v = v.toLowerCase();
+    }
+    if (field === 'phone') {
+        const { normalizePhone } = await import('@/lib/utils/phone');
+        v = normalizePhone(v);
+    }
+
+    const { error } = await (supabase.from('customers') as any).update({ [field]: v }).eq('id', clienteId);
+    if (error) { await sendMessage(chatId, `❌ Error: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+    await sendMessage(chatId, `✅ *${fieldLabel}* actualizado para *${safeMd(clienteNombre)}*\n\nNuevo valor: *${safeMd(String(v))}*`, { buttons: BACK_BUTTON });
+}
+
+async function handleConfirmarEliminarCliente(chatId: number, clienteId: string, clienteNombre: string) {
+    const supabase = await createAdminClient();
+    // Deactivate sales first
+    await (supabase.from('sales') as any).update({ is_active: false }).eq('customer_id', clienteId);
+    const { error } = await (supabase.from('customers') as any).delete().eq('id', clienteId);
+    if (error) { await sendMessage(chatId, `❌ Error: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+    await sendMessage(chatId, `✅ Cliente *${safeMd(clienteNombre)}* eliminado correctamente.`, { buttons: BACK_BUTTON });
+}
+
+// ==========================================
+// NUEVAS FUNCIONES: Cancelar Servicio
+// ==========================================
+
+async function handleConfirmarCancelarServicio(chatId: number, saleId: string, clienteNombre: string, platform: string) {
+    const supabase = await createAdminClient();
+    // Get slot_id to free it
+    const { data: sale } = await (supabase.from('sales') as any).select('slot_id').eq('id', saleId).single();
+    // Deactivate sale
+    const { error } = await (supabase.from('sales') as any).update({ is_active: false }).eq('id', saleId);
+    if (error) { await sendMessage(chatId, `❌ Error: ${error.message}`, { buttons: BACK_BUTTON, parseMode: 'none' }); return; }
+    // Free the slot
+    if (sale?.slot_id) {
+        await (supabase.from('sale_slots') as any).update({ status: 'available' }).eq('id', sale.slot_id);
+    }
+    await sendMessage(chatId,
+        `✅ *Servicio cancelado*\n\n👤 *${safeMd(clienteNombre)}* — 📺 *${safeMd(platform)}*\n\nEl slot fue liberado y está disponible para vender.`,
+        { buttons: BACK_BUTTON }
+    );
 }

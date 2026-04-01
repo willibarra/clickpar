@@ -86,6 +86,7 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [isOwnedEmail, setIsOwnedEmail] = useState(false);
     const [emailPassword, setEmailPassword] = useState('');
     const [showEmailPass, setShowEmailPass] = useState(false);
+    const [notifyWhatsapp, setNotifyWhatsapp] = useState(true);
 
     useEffect(() => {
         if (open) {
@@ -98,6 +99,7 @@ export function EditAccountModal({ account }: { account: Account }) {
             setIsOwnedEmail(false);
             setEmailPassword('');
             setShowEmailPass(false);
+            setNotifyWhatsapp(true);
         }
     }, [open]);
 
@@ -148,7 +150,9 @@ export function EditAccountModal({ account }: { account: Account }) {
             setPlatforms(typedData);
             // Set type for current account platform
             const match = typedData.find((p: Platform) => p.name === account.platform);
-            setSelectedPlatformType(match?.business_type || '');
+            const bType = match?.business_type || '';
+            setSelectedPlatformType(bType);
+            setNotifyWhatsapp(bType !== 'family_account');
         }
     }
 
@@ -211,6 +215,7 @@ export function EditAccountModal({ account }: { account: Account }) {
         // Inject state-managed fields not bound to named inputs
         formData.set('instructions', instructions || '');
         formData.set('send_instructions', sendInstructions ? 'true' : 'false');
+        formData.set('notify_whatsapp', notifyWhatsapp ? 'true' : 'false');
         // is_autopay is a named checkbox — override with state for reliability
         formData.set('is_autopay', isAutopay ? 'true' : 'false');
         if (isOwnedEmail) {
@@ -301,7 +306,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                             }`}
                         >
                             <User className="h-3.5 w-3.5" />
-                            Perfiles
+                            {isFamilyAccount ? 'Clientes Finales' : 'Perfiles'}
                             <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                                 {slotEdits.length}
                             </span>
@@ -358,7 +363,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                         </DialogFooter>
                     </div>
                 ) : activeTab === 'perfiles' ? (
-                    // ── Perfiles Tab ──────────────────────────────
+                    // ── Perfiles / Clientes Finales Tab ────────────────────────
                     <div className="space-y-3 py-2">
                         {error && (
                             <div className="mb-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">{error}</div>
@@ -367,9 +372,18 @@ export function EditAccountModal({ account }: { account: Account }) {
                             <div className="mb-2 rounded-lg bg-[#86EFAC]/20 p-3 text-sm text-[#86EFAC]">{successMessage}</div>
                         )}
 
+                        {isFamilyAccount && (
+                            <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2">
+                                <div className="h-2 w-2 rounded-full bg-blue-400" />
+                                <p className="text-xs text-blue-400 font-medium">
+                                    Correo y contraseña que recibe cada cliente final por WhatsApp
+                                </p>
+                            </div>
+                        )}
+
                         {slotEdits.length === 0 ? (
                             <div className="py-8 text-center text-sm text-muted-foreground">
-                                Esta cuenta no tiene perfiles registrados.
+                                Esta cuenta no tiene {isFamilyAccount ? 'clientes finales' : 'perfiles'} registrados.
                             </div>
                         ) : (
                             slotEdits.map((slot, idx) => {
@@ -407,14 +421,16 @@ export function EditAccountModal({ account }: { account: Account }) {
                                             </div>
                                         )}
 
-                                        {/* Nombre + Status */}
+                                        {/* Nombre / Correo Final + Status */}
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
-                                                <Label className="text-xs text-muted-foreground">Nombre</Label>
+                                                <Label className="text-xs text-muted-foreground">
+                                                    {isFamilyAccount ? 'Correo cliente final' : 'Nombre'}
+                                                </Label>
                                                 <Input
                                                     value={slot.slot_identifier}
                                                     onChange={e => updateSlotEdit(slot.id, 'slot_identifier', e.target.value)}
-                                                    placeholder="Perfil 1"
+                                                    placeholder={isFamilyAccount ? 'correo@gmail.com' : 'Perfil 1'}
                                                     className="h-8 text-sm"
                                                 />
                                             </div>
@@ -436,18 +452,19 @@ export function EditAccountModal({ account }: { account: Account }) {
                                             </div>
                                         </div>
 
-                                        {/* PIN */}
+                                        {/* PIN / Contraseña Final */}
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <Key className="h-3 w-3" /> PIN
+                                                <Key className="h-3 w-3" />
+                                                {isFamilyAccount ? 'Contraseña cliente final' : 'PIN'}
                                             </Label>
                                             <div className="flex gap-2">
                                                 <Input
                                                     value={slot.pin_code}
                                                     onChange={e => updateSlotEdit(slot.id, 'pin_code', e.target.value)}
-                                                    placeholder="Sin PIN"
-                                                    maxLength={6}
-                                                    className="h-8 text-sm font-mono tracking-widest"
+                                                    placeholder={isFamilyAccount ? 'Contraseña final' : 'Sin PIN'}
+                                                    maxLength={isFamilyAccount ? undefined : 6}
+                                                    className={`h-8 text-sm ${isFamilyAccount ? '' : 'font-mono tracking-widest'}`}
                                                 />
                                                 {slot.pin_code && (
                                                     <Button
@@ -456,7 +473,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                                         size="icon"
                                                         className="h-8 w-8 flex-shrink-0"
                                                         onClick={() => copyPin(slot.pin_code, slot.id)}
-                                                        title="Copiar PIN"
+                                                        title={isFamilyAccount ? 'Copiar contraseña' : 'Copiar PIN'}
                                                     >
                                                         {copiedPin === slot.id ? (
                                                             <Check className="h-3.5 w-3.5 text-green-500" />
@@ -483,7 +500,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                 onClick={handleSaveSlots}
                             >
                                 {savingSlots ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Guardar Perfiles
+                                {isFamilyAccount ? 'Guardar Clientes Finales' : 'Guardar Perfiles'}
                             </Button>
                         </DialogFooter>
                     </div>
@@ -539,7 +556,9 @@ export function EditAccountModal({ account }: { account: Account }) {
                                         defaultValue={account.platform}
                                         onValueChange={(val) => {
                                             const p = platforms.find(pl => pl.name === val);
-                                            setSelectedPlatformType(p?.business_type || '');
+                                            const bType = p?.business_type || '';
+                                            setSelectedPlatformType(bType);
+                                            setNotifyWhatsapp(bType !== 'family_account');
                                         }}
                                     >
                                         <SelectTrigger>
@@ -806,6 +825,18 @@ export function EditAccountModal({ account }: { account: Account }) {
                                     className="resize-none"
                                     rows={3}
                                 />
+                            </div>
+
+                            {/* Notificación WhatsApp */}
+                            <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                                <Checkbox
+                                    id="notify_whatsapp_edit"
+                                    checked={notifyWhatsapp}
+                                    onCheckedChange={(v) => setNotifyWhatsapp(v === true)}
+                                />
+                                <Label htmlFor="notify_whatsapp_edit" className="cursor-pointer text-sm font-medium text-foreground">
+                                    Notificar cambio de credenciales por WhatsApp a clientes activos
+                                </Label>
                             </div>
                         </div>
 

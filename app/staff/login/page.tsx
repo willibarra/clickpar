@@ -24,11 +24,18 @@ export default function StaffLoginPage() {
     const supabase = createClient();
 
     const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
+    const [isLocalhost, setIsLocalhost] = useState(true); // Default to true or use mounted state to avoid hydration mismatch
 
-    // Load reCAPTCHA v3 script
     useEffect(() => {
-        if (!siteKey) {
-            setRecaptchaReady(true); // Skip if no key configured
+        setIsLocalhost(
+            window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        );
+    }, []);
+
+    // Load reCAPTCHA v3 script (skip on localhost — site key doesn't allow it)
+    useEffect(() => {
+        if (!siteKey || isLocalhost) {
+            setRecaptchaReady(true); // Skip on localhost or if no key configured
             return;
         }
 
@@ -36,12 +43,15 @@ export default function StaffLoginPage() {
         script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
         script.async = true;
         script.onload = () => setRecaptchaReady(true);
+        script.onerror = () => setRecaptchaReady(true); // Don't block login if script fails
         document.body.appendChild(script);
 
         return () => {
-            document.body.removeChild(script);
+            if (document.body.contains(script)) {
+                document.body.removeChild(script);
+            }
         };
-    }, [siteKey]);
+    }, [siteKey, isLocalhost]);
 
     const executeRecaptcha = useCallback(async (): Promise<string | null> => {
         if (!siteKey || !window.grecaptcha) return null;
@@ -88,6 +98,12 @@ export default function StaffLoginPage() {
                 }
             }
 
+            // Mostrar en consola a qué URL estamos tratando de conectarnos
+            console.log('🔗 Intentando conectar a auth...', {
+                url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+                tieneKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+            });
+
             // Supabase login (captcha already verified independently)
             const { error: authError } = await supabase.auth.signInWithPassword({
                 email,
@@ -95,6 +111,7 @@ export default function StaffLoginPage() {
             });
 
             if (authError) {
+                console.error('❌ Error de Auth:', authError);
                 setError(authError.message);
                 setLoading(false);
                 return;
@@ -194,7 +211,7 @@ export default function StaffLoginPage() {
                         </Button>
                     </form>
 
-                    {siteKey && (
+                    {siteKey && !isLocalhost && (
                         <p className="text-[10px] text-muted-foreground/50 text-center">
                             Protegido por Google reCAPTCHA
                         </p>

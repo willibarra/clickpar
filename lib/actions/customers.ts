@@ -179,17 +179,26 @@ export async function updateCustomer(id: string, formData: FormData) {
 export async function deleteCustomer(id: string) {
     const supabase = await createAdminClient();
 
-    // Verificar que no tenga ventas activas antes de eliminar
+    // 1. Obtener ventas activas del cliente
     const { data: activeSales } = await (supabase.from('sales') as any)
-        .select('id')
+        .select('id, slot_id')
         .eq('customer_id', id)
-        .eq('is_active', true)
-        .limit(1);
+        .eq('is_active', true);
 
-    if (activeSales && activeSales.length > 0) {
-        return { error: 'No se puede eliminar: el cliente tiene servicios activos. Cancelá los servicios primero.' };
+    // 2. Cancelar ventas activas y liberar slots
+    for (const sale of activeSales || []) {
+        await (supabase.from('sales') as any)
+            .update({ is_active: false })
+            .eq('id', sale.id);
+
+        if (sale.slot_id) {
+            await (supabase.from('sale_slots') as any)
+                .update({ status: 'available' })
+                .eq('id', sale.slot_id);
+        }
     }
 
+    // 3. Eliminar el cliente
     const { error } = await (supabase.from('customers') as any)
         .delete()
         .eq('id', id);
@@ -199,9 +208,11 @@ export async function deleteCustomer(id: string) {
     }
 
     await logAction('delete_customer', 'customer', id, {
-        message: `eliminó un cliente del sistema`
+        message: `eliminó un cliente del sistema${activeSales && activeSales.length > 0 ? ` (${activeSales.length} venta(s) activa(s) cancelada(s) automáticamente)` : ''}`
     });
 
     revalidatePath('/customers');
-    return { success: true };
+    revalidatePath('/renewals');
+    revalidatePath('/inventory');
+    return { success: true, cancelledSales: activeSales?.length || 0 };
 }

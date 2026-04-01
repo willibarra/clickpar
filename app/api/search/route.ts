@@ -39,11 +39,23 @@ export async function GET(request: NextRequest) {
         // 2. Search mother accounts by email, platform, supplier_name (exclude soft-deleted)
         const { data: accounts } = await supabase
             .from('mother_accounts')
-            .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_slots(*)')
+            .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_type, sale_slots(*)')
             .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${phonePattern}`)
             .is('deleted_at', null)
             .order('platform')
             .limit(limit);
+
+        // 2b. Also fetch the business_type from platforms table for the found accounts,
+        //     so we can mark family accounts in results
+        const platformNamesInResults = [...new Set((accounts || []).map((a: any) => a.platform))];
+        let platformTypeMap: Record<string, string> = {};
+        if (platformNamesInResults.length > 0) {
+            const { data: platData } = await supabase
+                .from('platforms')
+                .select('name, business_type')
+                .in('name', platformNamesInResults);
+            (platData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
+        }
 
         // 3. Search suppliers
         const { data: suppliers } = await supabase
@@ -97,18 +109,40 @@ export async function GET(request: NextRequest) {
             let slotMap = new Map<string, any>();
             if (slotIds.length > 0) {
                 const { data: slots } = await (supabase.from('sale_slots') as any)
-                    .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date, sale_price_gs)')
+                    .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date, sale_price_gs, sale_type)')
                     .in('id', slotIds);
+
+                // Enrich platformTypeMap with any new platforms found in customer slots
+                const newPlats = [...new Set(
+                    (slots || []).map((s: any) => s.mother_accounts?.platform || '').filter(Boolean)
+                )].filter((p): p is string => typeof p === 'string' && !(p in platformTypeMap));
+                if (newPlats.length > 0) {
+                    const { data: newPlatData } = await supabase
+                        .from('platforms')
+                        .select('name, business_type')
+                        .in('name', newPlats);
+                    (newPlatData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
+                }
+
                 (slots || []).forEach((s: any) => {
+                    const maPlat = s.mother_accounts?.platform || '';
+                    const slotIsFamily = platformTypeMap[maPlat] === 'family_account';
                     slotMap.set(s.id, {
                         slot_identifier: s.slot_identifier,
                         pin_code: s.pin_code,
                         slot_status: s.status,
-                        platform: s.mother_accounts?.platform || 'Servicio',
-                        account_email: s.mother_accounts?.email || '',
-                        account_password: s.mother_accounts?.password || '',
+                        platform: maPlat || 'Servicio',
+                        // For family accounts: hide mother email/password
+                        account_email: slotIsFamily ? '' : (s.mother_accounts?.email || ''),
+                        account_password: slotIsFamily ? '' : (s.mother_accounts?.password || ''),
                         mother_account_id: s.mother_accounts?.id || '',
                         renewal_date: s.mother_accounts?.renewal_date || '',
+                        sale_type: s.mother_accounts?.sale_type || 'profile',
+                        is_family: slotIsFamily,
+                        mother_platform: maPlat,
+                        // For family: slot_identifier = client final email, pin_code = client final password
+                        client_email: slotIsFamily ? s.slot_identifier : '',
+                        client_password: slotIsFamily ? (s.pin_code || '') : '',
                     });
                 });
             }
@@ -144,10 +178,15 @@ export async function GET(request: NextRequest) {
                     account_password: slotInfo.account_password || '',
                     mother_account_id: slotInfo.mother_account_id || '',
                     renewal_date: slotInfo.renewal_date || '',
+                    sale_type: slotInfo.sale_type || 'profile',
                     sale_end_date: saleEndDate,
                     amount: sale.amount_gs,
                     start_date: sale.start_date,
                     is_combo: comboSaleIds.has(sale.id),
+                    is_family: slotInfo.is_family || false,
+                    mother_platform: slotInfo.mother_platform || '',
+                    client_email: slotInfo.client_email || '',
+                    client_password: slotInfo.client_password || '',
                 });
             });
         }
@@ -211,6 +250,7 @@ export async function GET(request: NextRequest) {
             const totalSlots = slots.length;
             const availableSlots = slots.filter((s: any) => s.status === 'available').length;
             const soldSlots = slots.filter((s: any) => s.status === 'sold').length;
+            const isFamily = platformTypeMap[a.platform] === 'family_account';
 
             const slotDetails = slots
                 .sort((a: any, b: any) => {
@@ -225,6 +265,7 @@ export async function GET(request: NextRequest) {
                         status: s.status,
                         pin_code: s.pin_code || '',
                         customer: custInfo || null,
+                        is_family: isFamily,
                     };
                 });
 
@@ -240,8 +281,10 @@ export async function GET(request: NextRequest) {
                 renewal_date: a.renewal_date,
                 purchase_cost_gs: a.purchase_cost_gs,
                 sale_price_gs: a.sale_price_gs,
+                sale_type: a.sale_type || 'profile',
                 supplier_name: a.supplier_name || '',
                 supplier_phone: a.supplier_phone || '',
+                is_family: isFamily,
                 totalSlots,
                 availableSlots,
                 soldSlots,
@@ -266,6 +309,8 @@ export async function GET(request: NextRequest) {
             const saleInfo = slotSaleMap[slot.id];
             const cust = saleInfo?.customer;
             const ma = slot.mother_accounts;
+            // Detect if this slot belongs to a family account
+            const motherIsFamily = platformTypeMap[ma?.platform] === 'family_account';
 
             if (cust && !addedCustomerIds.has(cust.id)) {
                 // Show as customer result with service info
@@ -282,14 +327,22 @@ export async function GET(request: NextRequest) {
                         slot_identifier: slot.slot_identifier,
                         pin_code: slot.pin_code || '',
                         slot_status: slot.status,
-                        account_email: ma?.email || '',
-                        account_password: ma?.password || '',
+                        // For family accounts: the slot_identifier IS the client email, so don't expose mother email
+                        account_email: motherIsFamily ? '' : (ma?.email || ''),
+                        account_password: motherIsFamily ? '' : (ma?.password || ''),
                         mother_account_id: ma?.id || '',
                         renewal_date: ma?.renewal_date || '',
+                        sale_type: ma?.sale_type || 'profile',
                         sale_end_date: saleInfo.end_date || '',
                         amount: saleInfo.amount_gs,
                         start_date: saleInfo.start_date,
                         is_combo: false,
+                        // Family-specific fields
+                        is_family: motherIsFamily,
+                        mother_platform: ma?.platform || '',
+                        // For family: slot_identifier = client final email, pin_code = client final password
+                        client_email: motherIsFamily ? slot.slot_identifier : '',
+                        client_password: motherIsFamily ? (slot.pin_code || '') : '',
                     }],
                 });
             } else if (!cust && !results.some((r: any) => r.id === slot.id)) {

@@ -191,13 +191,15 @@ export async function getClientSubscriptions() {
         });
     }
 
-    // 5. Combinar
-    const enriched = sales.map((sale: any) => ({
-        ...sale,
-        customer: custMap.get(sale.customer_id) || null,
-        slot: slotMap.get(sale.slot_id) || null,
-        lastNotified: notifMap.get(sale.id) || null,
-    }));
+    // 5. Combinar — excluir ventas cuyo cliente ya no existe en la BD (ventas huérfanas)
+    const enriched = sales
+        .map((sale: any) => ({
+            ...sale,
+            customer: custMap.get(sale.customer_id) || null,
+            slot: slotMap.get(sale.slot_id) || null,
+            lastNotified: notifMap.get(sale.id) || null,
+        }))
+        .filter((sale: any) => sale.customer !== null); // Ignorar ventas sin cliente
 
     return { data: enriched };
 }

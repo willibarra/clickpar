@@ -93,9 +93,8 @@ export async function bulkImportMotherAccounts(
         email?: string;
         password?: string;
         renewal_date?: string;
-        provider?: string;
+        supplier_name?: string;
         purchase_cost_gs?: number;
-        slot_price_gs?: number;
         max_slots?: number;
     }[],
     options: ImportOptions
@@ -125,9 +124,8 @@ export async function bulkImportMotherAccounts(
                             platform: row.platform,
                             password: row.password || undefined,
                             renewal_date: row.renewal_date || undefined,
-                            provider: row.provider || undefined,
+                            supplier_name: row.supplier_name || undefined,
                             purchase_cost_gs: row.purchase_cost_gs || undefined,
-                            slot_price_gs: row.slot_price_gs || undefined,
                         })
                         .eq('id', existing.id);
 
@@ -149,9 +147,8 @@ export async function bulkImportMotherAccounts(
                     email: row.email,
                     password: row.password || '',
                     renewal_date: row.renewal_date || null,
-                    provider: row.provider || null,
+                    supplier_name: row.supplier_name || null,
                     purchase_cost_gs: row.purchase_cost_gs || 0,
-                    slot_price_gs: row.slot_price_gs || 0,
                     max_slots: maxSlots,
                     status: 'active',
                 })

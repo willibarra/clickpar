@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AddAccountModal } from '@/components/inventory/add-account-modal';
 import { AddPlatformModal } from '@/components/inventory/add-platform-modal';
 import { InventoryView } from '@/components/inventory/inventory-view';
-import { InventoryDataActions } from '@/components/inventory/inventory-data-actions';
 import { TrashPanel } from '@/components/inventory/trash-panel';
 
 // Static platform colors
@@ -37,7 +36,9 @@ const statusLabels: Record<string, string> = {
     warranty_claim: 'Garantía',
 };
 
-export default async function InventoryPage() {
+export default async function InventoryPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+    const params = await searchParams;
+    const initialSearch = params.q || '';
     const supabase = await createAdminClient();
 
     // Fetch mother accounts with their slots (active only)
@@ -54,6 +55,21 @@ export default async function InventoryPage() {
     `)
         .is('deleted_at', null)
         .order('platform');
+
+    // Fetch active sales separately to get customer names/phones
+    const { data: activeSales } = await supabase
+        .from('sales')
+        .select('id, slot_id, is_active, end_date, customers(id, full_name, phone)')
+        .eq('is_active', true);
+
+    // Merge sales into slots
+    const enrichedAccounts = (accounts as any[] || []).map((account: any) => ({
+        ...account,
+        sale_slots: (account.sale_slots || []).map((slot: any) => ({
+            ...slot,
+            sales: (activeSales as any[] || []).filter((s: any) => s.slot_id === slot.id)
+        }))
+    }));
 
     // Fetch deleted (trash) accounts
     const { data: trashedAccounts } = await supabase
@@ -78,7 +94,6 @@ export default async function InventoryPage() {
                     <p className="text-muted-foreground">Gestiona tus cuentas madre y slots</p>
                 </div>
                 <div className="flex gap-2">
-                    <InventoryDataActions accounts={accounts || []} />
                     <AddPlatformModal />
                     <AddAccountModal />
                 </div>
@@ -133,9 +148,10 @@ export default async function InventoryPage() {
 
             {/* Accounts List/Grid View */}
             <InventoryView
-                accounts={accounts || []}
+                accounts={enrichedAccounts}
                 platformColors={platformColors}
                 statusColors={statusColors}
+                initialSearch={initialSearch}
             />
 
             {/* Trash Panel */}

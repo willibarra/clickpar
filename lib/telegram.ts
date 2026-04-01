@@ -269,8 +269,12 @@ export function mainMenuText(firstName: string): string {
 
 export const MAIN_MENU_BUTTONS: InlineButton[][] = [
     [
-        { text: '📦 Inventario', callback_data: 'cmd:inventario' },
+        { text: '📊 Dashboard', callback_data: 'cmd:dashboard' },
         { text: '📅 Vencimientos', callback_data: 'cmd:vencimientos' },
+    ],
+    [
+        { text: '📦 Inventario', callback_data: 'cmd:inventario' },
+        { text: '🏦 Cuentas Madres', callback_data: 'cmd:cuentas_madres' },
     ],
     [
         { text: '👤 Buscar cliente', callback_data: 'cmd:clientes' },

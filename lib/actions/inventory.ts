@@ -340,8 +340,10 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         message: `editó la cuenta de ${data.platform} (${data.email})${credentialsChanged ? ' — credenciales actualizadas' : ''}`
     });
 
-    // Si cambiaron las credenciales, notificar a los clientes con slots activos (no-bloqueante)
-    if (credentialsChanged) {
+    const notifyWhatsapp = formData.get('notify_whatsapp') !== 'false';
+
+    // Si cambiaron las credenciales y el usuario eligió notificar, se alerta a clientes con slots activos
+    if (credentialsChanged && notifyWhatsapp) {
         try {
             const { notifyAccountCredentialChange } = await import('@/lib/whatsapp');
             // No awaitar en producción para no bloquear la respuesta al usuario,
