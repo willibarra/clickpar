@@ -20,6 +20,11 @@ interface Platform {
     business_type?: string;
 }
 
+interface Supplier {
+    id: string;
+    name: string;
+}
+
 interface SlotEdit {
     id: string;
     slot_identifier: string;
@@ -48,6 +53,7 @@ interface Account {
         status?: string;
     }[];
     supplier_name?: string | null;
+    supplier_id?: string | null;
     supplier_phone?: string | null;
     invitation_url?: string | null;
     invite_address?: string | null;
@@ -75,6 +81,8 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [platforms, setPlatforms] = useState<Platform[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [selectedSupplierId, setSelectedSupplierId] = useState<string>(account.supplier_id || '');
     const [selectedPlatformType, setSelectedPlatformType] = useState<string>('');
     const [slotEdits, setSlotEdits] = useState<SlotEdit[]>([]);
     const [copiedPin, setCopiedPin] = useState<string | null>(null);
@@ -91,6 +99,9 @@ export function EditAccountModal({ account }: { account: Account }) {
     useEffect(() => {
         if (open) {
             fetchPlatforms();
+            // Reset first so fetchSuppliers can resolve correctly
+            setSelectedSupplierId('');
+            fetchSuppliers();
             initSlotEdits();
             setActiveTab('cuenta');
             setIsAutopay(account.is_autopay || false);
@@ -148,11 +159,29 @@ export function EditAccountModal({ account }: { account: Account }) {
         } else {
             const typedData = data as Platform[];
             setPlatforms(typedData);
-            // Set type for current account platform
             const match = typedData.find((p: Platform) => p.name === account.platform);
             const bType = match?.business_type || '';
             setSelectedPlatformType(bType);
             setNotifyWhatsapp(bType !== 'family_account');
+        }
+    }
+
+    async function fetchSuppliers() {
+        const supabase = createClient();
+        const { data } = await supabase.from('suppliers').select('id, name').order('name');
+        const list = (data as Supplier[]) || [];
+        setSuppliers(list);
+        // Resolve which supplier to pre-select:
+        // 1. Try to match by supplier_id (most accurate)
+        // 2. Fallback: match by supplier_name (handles inconsistent data)
+        const byId = account.supplier_id ? list.find(s => s.id === account.supplier_id) : null;
+        if (byId) {
+            setSelectedSupplierId(byId.id);
+        } else if (account.supplier_name) {
+            const byName = list.find(s => s.name === account.supplier_name);
+            setSelectedSupplierId(byName ? byName.id : '');
+        } else {
+            setSelectedSupplierId('');
         }
     }
 
@@ -680,29 +709,20 @@ export function EditAccountModal({ account }: { account: Account }) {
 
                             {/* Proveedor */}
                             <div className="border-t border-border/50 pt-4">
-                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Proveedor</p>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="supplier_name">Nombre Proveedor</Label>
-                                        <Input
-                                            id="supplier_name"
-                                            name="supplier_name"
-                                            type="text"
-                                            defaultValue={account.supplier_name || ''}
-                                            placeholder="Nombre del proveedor"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="supplier_phone">Número Proveedor</Label>
-                                        <Input
-                                            id="supplier_phone"
-                                            name="supplier_phone"
-                                            type="text"
-                                            defaultValue={account.supplier_phone || ''}
-                                            placeholder="+595 ..."
-                                        />
-                                    </div>
-                                </div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Proveedor</p>
+                                {/* Hidden inputs so formData picks them up */}
+                                <input type="hidden" name="supplier_id" value={selectedSupplierId} />
+                                <input type="hidden" name="supplier_name" value={suppliers.find(s => s.id === selectedSupplierId)?.name || ''} />
+                                <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccionar proveedor" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {suppliers.map(s => (
+                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             {/* Autopay */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Edit3 } from 'lucide-react';
 import { bulkUpdateMotherAccounts } from '@/lib/actions/inventory';
+import { createClient } from '@/lib/supabase/client';
 
 interface BulkEditModalProps {
     open: boolean;
@@ -20,6 +21,11 @@ interface BulkEditModalProps {
 interface FieldState<T> {
     enabled: boolean;
     value: T;
+}
+
+interface Supplier {
+    id: string;
+    name: string;
 }
 
 function FieldToggle({ label, enabled, onToggle, children }: {
@@ -50,18 +56,32 @@ function FieldToggle({ label, enabled, onToggle, children }: {
 export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEditModalProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     const [status, setStatus] = useState<FieldState<string>>({ enabled: false, value: 'active' });
     const [renewalDate, setRenewalDate] = useState<FieldState<string>>({ enabled: false, value: '' });
-    const [supplierName, setSupplierName] = useState<FieldState<string>>({ enabled: false, value: '' });
-    const [supplierPhone, setSupplierPhone] = useState<FieldState<string>>({ enabled: false, value: '' });
+    // Supplier: store id + name together
+    const [supplier, setSupplier] = useState<FieldState<{ id: string; name: string }>>({
+        enabled: false,
+        value: { id: '', name: '' },
+    });
     const [costUsdt, setCostUsdt] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [costGs, setCostGs] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [salePrice, setSalePrice] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [notes, setNotes] = useState<FieldState<string>>({ enabled: false, value: '' });
     const [maxSlots, setMaxSlots] = useState<FieldState<string>>({ enabled: false, value: '' });
 
-    const anyEnabled = [status, renewalDate, supplierName, supplierPhone, costUsdt, costGs, salePrice, notes, maxSlots].some(f => f.enabled);
+    const anyEnabled = [status, renewalDate, supplier, costUsdt, costGs, salePrice, notes, maxSlots].some(f => f.enabled);
+
+    // Load suppliers when dialog opens
+    useEffect(() => {
+        if (open && suppliers.length === 0) {
+            const supabase = createClient();
+            supabase.from('suppliers').select('id, name').order('name').then(({ data }) => {
+                setSuppliers((data as Supplier[]) || []);
+            });
+        }
+    }, [open]);
 
     function toggle<T>(setter: React.Dispatch<React.SetStateAction<FieldState<T>>>) {
         setter(prev => ({ ...prev, enabled: !prev.enabled }));
@@ -77,8 +97,10 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
         const fields: Parameters<typeof bulkUpdateMotherAccounts>[1] = {};
         if (status.enabled) fields.status = status.value;
         if (renewalDate.enabled && renewalDate.value) fields.renewal_date = renewalDate.value;
-        if (supplierName.enabled) fields.supplier_name = supplierName.value || null;
-        if (supplierPhone.enabled) fields.supplier_phone = supplierPhone.value || null;
+        if (supplier.enabled) {
+            fields.supplier_id = supplier.value.id || null;
+            fields.supplier_name = supplier.value.name || null;
+        }
         if (costUsdt.enabled) fields.purchase_cost_usdt = parseFloat(costUsdt.value) || 0;
         if (costGs.enabled) fields.purchase_cost_gs = parseFloat(costGs.value) || 0;
         if (salePrice.enabled) fields.sale_price_gs = parseFloat(salePrice.value) || null;
@@ -102,8 +124,7 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
         setError(null);
         setStatus({ enabled: false, value: 'active' });
         setRenewalDate({ enabled: false, value: '' });
-        setSupplierName({ enabled: false, value: '' });
-        setSupplierPhone({ enabled: false, value: '' });
+        setSupplier({ enabled: false, value: { id: '', name: '' } });
         setCostUsdt({ enabled: false, value: '' });
         setCostGs({ enabled: false, value: '' });
         setSalePrice({ enabled: false, value: '' });
@@ -189,25 +210,31 @@ export function BulkEditModal({ open, onClose, selectedIds, onSuccess }: BulkEdi
                             />
                         </FieldToggle>
 
-                        {/* Proveedor */}
-                        <FieldToggle label="Nombre de Proveedor" enabled={supplierName.enabled} onToggle={() => toggle(setSupplierName)}>
-                            <Input
-                                type="text"
-                                placeholder="Nombre del proveedor"
-                                value={supplierName.value}
-                                onChange={(e) => setSupplierName(p => ({ ...p, value: e.target.value }))}
-                                className="bg-background"
-                            />
-                        </FieldToggle>
-
-                        <FieldToggle label="Teléfono de Proveedor" enabled={supplierPhone.enabled} onToggle={() => toggle(setSupplierPhone)}>
-                            <Input
-                                type="text"
-                                placeholder="+595..."
-                                value={supplierPhone.value}
-                                onChange={(e) => setSupplierPhone(p => ({ ...p, value: e.target.value }))}
-                                className="bg-background"
-                            />
+                        {/* Proveedor — SELECT from DB */}
+                        <FieldToggle label="Proveedor" enabled={supplier.enabled} onToggle={() => toggle(setSupplier)}>
+                            <Select
+                                value={supplier.value.id}
+                                onValueChange={(id) => {
+                                    const found = suppliers.find(s => s.id === id);
+                                    setSupplier(p => ({
+                                        ...p,
+                                        value: { id, name: found?.name || '' },
+                                    }));
+                                }}
+                            >
+                                <SelectTrigger className="bg-background">
+                                    <SelectValue placeholder="Seleccionar proveedor..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {suppliers.length === 0 ? (
+                                        <SelectItem value="_loading" disabled>Cargando...</SelectItem>
+                                    ) : (
+                                        suppliers.map(s => (
+                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                        ))
+                                    )}
+                                </SelectContent>
+                            </Select>
                         </FieldToggle>
 
                         {/* Máx. Slots */}

@@ -298,6 +298,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         max_slots: isNaN(parsedMaxSlots) ? 1 : Math.max(1, parsedMaxSlots),
         status: formData.get('status') as string || 'active',
         supplier_name: (formData.get('supplier_name') as string) || null,
+        supplier_id: (formData.get('supplier_id') as string) || null,
         supplier_phone: (formData.get('supplier_phone') as string) || null,
         invitation_url: (formData.get('invitation_url') as string) || null,
         invite_address: (formData.get('invite_address') as string) || null,
@@ -700,6 +701,7 @@ export async function bulkUpdateMotherAccounts(
     fields: {
         status?: string;
         renewal_date?: string;
+        supplier_id?: string | null;
         supplier_name?: string | null;
         supplier_phone?: string | null;
         purchase_cost_usdt?: number | null;
@@ -720,6 +722,7 @@ export async function bulkUpdateMotherAccounts(
         update.renewal_date = fields.renewal_date;
         update.target_billing_day = new Date(fields.renewal_date + 'T12:00:00').getDate();
     }
+    if (fields.supplier_id !== undefined) update.supplier_id = fields.supplier_id || null;
     if (fields.supplier_name !== undefined) update.supplier_name = fields.supplier_name || null;
     if (fields.supplier_phone !== undefined) update.supplier_phone = fields.supplier_phone || null;
     if (fields.purchase_cost_usdt !== undefined) update.purchase_cost_usdt = fields.purchase_cost_usdt ?? 0;
@@ -741,6 +744,7 @@ export async function bulkUpdateMotherAccounts(
     });
 
     revalidatePath('/inventory');
+    revalidatePath('/proveedores');
     return { success: true, updated: ids.length };
 }
 

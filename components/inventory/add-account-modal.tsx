@@ -24,6 +24,11 @@ interface Platform {
     slot_label: string;
 }
 
+interface Supplier {
+    id: string;
+    name: string;
+}
+
 interface CustomSlot {
     name: string;
     pin: string;
@@ -118,6 +123,8 @@ export function AddAccountModal() {
     const [rateInput, setRateInput] = useState('');
 
     // Controlled supplier + sale price (needed for copy last record)
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
     const [supplierName, setSupplierName] = useState('');
     const [supplierPhone, setSupplierPhone] = useState('');
     const [salePriceGs, setSalePriceGs] = useState('');
@@ -137,6 +144,7 @@ export function AddAccountModal() {
     useEffect(() => {
         if (open) {
             fetchPlatforms();
+            fetchSuppliers();
             setError(null);
             setSelectedPlatform(null);
             setSelectedPlatformName('');
@@ -161,6 +169,7 @@ export function AddAccountModal() {
             setBulkResult(null);
             setSupplierName('');
             setSupplierPhone('');
+            setSelectedSupplierId('');
             setSalePriceGs('');
             setCopiedFlash(false);
             const defaultSlots = 5;
@@ -199,6 +208,12 @@ export function AddAccountModal() {
         } else {
             setPlatforms(data);
         }
+    }
+
+    async function fetchSuppliers() {
+        const supabase = createClient();
+        const { data } = await supabase.from('suppliers').select('id, name').order('name');
+        setSuppliers((data as Supplier[]) || []);
     }
 
     async function handleCopyLastRecord() {
@@ -897,30 +912,28 @@ export function AddAccountModal() {
                             </div>
                         )}
 
-                        {/* Row 5: Supplier Name + Supplier Phone */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="supplier_name">Nombre Proveedor</Label>
-                                <Input
-                                    id="supplier_name"
-                                    name="supplier_name"
-                                    type="text"
-                                    placeholder="Nombre del proveedor"
-                                    value={supplierName}
-                                    onChange={(e) => setSupplierName(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="supplier_phone">Número Proveedor</Label>
-                                <Input
-                                    id="supplier_phone"
-                                    name="supplier_phone"
-                                    type="text"
-                                    placeholder="+595 ..."
-                                    value={supplierPhone}
-                                    onChange={(e) => setSupplierPhone(e.target.value)}
-                                />
-                            </div>
+                        {/* Row 5: Supplier Select */}
+                        <div className="space-y-2">
+                            <Label>Proveedor</Label>
+                            {/* Hidden inputs carry supplier_id and supplier_name through formData */}
+                            <input type="hidden" name="supplier_id" value={selectedSupplierId} />
+                            <input type="hidden" name="supplier_name" value={supplierName} />
+                            <Select
+                                value={selectedSupplierId}
+                                onValueChange={(val) => {
+                                    setSelectedSupplierId(val);
+                                    setSupplierName(suppliers.find(s => s.id === val)?.name || '');
+                                }}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar proveedor" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {suppliers.map(s => (
+                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Slot customization section */}

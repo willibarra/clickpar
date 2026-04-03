@@ -41,34 +41,41 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     const initialSearch = params.q || '';
     const supabase = await createAdminClient();
 
-    // Fetch mother accounts with their slots (active only)
+    // Step 1: Fetch mother accounts with slots
     const { data: accounts } = await supabase
         .from('mother_accounts')
-        .select(`
-      *,
-      sale_slots (
-        id,
-        status,
-        slot_identifier,
-        pin_code
-      )
-    `)
+        .select(`*, sale_slots (id, status, slot_identifier, pin_code)`)
         .is('deleted_at', null)
         .order('platform');
 
-    // Fetch active sales separately to get customer names/phones
+    // Step 2: Fetch active sales (plain — PostgREST FK not registered for customers join)
     const { data: activeSales } = await supabase
         .from('sales')
-        .select('id, slot_id, is_active, end_date, customers(id, full_name, phone)')
+        .select('id, slot_id, customer_id, start_date, end_date')
         .eq('is_active', true);
 
-    // Merge sales into slots
+    // Step 3: Fetch all customers as a lookup map (simpler and reliable vs .in with 1000+ IDs)
+    const { data: allCustomers } = await supabase
+        .from('customers')
+        .select('id, full_name, phone');
+    const customerMap: Record<string, { id: string; full_name: string | null; phone: string | null }> =
+        Object.fromEntries((allCustomers || []).map((c: any) => [c.id, c]));
+
+    // Build sale lookup map by slot_id for O(1) merge
+    const saleBySlot: Record<string, any> = Object.fromEntries(
+        ((activeSales || []) as any[]).map((s: any) => [s.slot_id, s])
+    );
+
+    // Merge: slot + sale + customer
     const enrichedAccounts = (accounts as any[] || []).map((account: any) => ({
         ...account,
-        sale_slots: (account.sale_slots || []).map((slot: any) => ({
-            ...slot,
-            sales: (activeSales as any[] || []).filter((s: any) => s.slot_id === slot.id)
-        }))
+        sale_slots: (account.sale_slots || []).map((slot: any) => {
+            const sale = saleBySlot[slot.id];
+            return {
+                ...slot,
+                sales: sale ? [{ ...sale, customers: customerMap[sale.customer_id] || null }] : [],
+            };
+        }),
     }));
 
     // Fetch deleted (trash) accounts

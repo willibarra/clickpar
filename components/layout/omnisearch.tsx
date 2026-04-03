@@ -18,22 +18,22 @@ export function OmniSearch() {
         setQuery(urlQuery);
     }, [searchParams]);
 
-    // Debounced navigation to dashboard with search param
+    // Debounced navigation to inventory with search param
     const handleSearch = (value: string) => {
         setQuery(value);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
             if (value.trim().length >= 2) {
-                router.push(`/?q=${encodeURIComponent(value.trim())}`);
-            } else if (value.trim().length === 0 && pathname === '/') {
-                router.push('/');
+                router.push(`/inventory?q=${encodeURIComponent(value.trim())}`);
+            } else if (value.trim().length === 0 && pathname === '/inventory') {
+                router.push('/inventory');
             }
         }, 300);
     };
 
     const handleClear = () => {
         setQuery('');
-        router.push('/');
+        if (pathname.startsWith('/inventory')) router.push('/inventory');
         inputRef.current?.focus();
     };
 

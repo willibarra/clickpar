@@ -595,32 +595,44 @@ export async function swapService(data: SwapServiceData) {
 
                 if (customer && newSlotInfo?.mother_accounts) {
                     const acct = newSlotInfo.mother_accounts;
-                    // Usar fecha de vencimiento original del cliente, no recalcular
-                    const expDateStr = originalEndDate
-                        ? new Date(originalEndDate + 'T12:00:00').toLocaleDateString('es-PY')
-                        : new Date(Date.now() + 30 * 86400000).toLocaleDateString('es-PY');
 
-                    await sendSaleCredentials({
-                        customerPhone: customer.phone || data.customerId,
-                        customerName: customer.full_name || customer.phone,
-                        platform: acct.platform || newPlatform,
-                        email: acct.email || '',
-                        password: acct.password || '',
-                        profile: newSlotInfo.slot_identifier || 'Perfil asignado',
-                        pin: newSlotInfo.pin_code || undefined,
-                        expirationDate: expDateStr,
-                        customerId: data.customerId,
-                        instanceName: customer.whatsapp_instance || undefined,
-                    });
+                    // Verificar si la plataforma es de tipo FAMILIA — no enviar en cambios
+                    const { data: platData } = await (supabase.from('platforms') as any)
+                        .select('business_type')
+                        .eq('name', acct.platform)
+                        .single();
+                    const isFamilySwap = platData?.business_type === 'family_account';
 
-                    if (acct.send_instructions && acct.instructions) {
-                        await new Promise(r => setTimeout(r, 1500));
-                        const { sendText } = await import('@/lib/whatsapp');
-                        await sendText(
-                            customer.phone,
-                            `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
-                            { instanceName: customer.whatsapp_instance || undefined, customerId: data.customerId }
-                        );
+                    if (isFamilySwap) {
+                        console.log('[WhatsApp/Swap] Cuenta FAMILIA — omitiendo mensaje automático de cambio');
+                    } else {
+                        // Usar fecha de vencimiento original del cliente, no recalcular
+                        const expDateStr = originalEndDate
+                            ? new Date(originalEndDate + 'T12:00:00').toLocaleDateString('es-PY')
+                            : new Date(Date.now() + 30 * 86400000).toLocaleDateString('es-PY');
+
+                        await sendSaleCredentials({
+                            customerPhone: customer.phone || data.customerId,
+                            customerName: customer.full_name || customer.phone,
+                            platform: acct.platform || newPlatform,
+                            email: acct.email || '',
+                            password: acct.password || '',
+                            profile: newSlotInfo.slot_identifier || 'Perfil asignado',
+                            pin: newSlotInfo.pin_code || undefined,
+                            expirationDate: expDateStr,
+                            customerId: data.customerId,
+                            instanceName: customer.whatsapp_instance || undefined,
+                        });
+
+                        if (acct.send_instructions && acct.instructions) {
+                            await new Promise(r => setTimeout(r, 1500));
+                            const { sendText } = await import('@/lib/whatsapp');
+                            await sendText(
+                                customer.phone,
+                                `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
+                                { instanceName: customer.whatsapp_instance || undefined, customerId: data.customerId }
+                            );
+                        }
                     }
                 }
             }
@@ -1421,19 +1433,32 @@ export async function extendSale(data: ExtendSaleData) {
                     .single();
 
                 if (saleInfo?.customers?.phone) {
-                    const { sendText } = await import('@/lib/whatsapp');
-                    const customer = saleInfo.customers as any;
                     const slot = saleInfo.sale_slots as any;
-                    const platform = slot?.mother_accounts?.platform || 'tu servicio';
-                    const expDateStr = new Date(newEndDate + 'T12:00:00').toLocaleDateString('es-PY', {
-                        day: '2-digit', month: 'long', year: 'numeric'
-                    });
+                    const platformName = slot?.mother_accounts?.platform || '';
 
-                    await sendText(
-                        customer.phone,
-                        `✅ *Extensión de servicio confirmada*\n\n🎬 *Plataforma:* ${platform}\n📅 *Nueva fecha de vencimiento:* ${expDateStr}\n\n¡Gracias por tu confianza! 🙌`,
-                        { instanceName: customer.whatsapp_instance || undefined, customerId: saleInfo.customer_id }
-                    );
+                    // Verificar si es cuenta FAMILIA — no enviar en renovaciones/extensiones
+                    const { data: platData } = await (supabase.from('platforms') as any)
+                        .select('business_type')
+                        .eq('name', platformName)
+                        .single();
+                    const isFamilyExtend = platData?.business_type === 'family_account';
+
+                    if (isFamilyExtend) {
+                        console.log('[WhatsApp/Extend] Cuenta FAMILIA — omitiendo mensaje automático de extensión');
+                    } else {
+                        const { sendText } = await import('@/lib/whatsapp');
+                        const customer = saleInfo.customers as any;
+                        const platform = platformName || 'tu servicio';
+                        const expDateStr = new Date(newEndDate + 'T12:00:00').toLocaleDateString('es-PY', {
+                            day: '2-digit', month: 'long', year: 'numeric'
+                        });
+
+                        await sendText(
+                            customer.phone,
+                            `✅ *Extensión de servicio confirmada*\n\n🎬 *Plataforma:* ${platform}\n📅 *Nueva fecha de vencimiento:* ${expDateStr}\n\n¡Gracias por tu confianza! 🙌`,
+                            { instanceName: customer.whatsapp_instance || undefined, customerId: saleInfo.customer_id }
+                        );
+                    }
                 }
             }
         } catch (waError) {

@@ -23,11 +23,11 @@ export default async function DashboardLayout({
         <RealtimeProvider>
             <AttendanceTracker />
             <div className="flex min-h-screen bg-background">
-                {/* Sidebar */}
+                {/* Sidebar (renders its own spacer for dynamic width) */}
                 <Sidebar />
 
                 {/* Main Content Area */}
-                <div className="ml-20 flex flex-1 flex-col">
+                <div className="flex flex-1 flex-col min-w-0">
                     {/* Header */}
                     <Header />
 

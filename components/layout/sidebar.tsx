@@ -19,7 +19,7 @@ import {
   Store,
   Inbox,
   TicketCheck,
-  AlertTriangle,
+  Truck,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -35,17 +35,28 @@ const allNavItems = [
   { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
   { href: '/statistics', label: 'Estadísticas', icon: BarChart3, adminOnly: true },
   { href: '/automatizaciones', label: 'Automatizaciones', icon: Zap, adminOnly: true },
+  { href: '/proveedores', label: 'Proveedores', icon: Truck, adminOnly: true },
   { href: '/resellers', label: 'Revendedores', icon: Store, adminOnly: true },
   { href: '/stock-requests', label: 'Solicitudes Stock', icon: Inbox, adminOnly: true },
   { href: '/settings', label: 'Configuración', icon: Settings, adminOnly: true },
 ];
 
+// Collapsed width in pixels
+const COLLAPSED_W = 72;
+// Expanded width in pixels
+const EXPANDED_W = 240;
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [userRole, setUserRole] = useState<string>('super_admin');
+  const [hovered, setHovered] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -72,65 +83,170 @@ export function Sidebar() {
     router.refresh();
   };
 
+  // Prevent hydration flicker
+  if (!mounted) {
+    return (
+      <div style={{ width: COLLAPSED_W, flexShrink: 0 }} aria-hidden="true" />
+    );
+  }
+
+  const expanded = hovered;
+
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-20 flex-col items-center border-r border-border bg-sidebar py-6">
-      {/* Logo */}
-      <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-xl bg-[#86EFAC]">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          className="h-7 w-7 text-black"
-          stroke="currentColor"
-          strokeWidth="2"
+    <>
+      {/* Sidebar */}
+      <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: expanded ? EXPANDED_W : COLLAPSED_W,
+          transition: 'width 280ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-sidebar py-5 overflow-hidden"
+      >
+        {/* Logo row */}
+        <div
+          className={cn(
+            'flex items-center px-3 mb-6',
+            expanded ? 'justify-start' : 'justify-center'
+          )}
         >
-          <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex flex-1 flex-col items-center gap-2">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href));
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'group relative flex h-12 w-12 items-center justify-center rounded-xl transition-all duration-200',
-                isActive
-                  ? 'bg-[#86EFAC] text-black'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-              )}
+          {/* Logo icon */}
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#86EFAC]">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-6 w-6 text-black"
+              stroke="currentColor"
+              strokeWidth="2"
             >
-              <item.icon className="h-5 w-5" />
-              {/* Tooltip */}
-              <span className="absolute left-16 z-50 hidden rounded-md bg-popover px-2 py-1 text-sm text-popover-foreground shadow-md group-hover:block">
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
+              <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
 
-      {/* User Avatar & Logout */}
-      <div className="mt-auto flex flex-col items-center gap-4">
-        <button
-          onClick={handleLogout}
-          className="group relative flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-red-500/20 hover:text-red-500"
-        >
-          <LogOut className="h-5 w-5" />
-          <span className="absolute left-16 z-50 hidden rounded-md bg-popover px-2 py-1 text-sm text-popover-foreground shadow-md group-hover:block">
-            Cerrar sesión
+          {/* App name — fades in when expanded */}
+          <span
+            style={{
+              opacity: expanded ? 1 : 0,
+              width: expanded ? 'auto' : 0,
+              marginLeft: expanded ? '12px' : 0,
+              transition: 'opacity 200ms ease, margin 280ms ease',
+              overflow: 'hidden',
+            }}
+            className="whitespace-nowrap text-sm font-semibold tracking-wide text-foreground"
+          >
+            ClickPar
           </span>
-        </button>
-        <Avatar className="h-10 w-10 border-2 border-[#86EFAC]">
-          <AvatarImage src="/avatar.jpg" alt="User" />
-          <AvatarFallback className="bg-[#F97316] text-white">CP</AvatarFallback>
-        </Avatar>
-      </div>
-    </aside>
+        </div>
+
+        {/* Divider */}
+        <div className="mx-3 mb-4 h-px bg-border/60" />
+
+        {/* Navigation */}
+        <nav className="flex flex-1 flex-col gap-1 px-2 overflow-y-auto overflow-x-hidden">
+          {navItems.map((item) => {
+            const isActive =
+              pathname === item.href ||
+              (item.href !== '/' && pathname.startsWith(item.href));
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'relative flex h-10 items-center gap-3 rounded-xl px-3 select-none',
+                  'transition-colors duration-150',
+                  isActive
+                    ? 'bg-[#86EFAC]/15 text-[#86EFAC]'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                )}
+              >
+                {/* Active indicator bar */}
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#86EFAC]" />
+                )}
+
+                <item.icon
+                  className={cn(
+                    'h-[18px] w-[18px] flex-shrink-0',
+                    isActive ? 'text-[#86EFAC]' : ''
+                  )}
+                />
+
+                {/* Label */}
+                <span
+                  style={{
+                    opacity: expanded ? 1 : 0,
+                    maxWidth: expanded ? '160px' : 0,
+                    transition: 'opacity 180ms ease, max-width 280ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    overflow: 'hidden',
+                  }}
+                  className="whitespace-nowrap text-sm font-medium"
+                >
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Divider */}
+        <div className="mx-3 my-3 h-px bg-border/60" />
+
+        {/* User section */}
+        <div className="flex flex-col gap-1 px-2">
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className={cn(
+              'relative flex h-10 w-full items-center gap-3 rounded-xl px-3',
+              'text-muted-foreground transition-colors hover:bg-red-500/15 hover:text-red-400'
+            )}
+          >
+            <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
+            <span
+              style={{
+                opacity: expanded ? 1 : 0,
+                maxWidth: expanded ? '160px' : 0,
+                transition: 'opacity 180ms ease, max-width 280ms cubic-bezier(0.4, 0, 0.2, 1)',
+                overflow: 'hidden',
+              }}
+              className="whitespace-nowrap text-sm font-medium"
+            >
+              Cerrar sesión
+            </span>
+          </button>
+
+          {/* Avatar row */}
+          <div
+            className={cn(
+              'flex items-center gap-3 rounded-xl px-3 py-2',
+              !expanded && 'justify-center'
+            )}
+          >
+            <Avatar className="h-8 w-8 flex-shrink-0 border-2 border-[#86EFAC]/50">
+              <AvatarImage src="/avatar.jpg" alt="User" />
+              <AvatarFallback className="bg-[#F97316] text-white text-xs">CP</AvatarFallback>
+            </Avatar>
+
+            <div
+              style={{
+                opacity: expanded ? 1 : 0,
+                maxWidth: expanded ? '140px' : 0,
+                transition: 'opacity 180ms ease, max-width 280ms cubic-bezier(0.4, 0, 0.2, 1)',
+                overflow: 'hidden',
+              }}
+              className="flex flex-col min-w-0"
+            >
+              <span className="truncate text-xs font-semibold text-foreground">Admin</span>
+              <span className="truncate text-[11px] text-muted-foreground">ClickPar</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Static spacer — always collapsed width so content never shifts */}
+      <div style={{ width: COLLAPSED_W, flexShrink: 0 }} aria-hidden="true" />
+    </>
   );
 }
-

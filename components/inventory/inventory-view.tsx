@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Package, LayoutGrid, List, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search, Copy, Check, Filter, Edit3, X, Tag } from 'lucide-react';
 import { EditAccountModal } from '@/components/inventory/edit-account-modal';
 import { SlotDetailsModal } from '@/components/inventory/slot-details-modal';
+import { SlotActionsDropdown } from '@/components/inventory/slot-actions-dropdown';
 import { AddAccountModal } from '@/components/inventory/add-account-modal';
 import { PlatformIcon } from '@/components/ui/platform-icon';
 import { BulkEditModal } from '@/components/inventory/bulk-edit-modal';
@@ -22,6 +23,7 @@ interface Slot {
     pin_code: string | null;
     sales?: Array<{
         id: string;
+        start_date: string | null;
         end_date: string | null;
         is_active: boolean;
         customers: { id: string; full_name: string | null; phone: string | null } | null;
@@ -87,6 +89,28 @@ function formatRelativeDate(dateStr: string, label: 'past' | 'future') {
     return `en ${diff}d · ${abs}`;
 }
 
+/** Returns only the relative part: "hace 14d", "en 17d", "hoy" */
+function formatRelativeOnly(dateStr: string, label: 'past' | 'future'): string {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T12:00:00');
+    const diff = daysBetween(today, d);
+    if (label === 'past') {
+        if (diff === 0) return 'hoy';
+        if (diff < 0) return `hace ${Math.abs(diff)}d`;
+        return `en ${diff}d`;
+    }
+    if (diff < 0) return `venció hace ${Math.abs(diff)}d`;
+    if (diff === 0) return 'vence hoy';
+    return `en ${diff}d`;
+}
+
+/** Returns absolute date string: "18 abr." */
+function formatAbsDate(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('es-PY', { day: 'numeric', month: 'short' });
+}
+
 /** Returns tailwind text colour class based on expiry proximity */
 function expiryColor(dateStr: string): string {
     const today = new Date();
@@ -126,15 +150,49 @@ function CopyableEmail({ email, supplierName }: { email: string; supplierName?: 
     );
 }
 
+function CopyablePassword({ password }: { password: string }) {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = async () => {
+        await navigator.clipboard.writeText(password);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+    };
+    return (
+        <button
+            onClick={handleCopy}
+            className="group flex items-center gap-1 text-xs text-muted-foreground/50 font-mono tracking-wide hover:text-muted-foreground/80 transition-colors cursor-pointer"
+            title="Click para copiar contraseña"
+        >
+            <span>{password}</span>
+            {copied ? (
+                <Check className="h-3 w-3 text-green-400 flex-shrink-0" />
+            ) : (
+                <Copy className="h-3 w-3 opacity-0 group-hover:opacity-50 flex-shrink-0 transition-opacity" />
+            )}
+        </button>
+    );
+}
+
 // ── Main component ───────────────────────────────
 
 export function InventoryView({ accounts, platformColors, statusColors, initialSearch }: InventoryViewProps) {
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
     const [searchQuery, setSearchQuery] = useState(initialSearch || '');
-    const [platformFilter, setPlatformFilter] = useState<string>('all');
-    const [supplierFilter, setSupplierFilter] = useState<string>('all');
+    const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
+    // ── Filters ──────────────────────────────────
+    const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
+    const [supplierFilter, setSupplierFilter] = useState<Set<string>>(new Set());
+    const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+    const [saleTypeFilter, setSaleTypeFilter] = useState<Set<string>>(new Set());
+    const [availabilityFilter, setAvailabilityFilter] = useState<string>('all');
+    const [renewalRangeFilter, setRenewalRangeFilter] = useState<string>('all');
+
+    // ── Sort ─────────────────────────────────────
     const [sortField, setSortField] = useState<SortField>('platform');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+    // ── Pagination ───────────────────────────────
     const [pageSize, setPageSize] = useState<number>(30);
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -165,80 +223,139 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
 
     function clearSelection() { setSelectedIds(new Set()); }
 
-    // Extract unique platforms for filter pills
+    function resetAllFilters() {
+        setPlatformFilter(new Set());
+        setSupplierFilter(new Set());
+        setStatusFilter(new Set());
+        setSaleTypeFilter(new Set());
+        setAvailabilityFilter('all');
+        setRenewalRangeFilter('all');
+        setSearchQuery('');
+        setCurrentPage(1);
+    }
+
+    function toggleFilter<T>(setter: React.Dispatch<React.SetStateAction<Set<T>>>, value: T) {
+        setter(prev => {
+            const next = new Set(prev);
+            if (next.has(value)) next.delete(value);
+            else next.add(value);
+            return next;
+        });
+        setCurrentPage(1);
+    }
+
+    // ── Derived lists ─────────────────────────────
     const platforms = useMemo(() => {
         const set = new Set(accounts.map(a => a.platform));
         return Array.from(set).sort();
     }, [accounts]);
 
-    // Extract unique suppliers for filter pills
-    const suppliers = useMemo(() => {
-        const set = new Set(
-            accounts
-                .map(a => a.supplier_name)
-                .filter((s): s is string => !!s)
-        );
-        return Array.from(set).sort();
-    }, [accounts]);
-
-    // Suppliers filtered by active platform selection
     const suppliersForCurrentPlatform = useMemo(() => {
-        const base = platformFilter === 'all' ? accounts : accounts.filter(a => a.platform === platformFilter);
-        const set = new Set(
-            base.map(a => a.supplier_name).filter((s): s is string => !!s)
-        );
+        const base = platformFilter.size === 0 ? accounts : accounts.filter(a => platformFilter.has(a.platform));
+        const set = new Set(base.map(a => a.supplier_name).filter((s): s is string => !!s));
         return Array.from(set).sort();
     }, [accounts, platformFilter]);
 
-    // Filter accounts based on search + platform + supplier
+    const saleTypes = useMemo(() => {
+        const set = new Set(accounts.map(a => a.sale_type).filter((s): s is string => !!s));
+        return Array.from(set).sort();
+    }, [accounts]);
+
+    // Count of active filters (for badge)
+    const activeFilterCount = useMemo(() => {
+        let n = 0;
+        if (platformFilter.size > 0) n += platformFilter.size;
+        if (supplierFilter.size > 0) n += supplierFilter.size;
+        if (statusFilter.size > 0) n += statusFilter.size;
+        if (saleTypeFilter.size > 0) n += saleTypeFilter.size;
+        if (availabilityFilter !== 'all') n++;
+        if (renewalRangeFilter !== 'all') n++;
+        if (searchQuery.trim()) n++;
+        return n;
+    }, [platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter, searchQuery]);
+
+    // ── Filtering ────────────────────────────────
     const filteredAccounts = useMemo(() => {
         let result = accounts;
-        if (platformFilter !== 'all') {
-            result = result.filter(a => a.platform === platformFilter);
+        if (platformFilter.size > 0)
+            result = result.filter(a => platformFilter.has(a.platform));
+        if (supplierFilter.size > 0)
+            result = result.filter(a => supplierFilter.has(a.supplier_name ?? ''));
+        if (statusFilter.size > 0) {
+            result = result.filter(a => {
+                const s = a.status || 'active';
+                // If 'active' is in the set, also match accounts with no status
+                if (statusFilter.has('active') && (!a.status || a.status === 'active')) return true;
+                return statusFilter.has(s);
+            });
         }
-        if (supplierFilter !== 'all') {
-            result = result.filter(a => a.supplier_name === supplierFilter);
+        if (saleTypeFilter.size > 0)
+            result = result.filter(a => saleTypeFilter.has(a.sale_type ?? ''));
+        if (availabilityFilter === 'with_free')
+            result = result.filter(a => (a.sale_slots?.filter(s => s.status === 'available').length || 0) > 0);
+        else if (availabilityFilter === 'without_free')
+            result = result.filter(a => (a.sale_slots?.filter(s => s.status === 'available').length || 0) === 0);
+        if (renewalRangeFilter !== 'all') {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const weekAhead = new Date(today); weekAhead.setDate(today.getDate() + 7);
+            const monthAhead = new Date(today); monthAhead.setDate(today.getDate() + 30);
+            result = result.filter(a => {
+                const renewal = new Date(a.renewal_date + 'T12:00:00');
+                if (renewalRangeFilter === 'expired') return renewal < today;
+                if (renewalRangeFilter === 'this_week') return renewal >= today && renewal <= weekAhead;
+                if (renewalRangeFilter === 'this_month') return renewal >= today && renewal <= monthAhead;
+                return true;
+            });
         }
         if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            result = result.filter(account =>
-                account.platform.toLowerCase().includes(query) ||
-                account.email.toLowerCase().includes(query)
-            );
+            const q = searchQuery.toLowerCase();
+            result = result.filter(a => {
+                // Match on account-level fields
+                if (a.platform.toLowerCase().includes(q)) return true;
+                if (a.email.toLowerCase().includes(q)) return true;
+                // Match on slot-level fields (pantalla/slot_identifier)
+                if (a.sale_slots?.some((s: any) =>
+                    s.slot_identifier?.toLowerCase().includes(q)
+                )) return true;
+                // Match on customer fields (nombre, teléfono)
+                if (a.sale_slots?.some((s: any) =>
+                    s.sales?.some((sale: any) =>
+                        sale.customers?.full_name?.toLowerCase().includes(q) ||
+                        sale.customers?.phone?.toLowerCase().includes(q)
+                    )
+                )) return true;
+                return false;
+            });
         }
         return result;
-    }, [accounts, searchQuery, platformFilter, supplierFilter]);
+    }, [accounts, searchQuery, platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter]);
 
-    // Sort accounts
+    // ── Sorting ──────────────────────────────────
     const sortedAccounts = useMemo(() => {
         return [...filteredAccounts].sort((a, b) => {
             let comparison = 0;
             switch (sortField) {
                 case 'platform':
-                    comparison = a.platform.localeCompare(b.platform);
-                    break;
+                    comparison = a.platform.localeCompare(b.platform); break;
                 case 'email':
-                    comparison = a.email.localeCompare(b.email);
-                    break;
-                case 'available':
-                    const aAvailable = a.sale_slots?.filter(s => s.status === 'available').length || 0;
-                    const bAvailable = b.sale_slots?.filter(s => s.status === 'available').length || 0;
-                    comparison = aAvailable - bAvailable;
-                    break;
+                    comparison = a.email.localeCompare(b.email); break;
+                case 'available': {
+                    const aA = a.sale_slots?.filter(s => s.status === 'available').length || 0;
+                    const bA = b.sale_slots?.filter(s => s.status === 'available').length || 0;
+                    comparison = aA - bA; break;
+                }
                 case 'renewal_date':
-                    comparison = new Date(a.renewal_date + 'T12:00:00').getTime() - new Date(b.renewal_date + 'T12:00:00').getTime();
-                    break;
+                    comparison = new Date(a.renewal_date + 'T12:00:00').getTime() - new Date(b.renewal_date + 'T12:00:00').getTime(); break;
                 case 'created_at':
-                    comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-                    break;
+                    comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); break;
             }
             return sortDirection === 'asc' ? comparison : -comparison;
         });
     }, [filteredAccounts, sortField, sortDirection]);
 
-    // Paginate accounts
+    // ── Pagination ───────────────────────────────
     const paginatedAccounts = useMemo(() => {
-        if (pageSize === 0) return sortedAccounts; // "All"
+        if (pageSize === 0) return sortedAccounts;
         const start = (currentPage - 1) * pageSize;
         return sortedAccounts.slice(start, start + pageSize);
     }, [sortedAccounts, currentPage, pageSize]);
@@ -265,9 +382,18 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
         return account.sale_slots?.filter(s => s.status === 'available').length || 0;
     }
 
+    // ── Status label helper ───────────────────────
+    const statusLabel: Record<string, string> = {
+        active: 'Activa',
+        frozen: 'Congelada',
+        quarantine: 'Reportada',
+        possible_autopay: 'Autopay',
+        no_renovar: 'No renovar',
+    };
+
     return (
         <div className="space-y-4">
-            {/* Controls */}
+            {/* ── Top controls bar ── */}
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <h2 className="text-lg font-semibold text-foreground">Cuentas Madre</h2>
@@ -285,6 +411,27 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                             className="pl-9 w-48 bg-card border-border"
                         />
                     </div>
+
+                    {/* Filtros toggle */}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFilterPanelOpen(o => !o)}
+                        className={`gap-2 transition-all duration-200 ${
+                            filterPanelOpen || activeFilterCount > 0
+                                ? 'border-[#86EFAC]/50 text-[#86EFAC] bg-[#86EFAC]/10 hover:bg-[#86EFAC]/20'
+                                : 'border-border text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Filter className="h-4 w-4" />
+                        Filtros
+                        {activeFilterCount > 0 && (
+                            <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#86EFAC] text-[10px] font-bold text-black px-1">
+                                {activeFilterCount}
+                            </span>
+                        )}
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${filterPanelOpen ? 'rotate-180' : ''}`} />
+                    </Button>
 
                     {/* Bulk price button */}
                     <Button
@@ -323,68 +470,284 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                 </div>
             </div>
 
-            {/* Platform Filter Pills + Mostrar por (proveedor) */}
-            <div className="flex flex-wrap items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <button
-                    onClick={() => { setPlatformFilter('all'); setSupplierFilter('all'); setCurrentPage(1); }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${platformFilter === 'all'
-                        ? 'bg-[#86EFAC] text-black'
-                        : 'bg-secondary text-muted-foreground hover:text-foreground'
-                        }`}
-                >
-                    Todas
-                </button>
-                {platforms.map(p => {
-                    const platformAccounts = accounts.filter(a => a.platform === p);
-                    const count = platformAccounts.length;
-                    const freeSlots = platformAccounts.reduce((sum, a) =>
-                        sum + (a.sale_slots?.filter(s => s.status === 'available').length || 0), 0
-                    );
-                    const pColors = platformColors[p] || platformColors.default;
-                    return (
-                        <button
-                            key={p}
-                            onClick={() => { setPlatformFilter(p); setSupplierFilter('all'); setCurrentPage(1); }}
-                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${platformFilter === p
-                                ? `${pColors.bg} ${pColors.text}`
-                                : 'bg-secondary text-muted-foreground hover:text-foreground'
-                                }`}
-                        >
-                            {p} ({count})
-                            {freeSlots > 0 ? (
-                                <span className="text-green-400 font-semibold">🟢{freeSlots}</span>
-                            ) : (
-                                <span className="text-red-400 font-semibold">🔴0</span>
-                            )}
-                        </button>
-                    );
-                })}
+            {/* ── Expandable filter panel ── */}
+            {filterPanelOpen && (
+                <div className="rounded-xl border border-border/60 bg-card/70 backdrop-blur-sm p-5 space-y-5 animate-in slide-in-from-top-2 duration-200">
 
-                {/* Mostrar por proveedor — solo si hay proveedores disponibles */}
-                {suppliersForCurrentPlatform.length > 0 && (
-                    <>
-                        <span className="text-muted-foreground/40 text-xs">|</span>
-                        <span className="text-xs text-muted-foreground font-medium">Mostrar por:</span>
-                        <select
-                            value={supplierFilter}
-                            onChange={e => { setSupplierFilter(e.target.value); setCurrentPage(1); }}
-                            className="rounded-full px-3 py-1 text-xs font-medium bg-secondary border border-border text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-purple-500/50 cursor-pointer transition-colors"
-                        >
-                            <option value="all">Todos los proveedores</option>
-                            {suppliersForCurrentPlatform.map(s => {
-                                const count = accounts.filter(a =>
-                                    a.supplier_name === s &&
-                                    (platformFilter === 'all' || a.platform === platformFilter)
-                                ).length;
+                    {/* Plataforma */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Plataforma</p>
+                            {platformFilter.size > 0 && (
+                                <button onClick={() => { setPlatformFilter(new Set()); setSupplierFilter(new Set()); setCurrentPage(1); }} className="text-[11px] text-muted-foreground hover:text-foreground underline">limpiar</button>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {platforms.map(p => {
+                                const pAccounts = accounts.filter(a => a.platform === p);
+                                const count = pAccounts.length;
+                                const freeSlots = pAccounts.reduce((sum, a) =>
+                                    sum + (a.sale_slots?.filter(s => s.status === 'available').length || 0), 0);
+                                const pColors = platformColors[p] || platformColors.default;
+                                const isActive = platformFilter.has(p);
                                 return (
-                                    <option key={s} value={s}>{s} ({count})</option>
+                                    <button
+                                        key={p}
+                                        onClick={() => toggleFilter(setPlatformFilter as any, p)}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                            isActive ? `${pColors.bg} ${pColors.text} ring-1 ring-current` : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {isActive && <Check className="h-3 w-3" />}
+                                        {p} ({count})
+                                        {freeSlots > 0
+                                            ? <span className="text-green-400 font-semibold">🟢{freeSlots}</span>
+                                            : <span className="text-red-400 font-semibold">🔴0</span>}
+                                    </button>
                                 );
                             })}
-                        </select>
-                    </>
-                )}
-            </div>
+                        </div>
+                    </div>
+
+                    {/* Proveedor — solo si hay */}
+                    {suppliersForCurrentPlatform.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Proveedor</p>
+                                {supplierFilter.size > 0 && (
+                                    <button onClick={() => { setSupplierFilter(new Set()); setCurrentPage(1); }} className="text-[11px] text-muted-foreground hover:text-foreground underline">limpiar</button>
+                                )}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {suppliersForCurrentPlatform.map(s => {
+                                    const count = accounts.filter(a =>
+                                        a.supplier_name === s &&
+                                        (platformFilter.size === 0 || platformFilter.has(a.platform))
+                                    ).length;
+                                    const isActive = supplierFilter.has(s);
+                                    return (
+                                        <button
+                                            key={s}
+                                            onClick={() => toggleFilter(setSupplierFilter as any, s)}
+                                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                                isActive ? 'bg-purple-500 text-white ring-1 ring-purple-400' : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {isActive && <Check className="h-3 w-3" />}
+                                            {s} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Grid: Estado + Disponibilidad + Vencimiento + Tipo */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                        {/* Estado de cuenta */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Estado de cuenta</p>
+                                {statusFilter.size > 0 && (
+                                    <button onClick={() => { setStatusFilter(new Set()); setCurrentPage(1); }} className="text-[11px] text-muted-foreground hover:text-foreground underline">limpiar</button>
+                                )}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    { value: 'active', label: '✅ Activa' },
+                                    { value: 'frozen', label: '❄️ Congelada' },
+                                    { value: 'quarantine', label: '⚠️ Reportada' },
+                                    { value: 'possible_autopay', label: '💳 Posible Autopay' },
+                                    { value: 'no_renovar', label: '🚫 No renovar' },
+                                ].map(opt => {
+                                    const isActive = statusFilter.has(opt.value);
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => toggleFilter(setStatusFilter as any, opt.value)}
+                                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                                isActive ? 'bg-sky-500 text-white ring-1 ring-sky-400' : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {isActive && <Check className="h-3 w-3" />}
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Disponibilidad */}
+                        <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Disponibilidad</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    { value: 'all', label: 'Todas' },
+                                    { value: 'with_free', label: '🟢 Con slots libres' },
+                                    { value: 'without_free', label: '🔴 Sin slots libres' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => { setAvailabilityFilter(opt.value); setCurrentPage(1); }}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                            availabilityFilter === opt.value ? 'bg-emerald-600 text-white' : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Vencimiento */}
+                        <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Vencimiento</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    { value: 'all', label: 'Cualquiera' },
+                                    { value: 'expired', label: '🔴 Vencidas' },
+                                    { value: 'this_week', label: '⚡ Esta semana' },
+                                    { value: 'this_month', label: '📅 Este mes' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => { setRenewalRangeFilter(opt.value); setCurrentPage(1); }}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                            renewalRangeFilter === opt.value ? 'bg-orange-500 text-white' : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Tipo de cuenta — solo si hay más de 1 tipo */}
+                        {saleTypes.length > 1 && (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Tipo de cuenta</p>
+                                    {saleTypeFilter.size > 0 && (
+                                        <button onClick={() => { setSaleTypeFilter(new Set()); setCurrentPage(1); }} className="text-[11px] text-muted-foreground hover:text-foreground underline">limpiar</button>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {saleTypes.map(t => {
+                                        const isActive = saleTypeFilter.has(t);
+                                        return (
+                                            <button
+                                                key={t}
+                                                onClick={() => toggleFilter(setSaleTypeFilter as any, t)}
+                                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                                                    isActive ? 'bg-indigo-500 text-white ring-1 ring-indigo-400' : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                                }`}
+                                            >
+                                                {isActive && <Check className="h-3 w-3" />}
+                                                {t}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Ordenar por */}
+                    <div className="border-t border-border/50 pt-4 space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Ordenar por</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <select
+                                value={sortField}
+                                onChange={e => { setSortField(e.target.value as SortField); setCurrentPage(1); }}
+                                className="rounded-lg px-3 py-1.5 text-sm bg-secondary border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-[#86EFAC]/50 cursor-pointer"
+                            >
+                                <option value="platform">Plataforma (A–Z)</option>
+                                <option value="email">Cuenta (email)</option>
+                                <option value="renewal_date">Fecha de vencimiento</option>
+                                <option value="created_at">Fecha de alta</option>
+                                <option value="available">Slots libres</option>
+                            </select>
+                            <button
+                                onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+                                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm bg-secondary border border-border text-foreground hover:border-[#86EFAC]/40 transition-colors"
+                            >
+                                {sortDirection === 'asc'
+                                    ? <><ChevronUp className="h-4 w-4 text-[#86EFAC]" /> Ascendente</>
+                                    : <><ChevronDown className="h-4 w-4 text-[#86EFAC]" /> Descendente</>}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Reset */}
+                    <div className="flex justify-end border-t border-border/50 pt-3">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetAllFilters}
+                            className="text-muted-foreground hover:text-foreground gap-1.5"
+                        >
+                            <X className="h-4 w-4" />
+                            Resetear todos los filtros
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Active filter chips ── */}
+            {activeFilterCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Activos:</span>
+                    {Array.from(platformFilter).map(p => (
+                        <span key={p} className="inline-flex items-center gap-1 rounded-full bg-[#86EFAC]/10 border border-[#86EFAC]/30 px-2.5 py-0.5 text-xs font-medium text-[#86EFAC]">
+                            {p}
+                            <button onClick={() => toggleFilter(setPlatformFilter as any, p)} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    ))}
+                    {Array.from(supplierFilter).map(s => (
+                        <span key={s} className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 border border-purple-500/30 px-2.5 py-0.5 text-xs font-medium text-purple-300">
+                            {s}
+                            <button onClick={() => toggleFilter(setSupplierFilter as any, s)} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    ))}
+                    {Array.from(statusFilter).map(sf => (
+                        <span key={sf} className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 border border-sky-500/30 px-2.5 py-0.5 text-xs font-medium text-sky-300">
+                            {statusLabel[sf] ?? sf}
+                            <button onClick={() => toggleFilter(setStatusFilter as any, sf)} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    ))}
+                    {availabilityFilter !== 'all' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/10 border border-emerald-600/30 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
+                            {availabilityFilter === 'with_free' ? 'Con slots libres' : 'Sin slots libres'}
+                            <button onClick={() => { setAvailabilityFilter('all'); setCurrentPage(1); }} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    )}
+                    {renewalRangeFilter !== 'all' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 border border-orange-500/30 px-2.5 py-0.5 text-xs font-medium text-orange-300">
+                            {renewalRangeFilter === 'expired' ? 'Vencidas' : renewalRangeFilter === 'this_week' ? 'Esta semana' : 'Este mes'}
+                            <button onClick={() => { setRenewalRangeFilter('all'); setCurrentPage(1); }} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    )}
+                    {Array.from(saleTypeFilter).map(t => (
+                        <span key={t} className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 px-2.5 py-0.5 text-xs font-medium text-indigo-300">
+                            {t}
+                            <button onClick={() => toggleFilter(setSaleTypeFilter as any, t)} className="hover:text-white ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    ))}
+                    {searchQuery.trim() && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-secondary border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                            &ldquo;{searchQuery}&rdquo;
+                            <button onClick={() => { setSearchQuery(''); setCurrentPage(1); }} className="hover:text-foreground ml-0.5"><X className="h-3 w-3" /></button>
+                        </span>
+                    )}
+                    <button
+                        onClick={resetAllFilters}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                    >
+                        Limpiar todo
+                    </button>
+                </div>
+            )}
 
             {/* Content */}
             {paginatedAccounts.length > 0 ? (
@@ -476,13 +839,22 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                         })}
                     </div>
                 ) : (
-                    // Table View
-                    <div className="rounded-lg border border-border overflow-hidden">
-                        <table className="w-full">
-                            <thead className="bg-card/80">
-                                <tr>
-                                    {/* Select-all checkbox */}
-                                    <th className="px-3 py-3 w-10">
+                    // Table View — Excel-style: Cuenta Madre (left) | Clientes (right)
+                    <div className="rounded-lg border border-border overflow-x-auto">
+                        <table className="w-full border-collapse text-sm">
+                            <thead className="bg-card/90 sticky top-0 z-10">
+                                {/* Section group headers */}
+                                <tr className="border-b border-border/30">
+                                    <th colSpan={5} className="px-4 py-1.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-red-400/60 border-r border-border/50">
+                                        Cuenta.
+                                    </th>
+                                    <th colSpan={8} className="px-4 py-1.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400/60">
+                                        Clientes
+                                    </th>
+                                </tr>
+                                {/* Column headers */}
+                                <tr className="border-b border-border">
+                                    <th className="px-3 py-2.5 w-10">
                                         <input
                                             type="checkbox"
                                             aria-label="Seleccionar todo"
@@ -491,177 +863,208 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                             className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer"
                                         />
                                     </th>
-                                    <th
-                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors w-12"
-                                        onClick={() => handleSort('platform')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            <SortIcon field="platform" />
-                                        </div>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors w-12" onClick={() => handleSort('platform')}>
+                                        <div className="flex items-center gap-1"><SortIcon field="platform" /></div>
                                     </th>
-                                    <th
-                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                        onClick={() => handleSort('email')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            Email
-                                            <SortIcon field="email" />
-                                        </div>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort('email')}>
+                                        <div className="flex items-center gap-1">Cuenta <SortIcon field="email" /></div>
                                     </th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
-                                        Perfiles
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort('created_at')}>
+                                        <div className="flex items-center gap-1">Ult Pago <SortIcon field="created_at" /></div>
                                     </th>
-                                    <th
-                                        className="px-4 py-3 text-center text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                        onClick={() => handleSort('available')}
-                                    >
-                                        <div className="flex items-center justify-center gap-1">
-                                            Slots
-                                            <SortIcon field="available" />
-                                        </div>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors border-r border-border/50" onClick={() => handleSort('renewal_date')}>
+                                        <div className="flex items-center gap-1">Vencimiento <SortIcon field="renewal_date" /></div>
                                     </th>
-                                    <th
-                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                        onClick={() => handleSort('created_at')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            Compra
-                                            <SortIcon field="created_at" />
-                                        </div>
-                                    </th>
-                                    <th
-                                        className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                        onClick={() => handleSort('renewal_date')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            Vencimiento
-                                            <SortIcon field="renewal_date" />
-                                        </div>
-                                    </th>
-                                    <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">
-                                        Acciones
-                                    </th>
+                                    {/* Client columns */}
+                                    <th className="px-3 py-2.5 text-center text-xs font-medium text-muted-foreground w-10">#</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Número</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-20">Pantalla</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Pin</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Ult Pago</th>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Vencimiento</th>
+                                    <th className="px-4 py-2.5 text-center text-xs font-medium text-muted-foreground w-24">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border">
-                                {paginatedAccounts.map((account) => {
-                                    const slots = account.sale_slots || [];
-                                    const available = getAvailable(account);
-                                    const isQuarantine = account.status === 'quarantine';
-                                    const isSelected = selectedIds.has(account.id);
 
-                                    return (
-                                        <tr key={account.id} className={`transition-colors ${isSelected ? 'bg-[#86EFAC]/10 border-l-2 border-l-[#86EFAC]' : 'bg-card hover:bg-card/80'} ${isQuarantine ? 'opacity-70' : ''}`}>
-                                            {/* Row checkbox */}
-                                            <td className="px-3 py-3">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => toggleSelect(account.id)}
-                                                    aria-label={`Seleccionar ${account.email}`}
-                                                    className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer"
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    <PlatformIcon platform={account.platform} size={28} />
-                                                    {account.status === 'frozen' && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-1.5 py-0.5 text-xs font-medium text-blue-300">❄️</span>
-                                                    )}
-                                                    {isQuarantine && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-1.5 py-0.5 text-xs font-medium text-purple-300">⚠️</span>
-                                                    )}
-                                                    {account.status === 'possible_autopay' && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-xs font-medium text-emerald-300">💳</span>
-                                                    )}
-                                                    {account.status === 'no_renovar' && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-xs font-medium text-red-300">🚫</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <CopyableEmail email={account.email} supplierName={account.supplier_name} />
-                                            </td>
-                                            <td className="px-4 py-2">
-                                                <div className="space-y-1 min-w-[260px]">
-                                                    {[...slots].sort((a, b) => {
-                                                        const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                                        const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                                        return numA - numB;
-                                                    }).map((slot) => {
-                                                        const activeSale = slot.sales?.find(s => s.is_active);
-                                                        const customer = activeSale?.customers;
-                                                        const endDate = activeSale?.end_date;
-                                                        const statusDotColor =
-                                                            slot.status === 'available' ? '#86EFAC'
-                                                            : slot.status === 'sold' ? '#F97316'
-                                                            : slot.status === 'reserved' ? '#EAB308'
-                                                            : '#EF4444';
-                                                        return (
-                                                            <SlotDetailsModal
-                                                                key={slot.id}
-                                                                slot={slot}
+                            {/* One <tbody> per account for clean group separation */}
+                            {paginatedAccounts.map((account) => {
+                                const slots = [...(account.sale_slots || [])].sort((a, b) => {
+                                    const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                    const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
+                                    return numA - numB;
+                                });
+                                const isQuarantine = account.status === 'quarantine';
+                                const isSelected = selectedIds.has(account.id);
+                                const available = getAvailable(account);
+                                const rowCount = Math.max(slots.length, 1);
+                                const leftBg = isSelected ? 'bg-[#86EFAC]/10' : 'bg-card';
+
+                                return (
+                                    <tbody key={account.id} className={`border-t-2 border-border ${isQuarantine ? 'opacity-70' : ''}`}>
+                                        {slots.length === 0 ? (
+                                            <tr>
+                                                <td className={`px-3 py-3 align-middle ${leftBg} ${isSelected ? 'border-l-2 border-l-[#86EFAC]' : ''}`}>
+                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(account.id)} aria-label={`Seleccionar ${account.email}`} className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer" />
+                                                </td>
+                                                <td className={`px-4 py-3 align-middle ${leftBg}`}>
+                                                    <div className="flex flex-col items-start gap-1.5">
+                                                        <PlatformIcon platform={account.platform} size={28} />
+                                                        {account.status === 'frozen' && <span className="rounded-full bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-medium text-blue-300">❄️</span>}
+                                                        {isQuarantine && <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-300">⚠️</span>}
+                                                        {account.status === 'possible_autopay' && <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">💳</span>}
+                                                        {account.status === 'no_renovar' && <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">🚫</span>}
+                                                    </div>
+                                                </td>
+                                                <td className={`px-4 py-3 align-middle ${leftBg}`}>
+                                                    <div className="flex flex-col items-start gap-2">
+                                                        <CopyableEmail email={account.email} supplierName={account.supplier_name} />
+                                                        <CopyablePassword password={account.password} />
+                                                        <span className="text-xs text-muted-foreground/60">
+                                                            <span className="text-[#86EFAC] font-semibold">{available}</span>/{slots.length} libres
+                                                        </span>
+                                                        <div className="mt-1"><EditAccountModal account={account} /></div>
+                                                        {account.notes && <p className="text-[10px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">📝 {account.notes}</p>}
+                                                    </div>
+                                                </td>
+                                                <td className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
+                                                    {account.created_at ? formatRelativeOnly(account.created_at.split('T')[0], 'past') : '—'}
+                                                </td>
+                                                <td className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
+                                                    {account.is_autopay
+                                                        ? <span className="text-xs text-blue-400 font-medium">🔄 Autopay</span>
+                                                        : <div className="flex flex-col gap-0.5">
+                                                            <span className={`text-xs font-medium ${expiryColor(account.renewal_date)}`}>{formatRelativeOnly(account.renewal_date, 'future')}</span>
+                                                            <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(account.renewal_date)}</span>
+                                                          </div>
+                                                    }
+                                                </td>
+                                                <td colSpan={7} className="px-4 py-3 text-xs text-muted-foreground/40 italic">Sin slots configurados</td>
+                                            </tr>
+                                        ) : (
+                                            slots.map((slot, idx) => {
+                                                const activeSale = slot.sales?.[0]; // already filtered to is_active=true in page.tsx
+                                                const customer = activeSale?.customers;
+                                                const endDate = activeSale?.end_date;
+                                                const statusDotColor =
+                                                    slot.status === 'available' ? '#86EFAC'
+                                                    : slot.status === 'sold' ? '#F97316'
+                                                    : slot.status === 'reserved' ? '#EAB308'
+                                                    : '#EF4444';
+                                                const isFirst = idx === 0;
+                                                const rightBg = isSelected ? 'bg-[#86EFAC]/5' : idx % 2 === 0 ? 'bg-card/80' : 'bg-[#111]/40';
+                                                const slotBorder = !isFirst ? 'border-t border-border/20' : '';
+
+                                                return (
+                                                    <tr key={slot.id} className="transition-colors">
+                                                        {isFirst && (
+                                                            <>
+                                                                {/* CUENTA MADRE — left cells with rowspan */}
+                                                                <td rowSpan={rowCount} className={`px-3 align-middle ${leftBg} ${isSelected ? 'border-l-2 border-l-[#86EFAC]' : ''}`}>
+                                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(account.id)} aria-label={`Seleccionar ${account.email}`} className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer" />
+                                                                </td>
+                                                                <td rowSpan={rowCount} className={`px-4 py-3 align-middle ${leftBg}`}>
+                                                                    <div className="flex flex-col items-start gap-1.5">
+                                                                        <PlatformIcon platform={account.platform} size={28} />
+                                                                        {account.status === 'frozen' && <span className="rounded-full bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-medium text-blue-300">❄️</span>}
+                                                                        {isQuarantine && <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-300">⚠️</span>}
+                                                                        {account.status === 'possible_autopay' && <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">💳</span>}
+                                                                        {account.status === 'no_renovar' && <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">🚫</span>}
+                                                                    </div>
+                                                                </td>
+                                                                <td rowSpan={rowCount} className={`px-4 py-3 align-middle ${leftBg}`}>
+                                                                    <div className="flex flex-col items-start gap-1">
+                                                                        <CopyableEmail email={account.email} supplierName={account.supplier_name} />
+                                                                        <CopyablePassword password={account.password} />
+                                                                        <span className="text-[11px] text-muted-foreground/60">
+                                                                            <span className="text-[#86EFAC] font-semibold">{available}</span>/{slots.length} libres
+                                                                        </span>
+                                                                        <div className="mt-1"><EditAccountModal account={account} /></div>
+                                                                        {account.notes && <p className="text-[10px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">📝 {account.notes}</p>}
+                                                                    </div>
+                                                                </td>
+                                                                <td rowSpan={rowCount} className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
+                                                                    {account.created_at ? formatRelativeOnly(account.created_at.split('T')[0], 'past') : '—'}
+                                                                </td>
+                                                                <td rowSpan={rowCount} className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
+                                                                    {account.is_autopay
+                                                                        ? <span className="text-xs text-blue-400 font-medium">🔄 Autopay</span>
+                                                                        : <div className="flex flex-col gap-0.5">
+                                                                            <span className={`text-xs font-medium ${expiryColor(account.renewal_date)}`}>{formatRelativeOnly(account.renewal_date, 'future')}</span>
+                                                                            <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(account.renewal_date)}</span>
+                                                                          </div>
+                                                                    }
+                                                                </td>
+                                                            </>
+                                                        )}
+
+                                                        {/* CLIENTES — right cells: # | Nombre | Número | Pantalla | Pin | Ult Pago | Vencimiento | Acciones */}
+                                                        <td className={`px-3 py-2.5 text-center ${rightBg} ${slotBorder}`}>
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusDotColor }} />
+                                                                <span className="text-xs font-semibold text-foreground/70">{idx + 1}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
+                                                            <span className={customer?.full_name ? 'text-sm text-foreground/80' : 'text-xs text-muted-foreground/40 italic'}>
+                                                                {customer?.full_name || 'libre'}
+                                                            </span>
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground ${rightBg} ${slotBorder}`}>
+                                                            {customer?.phone || '—'}
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground/70 w-20 max-w-[5rem] break-words whitespace-normal ${rightBg} ${slotBorder}`}>
+                                                            {slot.slot_identifier || '—'}
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 text-xs font-mono text-muted-foreground/60 ${rightBg} ${slotBorder}`}>
+                                                            {slot.pin_code || <span className="text-muted-foreground/30">—</span>}
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
+                                                            {activeSale?.start_date ? (
+                                                                <span className="text-xs text-muted-foreground">{formatRelativeOnly(activeSale.start_date, 'past')}</span>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground/30">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
+                                                            {endDate ? (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <span className={`text-xs font-medium ${expiryColor(endDate)}`}>{formatRelativeOnly(endDate, 'future')}</span>
+                                                                    <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(endDate)}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground/30">—</span>
+                                                            )}
+                                                        </td>
+                                                        {/* Acciones — dropdown con Edit, Copy, Extend, Swap */}
+                                                        <td className={`px-3 py-2.5 text-center w-28 ${rightBg} ${slotBorder}`}>
+                                                            <SlotActionsDropdown
+                                                                slot={{
+                                                                    id: slot.id,
+                                                                    slot_identifier: slot.slot_identifier,
+                                                                    pin_code: slot.pin_code,
+                                                                    status: slot.status,
+                                                                }}
                                                                 account={{
                                                                     platform: account.platform,
                                                                     email: account.email,
                                                                     password: account.password,
                                                                 }}
-                                                                accountStatus={account.status}
-                                                                trigger={
-                                                                    <button className="w-full flex items-center gap-2 rounded-md bg-[#111]/60 hover:bg-[#1a1a1a] border border-border/30 hover:border-border px-2.5 py-1.5 transition-colors text-left group">
-                                                                        {/* Status dot */}
-                                                                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusDotColor }} />
-                                                                        {/* Slot name/email */}
-                                                                        <span className="text-sm font-medium text-foreground truncate flex-1 max-w-[130px]">
-                                                                            {slot.slot_identifier || 'Sin nombre'}
-                                                                        </span>
-                                                                        {/* Customer info */}
-                                                                        {customer ? (
-                                                                            <>
-                                                                                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                                                                                    {customer.full_name || customer.phone || '—'}
-                                                                                </span>
-                                                                                {endDate && (
-                                                                                    <span className="text-[10px] text-muted-foreground/70 flex-shrink-0">
-                                                                                        {new Date(endDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
-                                                                                    </span>
-                                                                                )}
-                                                                            </>
-                                                                        ) : (
-                                                                            <span className="text-[10px] text-muted-foreground/50 italic">libre</span>
-                                                                        )}
-                                                                    </button>
-                                                                }
+                                                                customer={customer ?? null}
+                                                                activeSale={activeSale ? {
+                                                                    id: activeSale.id,
+                                                                    end_date: activeSale.end_date,
+                                                                    start_date: activeSale.start_date,
+                                                                } : null}
                                                             />
-                                                        );
-                                                    })}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <span className="inline-flex items-center gap-1 text-sm">
-                                                    <span className="text-[#86EFAC] font-medium">{available}</span>
-                                                    <span className="text-muted-foreground">/ {slots.length}</span>
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs text-muted-foreground">
-                                                {account.created_at
-                                                    ? formatRelativeDate(account.created_at.split('T')[0], 'past')
-                                                    : '—'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm">
-                                                {account.is_autopay
-                                                    ? <span className="inline-flex items-center gap-1 text-blue-400 font-medium text-xs">🔄 Autopay</span>
-                                                    : <span className={`text-xs font-medium ${expiryColor(account.renewal_date)}`}>
-                                                        {formatRelativeDate(account.renewal_date, 'future')}
-                                                    </span>}
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <EditAccountModal account={account} />
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                );
+                            })}
                         </table>
                     </div>
                 )

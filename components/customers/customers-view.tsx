@@ -5,11 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
     Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-    Filter, Phone, RefreshCw, Pencil, Clock, Monitor
+    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3
 } from 'lucide-react';
 import { EditCustomerModal } from '@/components/customers/edit-customer-modal';
+import { PlatformIcon } from '@/components/ui/platform-icon';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 /* ── Types ──────────────────────────────────────────────────── */
 
@@ -53,13 +56,6 @@ interface CustomersViewProps {
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
-const platformColors: Record<string, string> = {
-    Netflix: '#E50914', Spotify: '#1DB954', HBO: '#5c16c5', 'HBO Max': '#5c16c5',
-    'Disney+': '#0063e5', 'Amazon Prime': '#00a8e1', 'YouTube Premium': '#ff0000',
-    'Apple TV+': '#555', Crunchyroll: '#F47521', 'Paramount+': '#0064FF',
-    'Star+': '#C724B1', Tidal: '#000',
-};
-
 const statusConfig = {
     active: { label: 'Activo', color: '#86EFAC', bg: 'bg-[#86EFAC]/15', border: 'border-[#86EFAC]/30', text: 'text-[#86EFAC]' },
     expired: { label: 'Vencido', color: '#EF4444', bg: 'bg-red-500/15', border: 'border-red-500/30', text: 'text-red-500' },
@@ -71,29 +67,41 @@ function formatGs(n: number | null | undefined) {
     return `Gs. ${Number(n).toLocaleString('es-PY')}`;
 }
 
-function formatDate(d: string | null) {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function daysBetween(from: Date, to: Date) {
+    const msDay = 86_400_000;
+    return Math.ceil((to.getTime() - from.getTime()) / msDay);
 }
 
-function daysRemaining(dateStr: string | null): number {
-    if (!dateStr) return -9999;
-    const diff = new Date(dateStr).getTime() - Date.now();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+function formatRelativeDate(dateStr: string | null) {
+    if (!dateStr) return '—';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T12:00:00');
+    const diff = daysBetween(today, d);
+    const abs = d.toLocaleDateString('es-PY', { day: 'numeric', month: 'short' });
+
+    if (diff < 0) return `hace ${Math.abs(diff)}d · ${abs}`;
+    if (diff === 0) return `hoy · ${abs}`;
+    return `en ${diff}d · ${abs}`;
 }
 
-function daysBadge(dateStr: string | null) {
-    if (!dateStr) return <span className="text-xs text-muted-foreground">—</span>;
-    const days = daysRemaining(dateStr);
-    let cls = 'text-[#86EFAC]';
-    if (days <= 0) cls = 'text-red-500';
-    else if (days <= 3) cls = 'text-red-400';
-    else if (days <= 7) cls = 'text-yellow-500';
-    const label = days <= 0 ? `${Math.abs(days)}d atrás` : `${days}d`;
-    return <span className={`font-mono font-semibold text-sm ${cls}`}>{label}</span>;
+function expiryColor(dateStr: string | null): string {
+    if (!dateStr) return 'text-muted-foreground';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T12:00:00');
+    const diff = daysBetween(today, d);
+    if (diff < 0) return 'text-red-400';
+    if (diff === 0) return 'text-orange-400';
+    if (diff <= 7) return 'text-yellow-400';
+    return 'text-[#86EFAC]'; // future – green
 }
 
-/* ── Sort ─────────────────────────────────────────────────────── */
+function getInitials(name: string) {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+}
+
+/* ── Sort & Filter Types ────────────────────────────────────── */
 
 type SortField = 'name' | 'status' | 'nextExpiry' | 'totalSpent';
 type SortDirection = 'asc' | 'desc';
@@ -113,17 +121,16 @@ export function CustomersView({ customers }: CustomersViewProps) {
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [pageSize, setPageSize] = useState<number>(30);
     const [currentPage, setCurrentPage] = useState(1);
-    const [expandedRow, setExpandedRow] = useState<string | null>(null);
-    // Customer ID to auto-open for editing (comes from ?edit= URL param)
+    
+    // UI state
+    const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
     const [autoEditId, setAutoEditId] = useState<string | null>(() => searchParams.get('edit'));
 
-    // Clear the ?edit= param from the URL once we've consumed it
-    // (to avoid re-triggering on re-renders)
+    // Clear ?edit=
     useEffect(() => {
         const editId = searchParams.get('edit');
         if (editId) {
             setAutoEditId(editId);
-            // Remove the edit param from the URL without a page reload
             const params = new URLSearchParams(searchParams.toString());
             params.delete('edit');
             const newUrl = params.toString() ? `/customers?${params.toString()}` : '/customers';
@@ -131,18 +138,16 @@ export function CustomersView({ customers }: CustomersViewProps) {
         }
     }, [searchParams]);
 
-    // Reset autoEditId after modal has been opened once
-    function clearAutoEdit() {
-        setAutoEditId(null);
-    }
+    function clearAutoEdit() { setAutoEditId(null); }
 
-    // Counts per status
+    // Derive counts
     const counts = useMemo(() => {
         const c = { all: customers.length, active: 0, expired: 0, inactive: 0, creador: 0 };
         customers.forEach(cu => { c[cu.status]++; if (cu.customer_type === 'creador') c.creador++; });
         return c;
     }, [customers]);
 
+    // Filtering
     const filteredCustomers = useMemo(() => {
         let result = customers;
         if (statusFilter === 'creador') {
@@ -152,18 +157,14 @@ export function CustomersView({ customers }: CustomersViewProps) {
         }
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            // Strip non-digits for phone comparison so "+595 994 480158" matches "595994480158"
             const qDigits = q.replace(/\D/g, '');
             const isPhoneSearch = qDigits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
             result = result.filter(c => {
                 if (isPhoneSearch) {
-                    // Compare digits-only version of stored phone with digits-only query
                     const phoneDigits = (c.phone || '').replace(/\D/g, '');
-                    return phoneDigits.includes(qDigits) ||
-                        (c.full_name || '').toLowerCase().includes(q);
+                    return phoneDigits.includes(qDigits) || (c.full_name || '').toLowerCase().includes(q);
                 }
-                return (c.full_name || '').toLowerCase().includes(q) ||
-                    (c.phone || '').includes(q);
+                return (c.full_name || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
             });
         }
         return result;
@@ -174,28 +175,21 @@ export function CustomersView({ customers }: CustomersViewProps) {
         return [...filteredCustomers].sort((a, b) => {
             let cmp = 0;
             switch (sortField) {
-                case 'name':
-                    cmp = (a.full_name || '').localeCompare(b.full_name || '');
-                    break;
-                case 'status':
-                    cmp = statusOrder[a.status] - statusOrder[b.status];
-                    break;
+                case 'name': cmp = (a.full_name || '').localeCompare(b.full_name || ''); break;
+                case 'status': cmp = statusOrder[a.status] - statusOrder[b.status]; break;
                 case 'nextExpiry': {
-                    // null (no expiry) goes last
                     const da = a.nextExpiry ? new Date(a.nextExpiry).getTime() : Infinity;
                     const db = b.nextExpiry ? new Date(b.nextExpiry).getTime() : Infinity;
                     cmp = da - db;
                     break;
                 }
-                case 'totalSpent':
-                    cmp = a.totalSpent - b.totalSpent;
-                    break;
+                case 'totalSpent': cmp = a.totalSpent - b.totalSpent; break;
             }
             return sortDirection === 'asc' ? cmp : -cmp;
         });
     }, [filteredCustomers, sortField, sortDirection]);
 
-    // Paginate
+    // Pagination
     const totalPages = pageSize === 0 ? 1 : Math.ceil(sortedCustomers.length / pageSize);
     const paginatedCustomers = useMemo(() => {
         if (pageSize === 0) return sortedCustomers;
@@ -203,47 +197,12 @@ export function CustomersView({ customers }: CustomersViewProps) {
         return sortedCustomers.slice(start, start + pageSize);
     }, [sortedCustomers, currentPage, pageSize]);
 
-    function handleSort(field: SortField) {
-        if (sortField === field) {
-            setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortField(field);
-            setSortDirection('asc');
-        }
-    }
-
-    function SortIcon({ field }: { field: SortField }) {
-        if (sortField !== field) return null;
-        return sortDirection === 'asc' ?
-            <ChevronUp className="h-4 w-4" /> :
-            <ChevronDown className="h-4 w-4" />;
-    }
-
-    function getInitials(name: string) {
-        return name
-            .split(' ')
-            .map(n => n[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2) || '??';
-    }
-
-    // Unique platforms in services
-    function getUniquePlatforms(services: CustomerService[]) {
-        const seen = new Set<string>();
-        return services.filter(s => {
-            if (seen.has(s.platform)) return false;
-            seen.add(s.platform);
-            return true;
-        });
-    }
-
     return (
         <div className="space-y-4">
-            {/* Controls */}
+            {/* ── Top controls bar ── */}
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-foreground">Clientes</h2>
+                    <h2 className="text-lg font-semibold text-foreground">Listado</h2>
                     <span className="text-sm text-muted-foreground">({filteredCustomers.length})</span>
                 </div>
 
@@ -255,264 +214,202 @@ export function CustomersView({ customers }: CustomersViewProps) {
                             placeholder="Nombre o teléfono..."
                             value={searchQuery}
                             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                            className="pl-9 w-52 bg-card border-border"
+                            className="pl-9 w-64 bg-card border-border h-9"
                         />
                     </div>
                 </div>
             </div>
 
-            {/* Status Filter Pills */}
-            <div className="flex items-center gap-2 flex-wrap">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                {([
-                    { key: 'all' as StatusFilter, label: 'Todos', color: '#86EFAC' },
-                    { key: 'active' as StatusFilter, label: '🟢 Activos', color: '#86EFAC' },
-                    { key: 'expired' as StatusFilter, label: '🔴 Vencidos', color: '#EF4444' },
-                    { key: 'inactive' as StatusFilter, label: '⚪ Sin Servicio', color: '#6B7280' },
-                    { key: 'creador' as StatusFilter, label: '🎬 Creadores', color: '#818CF8' },
-                ]).map(f => (
-                    <button
-                        key={f.key}
-                        onClick={() => { setStatusFilter(f.key); setCurrentPage(1); }}
-                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors flex items-center gap-1.5 ${statusFilter === f.key
-                            ? f.key === 'all'
-                                ? 'bg-[#86EFAC] text-black'
-                                : `text-white`
-                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+            {/* ── Filters & Sort ── */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <Filter className="h-4 w-4 text-muted-foreground mr-1" />
+                    {([
+                        { key: 'all' as StatusFilter, label: 'Todos', color: '#86EFAC' },
+                        { key: 'active' as StatusFilter, label: '🟢 Activos', color: '#86EFAC' },
+                        { key: 'expired' as StatusFilter, label: '🔴 Vencidos', color: '#EF4444' },
+                        { key: 'inactive' as StatusFilter, label: '⚪ Sin Servicio', color: '#6B7280' },
+                        { key: 'creador' as StatusFilter, label: '🎬 Creadores', color: '#818CF8' },
+                    ]).map(f => (
+                        <button
+                            key={f.key}
+                            onClick={() => { setStatusFilter(f.key); setCurrentPage(1); }}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
+                                statusFilter === f.key
+                                    ? f.key === 'all'
+                                        ? 'bg-[#86EFAC]/10 border-[#86EFAC]/30 text-[#86EFAC]'
+                                        : `border-[#${f.color.replace('#','')}]/30 text-[${f.color}]`
+                                    : 'bg-card border-transparent text-muted-foreground hover:bg-secondary'
                             }`}
-                        style={statusFilter === f.key && f.key !== 'all' ? { backgroundColor: f.color } : undefined}
+                            style={statusFilter === f.key && f.key !== 'all' ? { backgroundColor: `${f.color}15`, color: f.color, borderColor: `${f.color}40` } : undefined}
+                        >
+                            {f.label} <span className="opacity-70 ml-1">({counts[f.key]})</span>
+                        </button>
+                    ))}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold flex items-center">
+                        <ArrowUpDownIcon className="w-3 h-3 mr-1" /> Ordenar
+                    </span>
+                    <select
+                        value={sortField}
+                        onChange={e => { setSortField(e.target.value as SortField); setCurrentPage(1); }}
+                        className="rounded-md px-2 py-1 text-xs bg-card border border-border text-foreground focus:outline-none cursor-pointer"
                     >
-                        {f.label} ({counts[f.key]})
+                        <option value="nextExpiry">Próx. Vencimiento</option>
+                        <option value="name">Nombre</option>
+                        <option value="totalSpent">Gasto Total</option>
+                        <option value="status">Estado</option>
+                    </select>
+                    <button
+                        onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+                        className="rounded-md px-2 py-1 bg-card border border-border text-foreground hover:bg-secondary transition-colors"
+                    >
+                        {sortDirection === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </button>
-                ))}
+                </div>
             </div>
 
-            {/* Table */}
+            {/* ── Content ── */}
             {paginatedCustomers.length > 0 ? (
-                <div className="rounded-lg border border-border overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-card/80">
-                            <tr>
-                                <th
-                                    className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                    onClick={() => handleSort('name')}
-                                >
-                                    <div className="flex items-center gap-1">
-                                        Cliente
-                                        <SortIcon field="name" />
+                /* LIST VIEW */
+                <div className="flex flex-col gap-2">
+                    {paginatedCustomers.map(customer => {
+                        const cfg = statusConfig[customer.status];
+                        return (
+                            <div key={customer.id} className="flex flex-col md:flex-row md:items-center gap-4 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-white/10 hover:bg-card">
+                                {/* Left: Customer Info */}
+                                <div className="flex items-center gap-3 w-full md:w-3/12 shrink-0">
+                                    <Avatar className="h-10 w-10 flex-shrink-0 border border-border">
+                                        <AvatarFallback className="bg-[#1a1a1a] text-[#86EFAC] text-sm font-semibold">
+                                            {getInitials(customer.full_name || 'XX')}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <h3 className="font-semibold text-foreground text-sm truncate">{customer.full_name || 'Sin nombre'}</h3>
+                                            {customer.customer_type === 'creador' && (
+                                                <span className="flex-shrink-0 inline-flex items-center rounded bg-[#818CF8]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#818CF8]">🎬 CREADOR</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                                            <Phone className="h-3 w-3" /> {customer.phone || '—'}
+                                        </p>
                                     </div>
-                                </th>
-                                <th
-                                    className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                    onClick={() => handleSort('status')}
-                                >
-                                    <div className="flex items-center gap-1">
-                                        Estado
-                                        <SortIcon field="status" />
-                                    </div>
-                                </th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
-                                    Servicios
-                                </th>
-                                <th
-                                    className="px-4 py-3 text-left text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                    onClick={() => handleSort('nextExpiry')}
-                                >
-                                    <div className="flex items-center gap-1">
-                                        Próx. Vencimiento
-                                        <SortIcon field="nextExpiry" />
-                                    </div>
-                                </th>
-                                <th
-                                    className="px-4 py-3 text-right text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                    onClick={() => handleSort('totalSpent')}
-                                >
-                                    <div className="flex items-center justify-end gap-1">
-                                        Gasto Total
-                                        <SortIcon field="totalSpent" />
-                                    </div>
-                                </th>
-                                <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">
-                                    Acciones
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                            {paginatedCustomers.map(customer => {
-                                const cfg = statusConfig[customer.status];
-                                const uniquePlatforms = getUniquePlatforms(customer.services);
+                                </div>
 
-                                return (
-                                    <React.Fragment key={customer.id}>
-                                        <tr className={`bg-card hover:bg-card/80 transition-colors cursor-pointer ${expandedRow === customer.id ? 'bg-card/60' : ''}`} onClick={() => setExpandedRow(expandedRow === customer.id ? null : customer.id)}>
-                                            {/* Cliente */}
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar className="h-8 w-8 flex-shrink-0">
-                                                        <AvatarFallback className="bg-[#1a1a1a] text-[#86EFAC] text-xs font-semibold">
-                                                            {getInitials(customer.full_name || 'XX')}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <p className="text-sm font-medium text-foreground truncate">
-                                                                {customer.full_name || 'Sin nombre'}
-                                                            </p>
-                                                            {customer.customer_type === 'creador' ? (
-                                                                <span className="inline-flex items-center rounded-full bg-[#818CF8]/15 border border-[#818CF8]/30 px-1.5 py-0.5 text-[9px] font-semibold text-[#818CF8]">
-                                                                    🎬 Creador
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center rounded-full bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-1.5 py-0.5 text-[9px] font-semibold text-[#3B82F6]">
-                                                                    👤 Cliente
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                            <Phone className="h-3 w-3 flex-shrink-0" />
-                                                            <span className="truncate">{customer.phone || '—'}</span>
-                                                        </div>
-                                                    </div>
+                                {/* Middle: Active Services */}
+                                <div className="flex-1 flex flex-wrap items-center gap-2 min-h-[40px]">
+                                    {customer.services.length > 0 ? (
+                                        customer.services.map((svc, i) => (
+                                            <a key={i} href={`/inventory?q=${encodeURIComponent(customer.phone || customer.full_name || '')}`} className="flex items-center gap-2 rounded-lg border border-border/50 bg-secondary/50 p-1.5 pr-3 transition-colors hover:bg-secondary/80 hover:border-white/20">
+                                                <PlatformIcon platform={svc.platform} size={24} />
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none mb-1">{svc.platform}</p>
+                                                    <p className={`text-xs font-medium leading-none ${expiryColor(svc.sale_end_date)}`}>
+                                                        {formatRelativeDate(svc.sale_end_date)}
+                                                    </p>
                                                 </div>
-                                            </td>
+                                            </a>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground/60 italic">Sin servicios activos</span>
+                                    )}
+                                </div>
 
-                                            {/* Estado */}
-                                            <td className="px-4 py-3">
-                                                <Badge
-                                                    variant="outline"
-                                                    className={`text-[11px] font-semibold ${cfg.bg} ${cfg.border} ${cfg.text}`}
-                                                >
-                                                    {cfg.label}
-                                                </Badge>
-                                            </td>
-
-                                            {/* Servicios */}
-                                            <td className="px-4 py-3">
-                                                {uniquePlatforms.length > 0 ? (
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        {uniquePlatforms.map((svc, i) => (
-                                                            <div
-                                                                key={`${svc.platform}-${i}`}
-                                                                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                                                style={{
-                                                                    backgroundColor: `${platformColors[svc.platform] || '#555'}20`,
-                                                                    color: platformColors[svc.platform] || '#999',
-                                                                    border: `1px solid ${platformColors[svc.platform] || '#555'}40`,
-                                                                }}
-                                                                title={svc.platform}
-                                                            >
-                                                                <div
-                                                                    className="w-2 h-2 rounded-full flex-shrink-0"
-                                                                    style={{ backgroundColor: platformColors[svc.platform] || '#555' }}
-                                                                />
-                                                                {svc.platform}
+                                {/* Right: Stats & Actions */}
+                                <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto shrink-0 mt-2 md:mt-0 pt-2 md:pt-0 border-t border-border/30 md:border-t-0">
+                                    <div className="text-left md:text-right">
+                                        <p className="text-sm font-semibold text-[#86EFAC]">{formatGs(customer.totalSpent)}</p>
+                                        <p className="text-[10px] text-muted-foreground uppercase">{customer.totalPurchases} compras</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setExpandedHistoryId(expandedHistoryId === customer.id ? null : customer.id)}
+                                            className={`h-8 px-2 text-xs border-border ${expandedHistoryId === customer.id ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            <Clock className="h-3 w-3 mr-1" /> Historial
+                                        </Button>
+                                        
+                                        <EditCustomerModal
+                                            customer={{
+                                                id: customer.id,
+                                                full_name: customer.full_name,
+                                                phone_number: customer.phone,
+                                                customer_type: customer.customer_type,
+                                                whatsapp_instance: customer.whatsapp_instance,
+                                                creator_slug: customer.creator_slug,
+                                                creator_whatsapp: customer.creator_whatsapp,
+                                                panel_disabled: customer.panel_disabled ?? false,
+                                            }}
+                                            trigger={
+                                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-[#86EFAC]/30 text-[#86EFAC] hover:bg-[#86EFAC]/10">
+                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            }
+                                            defaultOpen={autoEditId === customer.id}
+                                            onOpenChange={(open: boolean) => { if (!open && autoEditId === customer.id) clearAutoEdit(); }}
+                                        />
+                                    </div>
+                                </div>
+                                
+                                {/* Expanded History */}
+                                {expandedHistoryId === customer.id && (
+                                    <div className="w-full mt-2 rounded-lg border border-border/50 bg-[#0a0a0a] p-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Historial de Transacciones</span>
+                                        </div>
+                                        {customer.history.length > 0 ? (
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                                                {customer.history.map((h, i) => (
+                                                    <div key={i} className={`flex items-center gap-3 rounded-md px-3 py-2 border ${h.is_active ? 'bg-[#86EFAC]/5 border-[#86EFAC]/20' : 'bg-secondary/30 border-border/40'}`}>
+                                                        <PlatformIcon platform={h.platform} size={20} />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-medium text-foreground truncate">{h.platform}</span>
+                                                                <Badge variant="outline" className={`text-[9px] px-1.5 py-0 border ${h.is_active ? 'text-[#86EFAC] border-[#86EFAC]/30' : 'text-muted-foreground border-border/50'}`}>
+                                                                    {h.is_active ? 'Activo' : 'Finalizado'}
+                                                                </Badge>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground/50">—</span>
-                                                )}
-                                            </td>
-
-                                            {/* Próx. Vencimiento */}
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm text-foreground">{formatDate(customer.nextExpiry)}</span>
-                                                    {customer.nextExpiry && daysBadge(customer.nextExpiry)}
-                                                </div>
-                                            </td>
-
-                                            {/* Gasto Total */}
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="text-sm font-semibold text-[#86EFAC]">
-                                                    {formatGs(customer.totalSpent)}
-                                                </span>
-                                                {customer.totalPurchases > 0 && (
-                                                    <span className="text-[10px] text-muted-foreground block">
-                                                        {customer.totalPurchases} compra{customer.totalPurchases !== 1 ? 's' : ''}
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            {/* Acciones */}
-                                            <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <a
-                                                        href={`/?q=${encodeURIComponent(customer.phone || customer.full_name || '')}`}
-                                                        className="flex items-center gap-1 rounded-md bg-[#F97316]/10 px-2.5 py-1 text-xs font-medium text-[#F97316] hover:bg-[#F97316]/20 transition-colors"
-                                                        title="Buscar / Renovar"
-                                                    >
-                                                        <RefreshCw className="h-3 w-3" />
-                                                        Gestionar
-                                                    </a>
-                                                    <EditCustomerModal
-                                                        customer={{
-                                                            id: customer.id,
-                                                            full_name: customer.full_name,
-                                                            phone_number: customer.phone,
-                                                            customer_type: customer.customer_type,
-                                                            whatsapp_instance: customer.whatsapp_instance,
-                                                            creator_slug: customer.creator_slug,
-                                                            creator_whatsapp: customer.creator_whatsapp,
-                                                            panel_disabled: customer.panel_disabled ?? false,
-                                                        }}
-                                                        defaultOpen={autoEditId === customer.id}
-                                                        onOpenChange={(open: boolean) => { if (!open && autoEditId === customer.id) clearAutoEdit(); }}
-                                                    />
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        {/* ── Expanded History Row ── */}
-                                        {expandedRow === customer.id && (
-                                            <tr className="bg-[#0d0d0d]">
-                                                <td colSpan={6} className="px-6 py-4">
-                                                    <div className="flex items-center gap-2 mb-3">
-                                                        <Clock className="h-4 w-4 text-[#86EFAC]" />
-                                                        <span className="text-sm font-semibold text-foreground">Historial de Servicios</span>
-                                                        <span className="text-xs text-muted-foreground">({customer.history.length} registro{customer.history.length !== 1 ? 's' : ''})</span>
-                                                    </div>
-                                                    {customer.history.length > 0 ? (
-                                                        <div className="space-y-1.5">
-                                                            {customer.history.map((h, i) => (
-                                                                <div key={`${h.sale_id}-${i}`} className={`flex items-center gap-3 rounded-md px-3 py-2 border ${h.is_active ? 'bg-[#86EFAC]/5 border-[#86EFAC]/20' : 'bg-[#111] border-border/30'}`}>
-                                                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: h.is_active ? '#86EFAC' : platformColors[h.platform] || '#555' }} />
-                                                                    <div className="flex items-center gap-1.5 min-w-[100px]">
-                                                                        <span className="text-sm font-medium text-foreground">{h.platform}</span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1 min-w-0 flex-1">
-                                                                        <Monitor className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                                                        <span className="text-xs text-muted-foreground truncate">{h.account_email || '—'}</span>
-                                                                    </div>
-                                                                    <span className="text-xs text-muted-foreground flex-shrink-0">{formatDate(h.start_date)} → {formatDate(h.end_date)}</span>
-                                                                    <span className="text-sm font-semibold text-[#86EFAC] flex-shrink-0 min-w-[80px] text-right">{formatGs(h.amount)}</span>
-                                                                    <Badge variant="outline" className={`text-[9px] flex-shrink-0 ${h.is_active ? 'border-[#86EFAC]/40 text-[#86EFAC]' : 'border-border text-muted-foreground'}`}>
-                                                                        {h.is_active ? 'Activo' : 'Finalizado'}
-                                                                    </Badge>
-                                                                </div>
-                                                            ))}
+                                                            <p className="text-xs text-muted-foreground truncate">{h.account_email || 'Cuenta no disponible'}</p>
                                                         </div>
-                                                    ) : (
-                                                        <p className="text-xs text-muted-foreground/50">Sin historial de servicios</p>
-                                                    )}
-                                                </td>
-                                            </tr>
+                                                        <div className="text-right flex-shrink-0">
+                                                            <p className="text-sm font-semibold text-foreground">{formatGs(h.amount)}</p>
+                                                            <p className="text-[10px] text-muted-foreground">{new Date(h.start_date).toLocaleDateString('es-PY', {month:'short', year:'numeric'})}</p>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-white"
+                                                            onClick={() => window.open(`/?q=${encodeURIComponent(customer.phone || customer.full_name || '')}`, '_blank')}
+                                                            title="Renovar desde Cajero"
+                                                        >
+                                                            <RefreshCw className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground italic">No hay historial registrado.</p>
                                         )}
-                                    </React.Fragment>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
                     <Search className="h-10 w-10 opacity-30" />
-                    <p className="text-sm">No se encontraron clientes{statusFilter !== 'all' && statusFilter !== 'creador' ? ` con estado "${statusConfig[statusFilter].label}"` : statusFilter === 'creador' ? ' creadores' : ''}.</p>
+                    <p className="text-sm">No se encontraron clientes.</p>
                 </div>
             )}
 
-            {/* Pagination */}
+            {/* ── Pagination ── */}
             {totalPages > 1 && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <div className="flex items-center justify-between text-sm text-muted-foreground border-t border-border pt-4">
                     <div className="flex items-center gap-2">
                         <span>Mostrar:</span>
                         {[30, 50, 100, 0].map(n => (
@@ -529,19 +426,11 @@ export function CustomersView({ customers }: CustomersViewProps) {
                         ))}
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className="p-1 rounded hover:bg-secondary disabled:opacity-30"
-                        >
+                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1 rounded hover:bg-secondary disabled:opacity-30">
                             <ChevronLeft className="h-4 w-4" />
                         </button>
                         <span>{currentPage} / {totalPages}</span>
-                        <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className="p-1 rounded hover:bg-secondary disabled:opacity-30"
-                        >
+                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1 rounded hover:bg-secondary disabled:opacity-30">
                             <ChevronRight className="h-4 w-4" />
                         </button>
                     </div>
@@ -549,4 +438,16 @@ export function CustomersView({ customers }: CustomersViewProps) {
             )}
         </div>
     );
+}
+
+// Helper icon component for inline usage
+function ArrowUpDownIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m21 16-4 4-4-4"/>
+      <path d="M17 20V4"/>
+      <path d="m3 8 4-4 4 4"/>
+      <path d="M7 4v16"/>
+    </svg>
+  );
 }

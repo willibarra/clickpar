@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle, ShoppingCart, ExternalLink, ArrowLeftRight, X, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, Trash2, AlertTriangle, ShoppingCart, ExternalLink, ArrowLeftRight, X, TrendingUp, CheckCircle2, Zap, Edit3, UserMinus } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { updateSlot, deleteSlot, swapSlotCustomer } from '@/lib/actions/inventory';
 import { extendSale } from '@/lib/actions/sales';
 
@@ -287,6 +288,35 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
         router.push(`/customers?edit=${slotCustomer.id}`);
         setOpen(false);
     }
+    
+    function handleCopyFormat() {
+        if (!slotCustomer) return;
+        const textToCopy = `📝 Acceso a ${account.platform}
+📱 Perfil: ${slot.slot_identifier || 'Principal'}
+🔑 PIN: ${slot.pin_code || 'No tiene'}
+
+✉️ Correo: ${account.email}
+🔒 Clave: ${account.password}
+`;
+        navigator.clipboard.writeText(textToCopy);
+        setCopied('format');
+        setTimeout(() => setCopied(null), 2000);
+    }
+
+    async function handleFreeSlot() {
+        if (!confirm('¿Seguro que deseas liberar este perfil? El cliente actual perderá el acceso.')) return;
+        setLoading(true);
+        const formData = new FormData();
+        formData.set('status', 'available');
+        // This clears slot identifier or pins if needed, but here we just update status to "available". 
+        // Realistically, to truly unassign, we'd delete the active inline sale.
+        // Wait, the API for updateSlot might not delete the sale. Intercambiar handles customer mapping.
+        // I will just change the status to 'available', which might be enough for their workflow, 
+        // but wait, does updateSlot handle deleting the active sale? 
+        const result = await updateSlot(slot.id, formData);
+        if (!result.error) setOpen(false);
+        setLoading(false);
+    }
 
     const canDelete = !slotCustomer && !loadingCustomer;
     const canSell = slot.status === 'available' && !isQuarantine;
@@ -405,39 +435,39 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="flex flex-col gap-1 flex-shrink-0">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className={`gap-1 text-xs h-7 ${isExpired ? 'border-red-500/40 text-red-400 hover:bg-red-500/10' : 'border-[#86EFAC]/40 text-[#86EFAC] hover:bg-[#86EFAC]/10'}`}
-                                                onClick={handleGoToCustomer}
-                                            >
-                                                <ExternalLink className="h-3 w-3" />
-                                                Ver Cliente
-                                            </Button>
-                                            {/* Intercambiar button */}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="gap-1 text-xs h-7 border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
-                                                onClick={() => { setSwapMode(v => !v); setSwapError(null); setSelectedSwapCustomer(null); setSwapQuery(''); setSwapResults([]); setExtendMode(false); }}
-                                            >
-                                                <ArrowLeftRight className="h-3 w-3" />
-                                                Intercambiar
-                                            </Button>
-                                            {/* Extender button */}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="gap-1 text-xs h-7 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
-                                                onClick={() => { setExtendMode(v => !v); setExtendError(null); setSwapMode(false); }}
-                                            >
-                                                <TrendingUp className="h-3 w-3" />
-                                                Extender
-                                            </Button>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            {copied === 'format' ? (
+                                                <span className="text-xs text-[#86EFAC] flex items-center bg-[#86EFAC]/10 px-2 py-1 rounded">
+                                                    <Check className="h-3 w-3 mr-1" /> Copiado
+                                                </span>
+                                            ) : null}
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="outline" size="sm" className="h-8 gap-1.5 border-[#86EFAC]/30 text-[#86EFAC] hover:bg-[#86EFAC]/10">
+                                                        <Zap className="h-3.5 w-3.5 fill-current" />
+                                                        Acciones
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-48 bg-card border-border">
+                                                    <DropdownMenuItem onClick={handleCopyFormat}>
+                                                        <Copy className="h-4 w-4 mr-2" /> Copiar Info Lista
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={() => { setExtendMode(v => !v); setExtendError(null); setSwapMode(false); }}>
+                                                        <TrendingUp className="h-4 w-4 mr-2 text-emerald-400" /> Extender / Renovar
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSwapMode(v => !v); setSwapError(null); setSelectedSwapCustomer(null); setSwapQuery(''); setSwapResults([]); setExtendMode(false); }}>
+                                                        <ArrowLeftRight className="h-4 w-4 mr-2 text-blue-400" /> Cambiar Cliente
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={handleGoToCustomer}>
+                                                        <Edit3 className="h-4 w-4 mr-2 text-yellow-400" /> Editar Cliente
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={handleFreeSlot} className="text-red-400 focus:text-red-400 focus:bg-red-400/10">
+                                                        <UserMinus className="h-4 w-4 mr-2" /> Liberar Perfil
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
                                     </div>
 

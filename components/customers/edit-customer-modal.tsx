@@ -26,9 +26,10 @@ interface EditCustomerModalProps {
     customer: Customer;
     defaultOpen?: boolean;
     onOpenChange?: (open: boolean) => void;
+    trigger?: React.ReactElement;
 }
 
-export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange: onOpenChangeProp }: EditCustomerModalProps) {
+export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange: onOpenChangeProp, trigger }: EditCustomerModalProps) {
     const [open, setOpen] = useState(defaultOpen);
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -161,10 +162,12 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             onOpenChangeProp?.(v);
         }}>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8">
-                    <Pencil className="h-4 w-4 mr-1" />
-                    Editar
-                </Button>
+                {trigger ?? (
+                    <Button variant="ghost" size="sm" className="h-8">
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Editar
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[450px] bg-card border-border">
                 <DialogHeader>
