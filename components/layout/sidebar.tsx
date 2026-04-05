@@ -20,6 +20,7 @@ import {
   Inbox,
   TicketCheck,
   Truck,
+  Bot,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -35,6 +36,7 @@ const allNavItems = [
   { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
   { href: '/statistics', label: 'Estadísticas', icon: BarChart3, adminOnly: true },
   { href: '/automatizaciones', label: 'Automatizaciones', icon: Zap, adminOnly: true },
+  { href: '/chatbot', label: 'Chatbot IA', icon: Bot, adminOnly: true },
   { href: '/proveedores', label: 'Proveedores', icon: Truck, adminOnly: true },
   { href: '/resellers', label: 'Revendedores', icon: Store, adminOnly: true },
   { href: '/stock-requests', label: 'Solicitudes Stock', icon: Inbox, adminOnly: true },

@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2 } from 'lucide-react';
-import { extendSale } from '@/lib/actions/sales';
-import { swapSlotCustomer } from '@/lib/actions/inventory';
+import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle } from 'lucide-react';
+import { extendSale, cancelSubscription } from '@/lib/actions/sales';
+import { swapSlotCustomer, freezeMotherAccount } from '@/lib/actions/inventory';
+import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
 } from '@/components/ui/dialog';
@@ -37,7 +38,10 @@ interface SlotActionsDropdownProps {
         id?: string;
         end_date: string | null;
         start_date?: string | null;
+        amount?: number;
     } | null;
+    accountEmail?: string;
+    motherAccountId?: string;
 }
 
 interface CustomerResult {
@@ -46,9 +50,9 @@ interface CustomerResult {
     phone: string | null;
 }
 
-type ModalMode = null | 'extend' | 'swap';
+type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze';
 
-export function SlotActionsDropdown({ slot, account, customer, activeSale }: SlotActionsDropdownProps) {
+export function SlotActionsDropdown({ slot, account, customer, activeSale, accountEmail, motherAccountId }: SlotActionsDropdownProps) {
     const router = useRouter();
     const [copied, setCopied] = useState(false);
     const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -124,14 +128,36 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                         <span className={hasSoldCustomer ? 'text-emerald-400' : ''}>Extender</span>
                     </DropdownMenuItem>
 
-                    {/* Intercambiar */}
+                    {/* Cambiar cuenta */}
                     <DropdownMenuItem
-                        onClick={() => hasSoldCustomer && setModalMode('swap')}
+                        onClick={() => hasSoldCustomer && setModalMode('swap_account')}
                         disabled={!hasSoldCustomer}
                         className="flex items-center gap-2 cursor-pointer"
                     >
-                        <ArrowLeftRight className="h-3.5 w-3.5 text-orange-400" />
-                        <span className={hasSoldCustomer ? 'text-orange-400' : ''}>Intercambiar</span>
+                        <Repeat className="h-3.5 w-3.5 text-purple-400" />
+                        <span className={hasSoldCustomer ? 'text-purple-400' : ''}>Cambiar cuenta</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    {/* Suspender */}
+                    <DropdownMenuItem
+                        onClick={() => hasSoldCustomer && setModalMode('suspend')}
+                        disabled={!hasSoldCustomer}
+                        className="flex items-center gap-2 cursor-pointer"
+                    >
+                        <Ban className="h-3.5 w-3.5 text-red-400" />
+                        <span className={hasSoldCustomer ? 'text-red-400' : ''}>Suspender cliente</span>
+                    </DropdownMenuItem>
+
+                    {/* Congelar cuenta */}
+                    <DropdownMenuItem
+                        onClick={() => motherAccountId && setModalMode('freeze')}
+                        disabled={!motherAccountId}
+                        className="flex items-center gap-2 cursor-pointer"
+                    >
+                        <Snowflake className="h-3.5 w-3.5 text-blue-400" />
+                        <span className={motherAccountId ? 'text-blue-400' : ''}>Congelar cuenta</span>
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -147,7 +173,7 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 currentEndDate={activeSale?.end_date}
             />
 
-            {/* Swap modal */}
+            {/* Swap modal — cambia el CLIENTE del slot */}
             <SwapModal
                 open={modalMode === 'swap'}
                 onClose={() => setModalMode(null)}
@@ -155,6 +181,54 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 slotName={slot.slot_identifier}
                 platform={account.platform}
                 currentCustomer={customer}
+            />
+
+            {/* Swap account modal — mueve al cliente a otra CUENTA/slot disponible */}
+            {modalMode === 'swap_account' && activeSale?.id && customer?.id && (
+                <SwapServiceModal
+                    isOpen={true}
+                    onClose={() => setModalMode(null)}
+                    service={{
+                        sale_id: activeSale.id,
+                        slot_id: slot.id,
+                        platform: account.platform,
+                        slot: slot.slot_identifier || '',
+                        account_email: accountEmail || account.email,
+                        amount: activeSale.amount || 0,
+                    }}
+                    customerId={customer.id}
+                    customerName={customer.full_name || '(sin nombre)'}
+                    onSwapped={(newAccountEmail) => {
+                        setModalMode(null);
+                        if (newAccountEmail) {
+                            router.push(`/inventory?q=${encodeURIComponent(newAccountEmail)}`);
+                        } else {
+                            router.refresh();
+                        }
+                    }}
+                />
+            )}
+
+            {/* Suspend modal — cancela la venta y libera el slot */}
+            <SuspendModal
+                open={modalMode === 'suspend'}
+                onClose={() => setModalMode(null)}
+                slotId={slot.id}
+                saleId={activeSale?.id}
+                slotName={slot.slot_identifier}
+                platform={account.platform}
+                customerName={customer?.full_name}
+                onSuspended={() => { setModalMode(null); router.refresh(); }}
+            />
+
+            {/* Freeze modal — congela toda la cuenta madre */}
+            <FreezeModal
+                open={modalMode === 'freeze'}
+                onClose={() => setModalMode(null)}
+                motherAccountId={motherAccountId || ''}
+                platform={account.platform}
+                email={account.email}
+                onFrozen={() => { setModalMode(null); router.refresh(); }}
             />
         </>
     );
@@ -429,6 +503,150 @@ function SwapModal({ open, onClose, slotId, slotName, platform, currentCustomer 
                     >
                         {swapping && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
                         Intercambiar
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ── Suspend Modal ─────────────────────────────────────────────────────────────
+
+interface SuspendModalProps {
+    open: boolean;
+    onClose: () => void;
+    slotId: string;
+    saleId: string | undefined;
+    slotName: string | null;
+    platform: string;
+    customerName: string | null | undefined;
+    onSuspended: () => void;
+}
+
+function SuspendModal({ open, onClose, slotId, saleId, slotName, platform, customerName, onSuspended }: SuspendModalProps) {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => { if (!open) setError(null); }, [open]);
+
+    async function handleSuspend() {
+        if (!saleId) { setError('No se encontró la venta activa'); return; }
+        setLoading(true);
+        setError(null);
+        const result = await cancelSubscription(saleId, slotId);
+        if (result.error) {
+            setError(result.error);
+        } else {
+            onSuspended();
+        }
+        setLoading(false);
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="sm:max-w-[380px] bg-card border-border">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-red-400">
+                        <Ban className="h-4 w-4" />
+                        Suspender cliente
+                    </DialogTitle>
+                    <DialogDescription>
+                        {slotName || 'Perfil'} · {platform}
+                        {customerName && <span className="text-foreground/60"> · {customerName}</span>}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="py-2 space-y-3">
+                    <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 flex items-start gap-3">
+                        <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-red-300">
+                            Esto <strong>cancela la suscripción</strong> y libera el slot. El cliente perderá acceso.
+                        </p>
+                    </div>
+                    {error && <p className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1">{error}</p>}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>Cancelar</Button>
+                    <Button
+                        size="sm"
+                        onClick={handleSuspend}
+                        disabled={loading}
+                        className="bg-red-600 hover:bg-red-500 text-white"
+                    >
+                        {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                        Sí, suspender
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ── Freeze Modal ──────────────────────────────────────────────────────────────
+
+interface FreezeModalProps {
+    open: boolean;
+    onClose: () => void;
+    motherAccountId: string;
+    platform: string;
+    email: string;
+    onFrozen: () => void;
+}
+
+function FreezeModal({ open, onClose, motherAccountId, platform, email, onFrozen }: FreezeModalProps) {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => { if (!open) setError(null); }, [open]);
+
+    async function handleFreeze() {
+        if (!motherAccountId) { setError('ID de cuenta no encontrado'); return; }
+        setLoading(true);
+        setError(null);
+        const result = await freezeMotherAccount(motherAccountId);
+        if (result.error) {
+            setError(result.error);
+        } else {
+            onFrozen();
+        }
+        setLoading(false);
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="sm:max-w-[400px] bg-card border-border">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-blue-400">
+                        <Snowflake className="h-4 w-4" />
+                        Congelar cuenta
+                    </DialogTitle>
+                    <DialogDescription>
+                        {platform} · <span className="font-mono text-xs">{email}</span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="py-2 space-y-3">
+                    <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-4 py-3 flex items-start gap-3">
+                        <Snowflake className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-blue-200 space-y-1">
+                            <p>La <strong>cuenta completa</strong> quedará congelada ❄️.</p>
+                            <p className="text-blue-300/70 text-xs">No se podrán asignar nuevos clientes. Los slots actuales no se modifican. Podés reactivarla desde editar cuenta.</p>
+                        </div>
+                    </div>
+                    {error && <p className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1">{error}</p>}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>Cancelar</Button>
+                    <Button
+                        size="sm"
+                        onClick={handleFreeze}
+                        disabled={loading}
+                        className="bg-blue-600 hover:bg-blue-500 text-white"
+                    >
+                        {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                        ❄️ Congelar cuenta
                     </Button>
                 </div>
             </DialogContent>

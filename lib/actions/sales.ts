@@ -640,12 +640,23 @@ export async function swapService(data: SwapServiceData) {
             console.error('[WhatsApp/Swap] Error (non-blocking):', waError);
         }
 
+        // Fetch new account email to redirect inventory search
+        let newAccountEmail = '';
+        try {
+            const { data: newSlotForEmail } = await (supabase.from('sale_slots') as any)
+                .select('mother_accounts:mother_account_id(email)')
+                .eq('id', newSlotId)
+                .single();
+            newAccountEmail = (newSlotForEmail as any)?.mother_accounts?.email || '';
+        } catch { /* non-blocking */ }
+
         revalidatePath('/');
         return {
             success: true,
             message: `Servicio intercambiado a ${newPlatform || 'nuevo slot'} exitosamente`,
             motherAccountId,
             platform,
+            newAccountEmail,
         };
     } catch (error: any) {
         console.error('[SwapService] Error:', error);

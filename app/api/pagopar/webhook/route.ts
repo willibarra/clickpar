@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Find the transaction by pagopar_hash
     const { data: transaction, error: txError } = await (admin.from('transactions') as any)
-        .select('id, customer_id, amount, subscription_id, status')
+        .select('id, customer_id, amount, subscription_id, status, transaction_type')
         .eq('pagopar_hash', hash_pedido)
         .maybeSingle();
 
@@ -68,7 +68,87 @@ export async function POST(req: NextRequest) {
         .update({ status: 'verified' })
         .eq('id', transaction.id);
 
-    // 6. Renew the subscription: add 30 days to end_date
+    // 6. Bifurcate: wallet top-up vs subscription renewal
+    const txType: string = transaction.transaction_type ?? 'subscription_renewal';
+
+    if (txType === 'wallet_topup') {
+        // ── WALLET TOP-UP ──────────────────────────────────────────────
+        // Find the customer record linked to this auth user
+        const { data: profileRow } = await (admin.from('profiles') as any)
+            .select('phone_number')
+            .eq('id', transaction.customer_id)
+            .single();
+
+        let customer: any = null;
+
+        // Try portal_user_id first
+        const { data: byPortalId } = await (admin.from('customers') as any)
+            .select('id, full_name, phone, wallet_balance')
+            .eq('portal_user_id', transaction.customer_id)
+            .maybeSingle();
+        customer = byPortalId;
+
+        // Fallback: resolve by phone
+        if (!customer && profileRow?.phone_number) {
+            const { data: byPhone } = await (admin.from('customers') as any)
+                .select('id, full_name, phone, wallet_balance')
+                .eq('phone', profileRow.phone_number)
+                .maybeSingle();
+            customer = byPhone;
+        }
+
+        if (!customer) {
+            console.error('[PagoPar Webhook] Cannot find customer for wallet top-up, tx:', transaction.id);
+            return NextResponse.json({ error: 'Cliente no encontrado para acreditar saldo' }, { status: 404 });
+        }
+
+        const currentBalance = Number(customer.wallet_balance ?? 0);
+        const newBalance = currentBalance + Number(transaction.amount);
+
+        // Credit wallet_balance
+        await (admin.from('customers') as any)
+            .update({ wallet_balance: newBalance })
+            .eq('id', customer.id);
+
+        // Insert ledger entry
+        await (admin.from('wallet_transactions') as any)
+            .insert({
+                customer_id: customer.id,
+                amount: Number(transaction.amount),
+                type: 'credit',
+                concept: 'Recarga de Saldo — PagoPar',
+                reference_id: transaction.id,
+            });
+
+        console.log(`[PagoPar Webhook] Wallet top-up: customer=${customer.id}, +Gs.${transaction.amount} → new balance: Gs.${newBalance}`);
+
+        // Send WhatsApp confirmation
+        if (customer.phone) {
+            const amountFormatted = new Intl.NumberFormat('es-PY').format(transaction.amount);
+            const msg = [
+                `✅ *¡Recarga confirmada!*`,
+                ``,
+                `Hola ${customer.full_name?.split(' ')[0] ?? 'Cliente'}! Tu saldo fue acreditado 💰`,
+                ``,
+                `💰 *Monto recargado:* Gs. ${amountFormatted}`,
+                `💳 *Nuevo saldo:* Gs. ${new Intl.NumberFormat('es-PY').format(newBalance)}`,
+                ``,
+                `Ya podés usar tu saldo en la Tienda ClickPar 🛒`,
+                `_ClickPar - Streaming inteligente_`,
+            ].join('\n');
+
+            sendText(customer.phone, msg, {
+                templateKey: 'pagopar_topup_confirmacion',
+                skipRateLimiting: true,
+            }).catch((err) => {
+                console.error('[PagoPar Webhook] WhatsApp send failed (topup):', err);
+            });
+        }
+
+        return NextResponse.json({ success: true });
+    }
+
+    // ── SUBSCRIPTION RENEWAL (default) ────────────────────────────────
     let customerPhone: string | null = null;
     let customerName: string = 'Cliente';
     let platformName: string = 'Streaming';

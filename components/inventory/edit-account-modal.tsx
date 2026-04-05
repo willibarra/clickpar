@@ -99,8 +99,6 @@ export function EditAccountModal({ account }: { account: Account }) {
     useEffect(() => {
         if (open) {
             fetchPlatforms();
-            // Reset first so fetchSuppliers can resolve correctly
-            setSelectedSupplierId('');
             fetchSuppliers();
             initSlotEdits();
             setActiveTab('cuenta');

@@ -19,7 +19,7 @@ interface SwapServiceModalProps {
     };
     customerId: string;
     customerName: string;
-    onSwapped: () => void;
+    onSwapped: (newAccountEmail?: string) => void;
 }
 
 interface AvailableSlot {
@@ -77,6 +77,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
     const [postSwapMessage, setPostSwapMessage] = useState('');
     const [accountActionDone, setAccountActionDone] = useState('');
     const [copied, setCopied] = useState(false);
+    const [newAccountEmail, setNewAccountEmail] = useState('');
 
     useEffect(() => {
         if (!isOpen) return;
@@ -90,6 +91,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         setPostSwapMessage('');
         setAccountActionDone('');
         setConfirmDelete(false);
+        setNewAccountEmail('');
 
         // Fetch available slots
         fetch('/api/search/available-slots')
@@ -125,6 +127,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         // Swap successful — check for siblings
         const maId = result.motherAccountId || '';
         const plat = result.platform || '';
+        const newEmail = result.newAccountEmail || '';
         setMotherAccountId(maId);
         setSwappedPlatform(plat);
         setPostSwapMessage(result.message || 'Intercambio exitoso');
@@ -136,6 +139,8 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
 
         setIsSwapping(false);
         setStep('post_swap');
+        // Store new account email for redirect on finish
+        setNewAccountEmail(newEmail);
     };
 
     const handleBulkMove = async () => {
@@ -182,7 +187,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
     };
 
     const handleFinish = () => {
-        onSwapped();
+        onSwapped(newAccountEmail || undefined);
         onClose();
     };
 

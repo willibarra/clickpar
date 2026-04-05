@@ -693,6 +693,30 @@ export async function reactivateAccount(accountId: string) {
 }
 
 /**
+ * Freeze a mother account (e.g. paying issues or conflict with one slot).
+ * Account becomes inactive for new sales but data is preserved.
+ */
+export async function freezeMotherAccount(accountId: string) {
+    const supabase = await createClient();
+
+    const { error } = await (supabase.from('mother_accounts') as any)
+        .update({ status: 'frozen' })
+        .eq('id', accountId);
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    await logAction('freeze_account', 'mother_account', accountId, {
+        message: `congeló una cuenta madre`
+    });
+
+    revalidatePath('/');
+    revalidatePath('/inventory');
+    return { success: true };
+}
+
+/**
  * Mass-update multiple mother accounts with partial data.
  * Only fields present (non-undefined) in `fields` will be updated.
  */

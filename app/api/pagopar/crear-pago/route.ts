@@ -6,8 +6,12 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/pagopar/crear-pago
- * Body: { sale_id: string }
- * Creates a PagoPar payment order for the authenticated customer and returns the payment URL.
+ *
+ * Mode 1 — Subscription renewal (default):
+ *   Body: { sale_id: string }
+ *
+ * Mode 2 — Wallet top-up:
+ *   Body: { type: 'wallet_topup', amount_gs: number }
  */
 export async function POST(req: NextRequest) {
     // 1. Authenticate user
@@ -18,13 +22,22 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Parse body
-    let saleId: string;
+    let saleId: string | undefined;
+    let transactionType: 'subscription_renewal' | 'wallet_topup' = 'subscription_renewal';
+    let topupAmountGs: number | undefined;
     try {
         const body = await req.json();
         saleId = body.sale_id;
-        if (!saleId) throw new Error('Falta sale_id');
-    } catch {
-        return NextResponse.json({ error: 'Body inválido. Se requiere sale_id.' }, { status: 400 });
+        if (body.type === 'wallet_topup') {
+            transactionType = 'wallet_topup';
+            topupAmountGs = Number(body.amount_gs);
+            if (!topupAmountGs || topupAmountGs <= 0) throw new Error('Monto inválido para recarga');
+            if (topupAmountGs < 5000) throw new Error('El monto mínimo de recarga es Gs. 5.000');
+        } else if (!saleId) {
+            throw new Error('Falta sale_id');
+        }
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message || 'Body inválido.' }, { status: 400 });
     }
 
     const admin = await createAdminClient();
@@ -62,36 +75,43 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
-    // 5. Fetch the sale and verify it belongs to this customer
-    const { data: sale, error: saleError } = await (admin.from('sales') as any)
-        .select('id, amount_gs, end_date, is_active, customer_id, slot_id')
-        .eq('id', saleId)
-        .eq('customer_id', customer.id)
-        .single();
-
-    if (saleError || !sale) {
-        return NextResponse.json({ error: 'Venta no encontrada o no pertenece al usuario' }, { status: 404 });
-    }
-
-    // 6. Get platform name from slot → mother_account
+    // 5 & 6. For subscription renewals: fetch sale + resolve platform name
+    let sale: any = null;
     let platformName = 'Streaming';
-    if (sale.slot_id) {
-        const { data: slot } = await (admin.from('sale_slots') as any)
-            .select('mother_account_id')
-            .eq('id', sale.slot_id)
+
+    if (transactionType === 'subscription_renewal') {
+        const { data: saleData, error: saleError } = await (admin.from('sales') as any)
+            .select('id, amount_gs, end_date, is_active, customer_id, slot_id')
+            .eq('id', saleId)
+            .eq('customer_id', customer.id)
             .single();
-        if (slot?.mother_account_id) {
-            const { data: account } = await (admin.from('mother_accounts') as any)
-                .select('platform')
-                .eq('id', slot.mother_account_id)
+
+        if (saleError || !saleData) {
+            return NextResponse.json({ error: 'Venta no encontrada o no pertenece al usuario' }, { status: 404 });
+        }
+        sale = saleData;
+
+        if (sale.slot_id) {
+            const { data: slot } = await (admin.from('sale_slots') as any)
+                .select('mother_account_id')
+                .eq('id', sale.slot_id)
                 .single();
-            if (account?.platform) platformName = account.platform;
+            if (slot?.mother_account_id) {
+                const { data: account } = await (admin.from('mother_accounts') as any)
+                    .select('platform')
+                    .eq('id', slot.mother_account_id)
+                    .single();
+                if (account?.platform) platformName = account.platform;
+            }
         }
     }
 
-    const amountGs = Math.round(sale.amount_gs);
+    const amountGs = transactionType === 'wallet_topup'
+        ? topupAmountGs!
+        : Math.round(sale.amount_gs);
+
     if (!amountGs || amountGs <= 0) {
-        return NextResponse.json({ error: 'El monto de la venta es inválido' }, { status: 400 });
+        return NextResponse.json({ error: 'El monto es inválido' }, { status: 400 });
     }
 
     // 7. Create a pending transaction record to get a stable order ID
@@ -102,7 +122,8 @@ export async function POST(req: NextRequest) {
             currency: 'PYG',
             status: 'pending',
             origin_source: 'pagopar',
-            subscription_id: saleId,
+            subscription_id: transactionType === 'subscription_renewal' ? saleId : null,
+            transaction_type: transactionType,
         })
         .select('id')
         .single();
@@ -118,6 +139,9 @@ export async function POST(req: NextRequest) {
     const customerName = customer.full_name || profile?.full_name || 'Cliente ClickPar';
     const customerPhone = customer.phone || resolvedPhone || '595994540904';
     const customerEmail = user.email || 'cliente@clickpar.shop';
+    const paymentDescription = transactionType === 'wallet_topup'
+        ? 'Recarga de Saldo'
+        : platformName;
 
     const result = await createPaymentOrder({
         orderId,
@@ -125,7 +149,7 @@ export async function POST(req: NextRequest) {
         customerName,
         customerPhone,
         customerEmail,
-        platform: platformName,
+        platform: paymentDescription,
     });
 
     if (!result.success || !result.paymentUrl) {

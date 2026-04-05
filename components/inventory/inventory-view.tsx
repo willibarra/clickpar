@@ -15,6 +15,7 @@ import { BulkEditModal } from '@/components/inventory/bulk-edit-modal';
 import { BulkPriceModal } from '@/components/inventory/bulk-price-modal';
 import { InventoryDataActions } from '@/components/inventory/inventory-data-actions';
 import { CopySlotsModal } from '@/components/inventory/copy-slots-modal';
+import { ShowInStoreToggle } from '@/components/inventory/show-in-store-toggle';
 
 interface Slot {
     id: string;
@@ -51,6 +52,7 @@ interface Account {
     invitation_url?: string | null;
     invite_address?: string | null;
     sale_type?: string | null;
+    show_in_store?: boolean;
 }
 
 interface InventoryViewProps {
@@ -775,6 +777,13 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                             </div>
                                             <EditAccountModal account={account} />
                                         </div>
+                                        {/* Show in store toggle */}
+                                        <div className="px-4 pb-2">
+                                            <ShowInStoreToggle
+                                                accountId={account.id}
+                                                initialValue={!!account.show_in_store}
+                                            />
+                                        </div>
                                         {account.status === 'frozen' && (
                                             <div className="mx-4 mb-1">
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-300">❄️ Cuenta Congelada</span>
@@ -980,6 +989,10 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                             <span className="text-[#86EFAC] font-semibold">{available}</span>/{slots.length} libres
                                                                         </span>
                                                                         <div className="mt-1"><EditAccountModal account={account} /></div>
+                                                                        <ShowInStoreToggle
+                                                                            accountId={account.id}
+                                                                            initialValue={!!account.show_in_store}
+                                                                        />
                                                                         {account.notes && <p className="text-[10px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">📝 {account.notes}</p>}
                                                                     </div>
                                                                 </td>
@@ -1051,6 +1064,8 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     password: account.password,
                                                                 }}
                                                                 customer={customer ?? null}
+                                                                accountEmail={account.email}
+                                                                motherAccountId={account.id}
                                                                 activeSale={activeSale ? {
                                                                     id: activeSale.id,
                                                                     end_date: activeSale.end_date,
