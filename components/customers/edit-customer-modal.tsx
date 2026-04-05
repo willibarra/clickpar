@@ -37,6 +37,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [portalPassword, setPortalPassword] = useState<string | null>(null);
     const [loadingPassword, setLoadingPassword] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
+    const [regenerateConfirm, setRegenerateConfirm] = useState(false);
     const [copied, setCopied] = useState(false);
     const [customerType, setCustomerType] = useState(customer.customer_type || 'cliente');
     const [slugInput, setSlugInput] = useState(customer.creator_slug || '');
@@ -44,6 +45,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [copiedLink, setCopiedLink] = useState(false);
     const [creatorStats, setCreatorStats] = useState<{ total: number; last30Days: number } | null>(null);
     const [panelDisabled, setPanelDisabled] = useState(customer.panel_disabled ?? false);
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
 
     // Checks whether phone exists — required for portal password operations
     const hasPhone = !!customer.phone_number?.trim();
@@ -66,14 +68,13 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     }
 
     async function handleDelete() {
-        if (!confirm('¿Estás seguro de eliminar este cliente? Esta acción no se puede deshacer.')) return;
-
         setDeleting(true);
         const result = await deleteCustomer(customer.id);
 
         if (result.error) {
             setError(result.error);
             setDeleting(false);
+            setDeleteConfirm(false);
         } else {
             setOpen(false);
         }
@@ -102,8 +103,6 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     }
 
     async function handleRegeneratePassword() {
-        if (!confirm('¿Regenerar la contraseña? La contraseña anterior dejará de funcionar.')) return;
-
         setRegenerating(true);
         setError(null);
         try {
@@ -122,6 +121,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             setError('Error de conexión');
         } finally {
             setRegenerating(false);
+            setRegenerateConfirm(false);
         }
     }
 
@@ -158,7 +158,12 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     return (
         <Dialog open={open} onOpenChange={(v) => {
             setOpen(v);
-            if (!v) { setPortalPassword(null); setCopied(false); }
+            if (!v) { 
+                setPortalPassword(null); 
+                setCopied(false); 
+                setDeleteConfirm(false);
+                setRegenerateConfirm(false);
+            }
             onOpenChangeProp?.(v);
         }}>
             <DialogTrigger asChild>
@@ -366,16 +371,26 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            onClick={handleRegeneratePassword}
+                                            onClick={() => {
+                                                if (!regenerateConfirm) {
+                                                    setRegenerateConfirm(true);
+                                                    setTimeout(() => setRegenerateConfirm(false), 3000);
+                                                } else {
+                                                    handleRegeneratePassword();
+                                                }
+                                            }}
                                             disabled={regenerating}
-                                            className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300"
+                                            className={regenerateConfirm 
+                                                ? "gap-1.5 text-red-400 border-red-400/30 hover:bg-red-400/10 hover:text-red-300"
+                                                : "gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-300"
+                                            }
                                         >
                                             {regenerating ? (
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                             ) : (
                                                 <RefreshCw className="h-3.5 w-3.5" />
                                             )}
-                                            Regenerar contraseña
+                                            {regenerateConfirm ? '¿Seguro? Click para confirmar' : 'Regenerar contraseña'}
                                         </Button>
                                         <Button
                                             type="button"
@@ -419,12 +434,20 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                     <DialogFooter className="flex justify-between">
                         <Button
                             type="button"
-                            variant="destructive"
-                            onClick={handleDelete}
+                            variant={deleteConfirm ? "outline" : "destructive"}
+                            className={deleteConfirm ? "text-red-500 border-red-500/30 hover:bg-red-500/10 hover:text-red-600" : ""}
+                            onClick={() => {
+                                if (!deleteConfirm) {
+                                    setDeleteConfirm(true);
+                                    setTimeout(() => setDeleteConfirm(false), 3000);
+                                } else {
+                                    handleDelete();
+                                }
+                            }}
                             disabled={deleting}
                         >
                             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                            Eliminar
+                            {deleteConfirm ? '¿Seguro? Click para confirmar' : 'Eliminar'}
                         </Button>
                         <div className="flex gap-2">
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>

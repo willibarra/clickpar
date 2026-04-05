@@ -82,13 +82,10 @@ export async function POST(req: NextRequest) {
             }
         } else {
             // Create new auth user (first time setup)
-            const phoneWithPlus = customer.phone.startsWith('+') ? customer.phone : `+${customer.phone}`;
             const { error: createErr } = await admin.auth.admin.createUser({
                 email,
-                phone: phoneWithPlus,
                 password,
                 email_confirm: true,
-                phone_confirm: true,
                 user_metadata: { full_name: customer.full_name, customer_id: customerId },
                 app_metadata: { user_role: 'customer' },
             });

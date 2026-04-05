@@ -10,7 +10,8 @@
 
 ALTER TABLE customers
     ADD COLUMN IF NOT EXISTS wallet_balance DECIMAL(15, 2) NOT NULL DEFAULT 0
-        CONSTRAINT wallet_balance_non_negative CHECK (wallet_balance >= 0);
+        CONSTRAINT wallet_balance_non_negative CHECK (wallet_balance >= 0),
+    ADD COLUMN IF NOT EXISTS portal_user_id UUID;
 
 -- ============================================================
 -- 2. TABLA LEDGER DE BILLETERA (Extracto de Movimientos)
