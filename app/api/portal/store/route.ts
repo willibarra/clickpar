@@ -4,8 +4,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/portal/store
- * Returns all mother_accounts where show_in_store = true.
- * Does NOT expose credentials — only public catalog info.
+ * Returns grouped store products: by platform, sale_type (perfiles, familia) and full accounts.
  */
 export async function GET() {
     const supabase = await createClient();
@@ -23,49 +22,60 @@ export async function GET() {
             platform,
             slot_price_gs,
             max_slots,
-            sale_slots!inner(id, status)
+            sale_type,
+            sale_price_gs,
+            sale_slots (id, status)
         `)
         .eq('show_in_store', true)
-        .eq('status', 'active')
-        .eq('sale_slots.status', 'available');
+        .eq('status', 'active');
 
     if (error) {
-        // If no slots available per INNER JOIN, fall back to accounts without available slots
-        const { data: allAccounts, error: err2 } = await (admin.from('mother_accounts') as any)
-            .select('id, platform, slot_price_gs, max_slots')
-            .eq('show_in_store', true)
-            .eq('status', 'active');
-
-        if (err2) {
-            console.error('[Store API] Error:', err2);
-            return NextResponse.json({ error: 'Error al obtener productos' }, { status: 500 });
-        }
-
-        const products = (allAccounts || []).map((acc: any) => ({
-            id: acc.id,
-            platform: acc.platform,
-            priceGs: Number(acc.slot_price_gs ?? 25000),
-            availableSlots: 0,
-        }));
-
-        return NextResponse.json({ success: true, products });
+        console.error('[Store API] Error:', error);
+        return NextResponse.json({ error: 'Error al obtener productos' }, { status: 500 });
     }
 
-    // Group by mother account — count available slots
-    const accountMap = new Map<string, any>();
-    for (const row of (accounts || [])) {
-        if (!accountMap.has(row.id)) {
-            accountMap.set(row.id, {
-                id: row.id,
-                platform: row.platform,
-                priceGs: Number(row.slot_price_gs ?? 25000),
+    const productsMap = new Map<string, any>();
+    
+    for (const acc of (accounts || [])) {
+        const availableSlots = acc.sale_slots?.filter((s: any) => s.status === 'available').length || 0;
+        const saleType = acc.sale_type === 'family' ? 'family' : 'profile';
+        const basePrice = Number(acc.slot_price_gs ?? 25000);
+        
+        // 1. Group regular accounts (Por Perfiles / Familia)
+        const regularKey = `${acc.platform}_${saleType}`;
+        if (!productsMap.has(regularKey)) {
+            productsMap.set(regularKey, {
+                id: acc.id, // we keep one representative account_id
+                platform: acc.platform,
+                sale_type: saleType,
+                is_full_account: false,
+                priceGs: basePrice,
                 availableSlots: 0,
             });
         }
-        accountMap.get(row.id)!.availableSlots += 1;
+        
+        productsMap.get(regularKey)!.availableSlots += availableSlots;
+        
+        // 2. Detect "Cuenta Completa" if it's completely empty
+        if (saleType === 'profile' && availableSlots === acc.max_slots && acc.max_slots > 1) {
+            const fullKey = `${acc.platform}_full`;
+            const fullPrice = Number(acc.sale_price_gs || (basePrice * acc.max_slots));
+            
+            if (!productsMap.has(fullKey)) {
+                productsMap.set(fullKey, {
+                    id: acc.id,
+                    platform: acc.platform,
+                    sale_type: 'full_account',
+                    is_full_account: true,
+                    priceGs: fullPrice,
+                    availableSlots: 0,
+                });
+            }
+            productsMap.get(fullKey)!.availableSlots += 1;
+        }
     }
 
-    const products = Array.from(accountMap.values());
+    const products = Array.from(productsMap.values());
 
     return NextResponse.json({ success: true, products });
 }
