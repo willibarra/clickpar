@@ -4,44 +4,76 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/server';
-import { normalizePhone } from '@/lib/utils/phone';
+import { normalizePhone, safeNormalizePhone } from '@/lib/utils/phone';
 import { waitForRandomDelay, checkHourlyLimit } from '@/lib/rate-limiter';
 
 // ==========================================
-// Whitelist — reads from app_config (key: 'phone_whitelist')
-// Value: comma-separated phone numbers, e.g. "+595973442773,0981123456"
-// Empty or missing = ALL customers receive automated messages
+// Whitelist — reads from app_config
+//   key 'phone_whitelist': comma-separated phone numbers
+//   key 'wa_whitelist_enabled': 'true' | 'false'
+// When disabled (or list empty) → ALL customers receive messages
+// Uses in-memory cache (30 s TTL) to avoid per-message DB hits.
 // ==========================================
+
+let _whitelistCache: { list: string[]; enabled: boolean; ts: number } | null = null;
+const WHITELIST_CACHE_TTL = 30_000; // 30 seconds
+
+/**
+ * Load whitelist config from DB (with TTL cache).
+ * Returns { list: normalized phone numbers, enabled: toggle flag }.
+ */
+async function getWhitelistConfig(): Promise<{ list: string[]; enabled: boolean }> {
+    if (_whitelistCache && Date.now() - _whitelistCache.ts < WHITELIST_CACHE_TTL) {
+        return { list: _whitelistCache.list, enabled: _whitelistCache.enabled };
+    }
+
+    const supabase = await waSupabase();
+    const [{ data: wlData }, { data: enabledData }] = await Promise.all([
+        supabase.from('app_config' as any).select('value').eq('key', 'phone_whitelist').single(),
+        supabase.from('app_config' as any).select('value').eq('key', 'wa_whitelist_enabled').single(),
+    ]);
+
+    const raw: string = (wlData as any)?.value || '';
+    const list = raw
+        .split(',')
+        .map((p: string) => safeNormalizePhone(p))
+        .filter(Boolean) as string[];
+
+    const enabled = (enabledData as any)?.value === 'true';
+
+    _whitelistCache = { list, enabled, ts: Date.now() };
+    return { list, enabled };
+}
 
 /**
  * Check if a phone number is allowed to receive automated messages.
- * Reads 'phone_whitelist' from app_config in the database.
- * Returns true if the whitelist is empty/missing (send to everyone).
+ * Reads 'phone_whitelist' + 'wa_whitelist_enabled' from app_config.
+ * Returns true (allow) when:
+ *   - whitelist toggle is OFF, or
+ *   - the list is empty, or
+ *   - the phone matches a whitelisted number.
+ * Fail-open on errors (message will be sent).
  */
 export async function isPhoneWhitelisted(phone: string): Promise<boolean> {
     try {
-        const supabase = await waSupabase();
-        const { data } = await supabase
-            .from('app_config' as any)
-            .select('value')
-            .eq('key', 'phone_whitelist')
-            .single();
+        const { list, enabled } = await getWhitelistConfig();
 
-        const raw: string = (data as any)?.value || '';
-        const list = raw
-            .split(',')
-            .map((p: string) => p.trim())
-            .filter(Boolean);
+        // Whitelist disabled or empty → allow everyone
+        if (!enabled || list.length === 0) return true;
 
-        // Empty list = whitelist disabled → allow everyone
-        if (list.length === 0) return true;
+        const normalized = safeNormalizePhone(phone);
+        if (!normalized) return true; // invalid phone → fail-open
 
-        const normalized = normalizePhone(phone);
-        return list.some((w: string) => normalizePhone(w) === normalized);
+        return list.includes(normalized);
     } catch {
         // On DB error, fail-open (allow message to be sent)
         return true;
     }
+}
+
+/** Invalidate the in-memory whitelist cache (call after saving changes). */
+export function invalidateWhitelistCache(): void {
+    _whitelistCache = null;
 }
 
 // Untyped supabase client for whatsapp tables (not yet in database.types.ts)

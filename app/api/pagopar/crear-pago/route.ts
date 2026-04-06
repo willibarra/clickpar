@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { createPaymentOrder } from '@/lib/pagopar';
-import { normalizePhone } from '@/lib/utils/phone';
+import { resolveCustomer } from '@/lib/utils/resolve-customer';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -42,34 +42,8 @@ export async function POST(req: NextRequest) {
 
     const admin = await createAdminClient();
 
-    // 3. Get user profile & phone
-    const { data: profile } = await (admin.from('profiles') as any)
-        .select('id, full_name, phone_number')
-        .eq('id', user.id)
-        .single();
-
-    let resolvedPhone: string | null = profile?.phone_number || null;
-    if (!resolvedPhone && user.email?.endsWith('@clickpar.shop')) {
-        const extracted = user.email.replace('@clickpar.shop', '');
-        if (extracted) resolvedPhone = `+${extracted}`;
-    }
-
-    // 4. Find customer record (to get full_name and verify this sale belongs to them)
-    let customer: any = null;
-    if (resolvedPhone) {
-        const phonesToTry = [
-            normalizePhone(resolvedPhone),
-            resolvedPhone,
-            resolvedPhone.replace(/^\+/, ''),
-        ];
-        for (const phone of phonesToTry) {
-            const { data } = await (admin.from('customers') as any)
-                .select('id, full_name, phone')
-                .eq('phone', phone)
-                .maybeSingle();
-            if (data) { customer = data; break; }
-        }
-    }
+    // 3. Resolve customer (centralized helper)
+    const customer = await resolveCustomer(admin, user.id, user.email);
 
     if (!customer) {
         return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
@@ -136,8 +110,8 @@ export async function POST(req: NextRequest) {
     const orderId = transaction.id as string;
 
     // 8. Call PagoPar API
-    const customerName = customer.full_name || profile?.full_name || 'Cliente ClickPar';
-    const customerPhone = customer.phone || resolvedPhone || '595994540904';
+    const customerName = customer.full_name || 'Cliente ClickPar';
+    const customerPhone = customer.phone || '595994540904';
     const customerEmail = user.email || 'cliente@clickpar.shop';
     const paymentDescription = transactionType === 'wallet_topup'
         ? 'Recarga de Saldo'

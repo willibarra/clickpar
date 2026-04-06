@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     // Get customer data
     const { data: customer } = await (admin.from('customers') as any)
-        .select('id, phone, full_name')
+        .select('id, phone, full_name, portal_user_id')
         .eq('id', customerId)
         .single();
 
@@ -55,26 +55,11 @@ export async function POST(req: NextRequest) {
     const email = `${phoneClean}@clickpar.shop`;
 
     try {
-        // Search directly by email filter (avoids listUsers pagination that misses users > page 1)
-        const { data: searchData } = await admin.auth.admin.listUsers({ filter: `email=${email}` } as any);
-        let authUser = searchData?.users?.find((u: any) => u.email === email) ?? null;
+        let authUserId = customer.portal_user_id;
 
-        // Fallback: paginated search if filter is not supported by the self-hosted version
-        if (!authUser) {
-            let page = 1;
-            const perPage = 1000;
-            while (true) {
-                const { data: pageData } = await admin.auth.admin.listUsers({ page, perPage });
-                const found = pageData?.users?.find((u: any) => u.email === email);
-                if (found) { authUser = found; break; }
-                if (!pageData?.users || pageData.users.length < perPage) break;
-                page++;
-            }
-        }
-
-        if (authUser) {
+        if (authUserId) {
             // Update existing user's password
-            const { error: updateErr } = await admin.auth.admin.updateUserById(authUser.id, {
+            const { error: updateErr } = await admin.auth.admin.updateUserById(authUserId, {
                 password,
             });
             if (updateErr) {
@@ -82,7 +67,7 @@ export async function POST(req: NextRequest) {
             }
         } else {
             // Create new auth user (first time setup)
-            const { error: createErr } = await admin.auth.admin.createUser({
+            const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
                 email,
                 password,
                 email_confirm: true,
@@ -92,11 +77,17 @@ export async function POST(req: NextRequest) {
             if (createErr) {
                 return NextResponse.json({ error: `Error al crear usuario: ${createErr.message}` }, { status: 500 });
             }
+            
+            if (newUser?.user?.id) {
+                authUserId = newUser.user.id;
+            } else {
+                return NextResponse.json({ error: 'Usuario creado pero no se devolvió el ID' }, { status: 500 });
+            }
         }
 
-        // Store encrypted password in customers table
+        // Store encrypted password and updated portal_user_id in customers table
         await (admin.from('customers') as any)
-            .update({ portal_password: encrypt(password) })
+            .update({ portal_password: encrypt(password), portal_user_id: authUserId })
             .eq('id', customerId);
 
         // Log this action

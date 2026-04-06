@@ -11,6 +11,7 @@ import {
     Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3
 } from 'lucide-react';
 import { EditCustomerModal } from '@/components/customers/edit-customer-modal';
+import { WalletTopupModal } from '@/components/customers/wallet-topup-modal';
 import { PlatformIcon } from '@/components/ui/platform-icon';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
@@ -40,6 +41,7 @@ export interface CustomerRow {
     whatsapp_instance?: string | null;
     creator_slug?: string | null;
     creator_whatsapp?: string | null;
+    portal_user_id?: string | null;
     panel_disabled?: boolean;
     services: CustomerService[];
     history: CustomerHistory[];
@@ -325,6 +327,10 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                         <p className="text-[10px] text-muted-foreground uppercase">{customer.totalPurchases} compras</p>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <WalletTopupModal
+                                            customerId={customer.id}
+                                            customerName={customer.full_name || 'Cliente'}
+                                        />
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -343,6 +349,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                                 whatsapp_instance: customer.whatsapp_instance,
                                                 creator_slug: customer.creator_slug,
                                                 creator_whatsapp: customer.creator_whatsapp,
+                                                portal_user_id: customer.portal_user_id,
                                                 panel_disabled: customer.panel_disabled ?? false,
                                             }}
                                             trigger={

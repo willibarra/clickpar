@@ -125,12 +125,13 @@ export default function ChatbotPage() {
     const [savingPayment, setSavingPayment] = useState(false);
     const [resolvingId, setResolvingId] = useState<string | null>(null);
     const [togglingChatbot, setTogglingChatbot] = useState(false);
-    // Whitelist state
     const [whitelistPhones, setWhitelistPhones] = useState<string[]>([]);
     const [whitelistEnabled, setWhitelistEnabled] = useState(false);
     const [newPhone, setNewPhone] = useState('');
+    const [phoneError, setPhoneError] = useState('');
     const [savingWhitelist, setSavingWhitelist] = useState(false);
     const [togglingWhitelist, setTogglingWhitelist] = useState(false);
+    const [whitelistDirty, setWhitelistDirty] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -152,6 +153,7 @@ export default function ChatbotPage() {
         if (data) {
             setWhitelistPhones(data.whitelist_phones || []);
             setWhitelistEnabled(data.whitelist_enabled || false);
+            setWhitelistDirty(false);
         }
     }, [data]);
 
@@ -208,23 +210,30 @@ export default function ChatbotPage() {
     };
 
     const addPhone = () => {
-        const trimmed = newPhone.trim().replace(/\s/g, '');
-        if (!trimmed) return;
-        // Normalize: strip non-digits, add 595 prefix if needed
-        const digits = trimmed.replace(/\D/g, '');
+        setPhoneError('');
+        const digits = newPhone.replace(/\D/g, '');
+        if (digits.length < 6) {
+            setPhoneError('El número debe tener al menos 6 dígitos');
+            return;
+        }
+        // Normalize client-side for display (backend will also normalize on save)
         const normalized = digits.startsWith('595') ? digits
             : digits.startsWith('0') ? '595' + digits.slice(1)
-            : '595' + digits;
+            : digits.startsWith('9') && digits.length <= 10 ? '595' + digits
+            : digits;
         if (whitelistPhones.includes(normalized)) {
+            setPhoneError('Este número ya está en la lista');
             setNewPhone('');
             return;
         }
         setWhitelistPhones(prev => [...prev, normalized]);
         setNewPhone('');
+        setWhitelistDirty(true);
     };
 
     const removePhone = (phone: string) => {
         setWhitelistPhones(prev => prev.filter(p => p !== phone));
+        setWhitelistDirty(true);
     };
 
     const saveWhitelist = async () => {
@@ -741,29 +750,37 @@ export default function ChatbotPage() {
                                 </p>
 
                                 {/* Add phone input */}
-                                <div className="flex gap-2">
-                                    <div className="relative flex-1">
-                                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                                        <input
-                                            id="whitelist-phone-input"
-                                            type="tel"
-                                            value={newPhone}
-                                            onChange={e => setNewPhone(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && addPhone()}
-                                            placeholder="Ej: 0973682124 o 595973682124"
-                                            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-muted/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#86EFAC]/40 focus:border-[#86EFAC]/60"
-                                        />
+                                <div className="space-y-1">
+                                    <div className="flex gap-2">
+                                        <div className="relative flex-1">
+                                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                            <input
+                                                id="whitelist-phone-input"
+                                                type="tel"
+                                                value={newPhone}
+                                                onChange={e => { setNewPhone(e.target.value); setPhoneError(''); }}
+                                                onKeyDown={e => e.key === 'Enter' && addPhone()}
+                                                placeholder="Ej: 0973682124 o 595973682124"
+                                                className={cn(
+                                                    'w-full pl-9 pr-3 py-2 text-sm rounded-lg border bg-muted/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#86EFAC]/40 focus:border-[#86EFAC]/60',
+                                                    phoneError ? 'border-red-500/60' : 'border-border'
+                                                )}
+                                            />
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={addPhone}
+                                            disabled={!newPhone.trim()}
+                                            className="gap-1.5 bg-[#86EFAC]/10 text-[#86EFAC] border border-[#86EFAC]/30 hover:bg-[#86EFAC]/20"
+                                            variant="outline"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Agregar
+                                        </Button>
                                     </div>
-                                    <Button
-                                        size="sm"
-                                        onClick={addPhone}
-                                        disabled={!newPhone.trim()}
-                                        className="gap-1.5 bg-[#86EFAC]/10 text-[#86EFAC] border border-[#86EFAC]/30 hover:bg-[#86EFAC]/20"
-                                        variant="outline"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Agregar
-                                    </Button>
+                                    {phoneError && (
+                                        <p className="text-xs text-red-400 pl-1">{phoneError}</p>
+                                    )}
                                 </div>
 
                                 {/* Phone list */}
@@ -806,18 +823,26 @@ export default function ChatbotPage() {
                                             ? 'Sin números guardados'
                                             : `${whitelistPhones.length} número${whitelistPhones.length > 1 ? 's' : ''} en la lista`
                                         }
+                                        {whitelistDirty && (
+                                            <span className="ml-2 text-yellow-400">• Cambios sin guardar</span>
+                                        )}
                                     </p>
                                     <Button
                                         size="sm"
                                         onClick={saveWhitelist}
                                         disabled={savingWhitelist}
-                                        className="gap-1.5 bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90 text-xs"
+                                        className={cn(
+                                            'gap-1.5 text-xs',
+                                            whitelistDirty
+                                                ? 'bg-yellow-400 text-black hover:bg-yellow-400/90'
+                                                : 'bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90'
+                                        )}
                                     >
                                         {savingWhitelist
                                             ? <RefreshCw className="h-3 w-3 animate-spin" />
                                             : <Check className="h-3 w-3" />
                                         }
-                                        Guardar lista
+                                        {whitelistDirty ? 'Guardar cambios' : 'Guardar lista'}
                                     </Button>
                                 </div>
                             </div>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { safeNormalizePhone } from '@/lib/utils/phone';
+import { invalidateWhitelistCache } from '@/lib/whatsapp';
 export const dynamic = 'force-dynamic';
 
 
@@ -85,24 +87,16 @@ export async function GET(request: NextRequest) {
             customer_name: c.customer_id ? (customerMap[c.customer_id] || null) : null,
         }));
 
-        // Get phone whitelist from app_config
-        const { data: whitelistConfig } = await (supabase as any)
-            .from('app_config')
-            .select('value')
-            .eq('key', 'phone_whitelist')
-            .single();
+        // Get phone whitelist + enabled flag in parallel
+        const [{ data: whitelistConfig }, { data: whitelistEnabledConfig }] = await Promise.all([
+            (supabase as any).from('app_config').select('value').eq('key', 'phone_whitelist').single(),
+            (supabase as any).from('app_config').select('value').eq('key', 'wa_whitelist_enabled').single(),
+        ]);
         const whitelistRaw: string = (whitelistConfig as any)?.value || '';
         const whitelist_phones: string[] = whitelistRaw
             .split(',')
             .map((p: string) => p.trim())
             .filter(Boolean);
-
-        // Get whitelist enabled flag
-        const { data: whitelistEnabledConfig } = await (supabase as any)
-            .from('app_config')
-            .select('value')
-            .eq('key', 'wa_whitelist_enabled')
-            .single();
         const whitelist_enabled = (whitelistEnabledConfig as any)?.value === 'true';
 
         return NextResponse.json({
@@ -190,20 +184,22 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (action === 'set-whitelist') {
-            // phones: string[] — save as CSV in app_config
+            // phones: string[] — normalize, deduplicate, save as CSV in app_config
             const { phones } = body as { phones: string[] };
             if (!Array.isArray(phones)) {
                 return NextResponse.json({ error: 'Missing phones array' }, { status: 400 });
             }
-            const csv = phones
-                .map((p: string) => p.trim())
-                .filter(Boolean)
-                .join(',');
+            const normalized = phones
+                .map((p: string) => safeNormalizePhone(p))
+                .filter(Boolean) as string[];
+            const deduped = [...new Set(normalized)];
+            const csv = deduped.join(',');
             const { error } = await (supabase as any)
                 .from('app_config')
                 .upsert({ key: 'phone_whitelist', value: csv }, { onConflict: 'key' });
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-            return NextResponse.json({ success: true, phones_saved: phones.length });
+            invalidateWhitelistCache();
+            return NextResponse.json({ success: true, phones_saved: deduped.length });
         }
 
         if (action === 'toggle-whitelist') {
@@ -212,6 +208,7 @@ export async function PATCH(request: NextRequest) {
                 .from('app_config')
                 .upsert({ key: 'wa_whitelist_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' });
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+            invalidateWhitelistCache();
             return NextResponse.json({ success: true });
         }
 

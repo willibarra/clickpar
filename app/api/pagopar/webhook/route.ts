@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { verifyWebhookToken } from '@/lib/pagopar';
 import { sendText } from '@/lib/whatsapp';
+import { resolveCustomer } from '@/lib/utils/resolve-customer';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -73,53 +74,29 @@ export async function POST(req: NextRequest) {
 
     if (txType === 'wallet_topup') {
         // ── WALLET TOP-UP ──────────────────────────────────────────────
-        // Find the customer record linked to this auth user
-        const { data: profileRow } = await (admin.from('profiles') as any)
-            .select('phone_number')
-            .eq('id', transaction.customer_id)
-            .single();
-
-        let customer: any = null;
-
-        // Try portal_user_id first
-        const { data: byPortalId } = await (admin.from('customers') as any)
-            .select('id, full_name, phone, wallet_balance')
-            .eq('portal_user_id', transaction.customer_id)
-            .maybeSingle();
-        customer = byPortalId;
-
-        // Fallback: resolve by phone
-        if (!customer && profileRow?.phone_number) {
-            const { data: byPhone } = await (admin.from('customers') as any)
-                .select('id, full_name, phone, wallet_balance')
-                .eq('phone', profileRow.phone_number)
-                .maybeSingle();
-            customer = byPhone;
-        }
+        // Resolve customer using centralized helper
+        const customer = await resolveCustomer(admin, transaction.customer_id);
 
         if (!customer) {
             console.error('[PagoPar Webhook] Cannot find customer for wallet top-up, tx:', transaction.id);
             return NextResponse.json({ error: 'Cliente no encontrado para acreditar saldo' }, { status: 404 });
         }
 
-        const currentBalance = Number(customer.wallet_balance ?? 0);
-        const newBalance = currentBalance + Number(transaction.amount);
+        // Atomic credit via RPC (prevents race conditions on concurrent webhooks)
+        const creditAmount = Number(transaction.amount);
+        const { data: creditResult, error: creditError } = await (admin.rpc as any)('credit_wallet', {
+            p_customer_id: customer.id,
+            p_amount: creditAmount,
+            p_concept: 'Recarga de Saldo — PagoPar',
+            p_reference_id: transaction.id,
+        });
 
-        // Credit wallet_balance
-        await (admin.from('customers') as any)
-            .update({ wallet_balance: newBalance })
-            .eq('id', customer.id);
+        if (creditError || !(creditResult as any)?.success) {
+            console.error('[PagoPar Webhook] credit_wallet RPC failed:', creditError || (creditResult as any)?.error);
+            return NextResponse.json({ error: 'Error al acreditar saldo' }, { status: 500 });
+        }
 
-        // Insert ledger entry
-        await (admin.from('wallet_transactions') as any)
-            .insert({
-                customer_id: customer.id,
-                amount: Number(transaction.amount),
-                type: 'credit',
-                concept: 'Recarga de Saldo — PagoPar',
-                reference_id: transaction.id,
-            });
-
+        const newBalance = (creditResult as any).new_balance;
         console.log(`[PagoPar Webhook] Wallet top-up: customer=${customer.id}, +Gs.${transaction.amount} → new balance: Gs.${newBalance}`);
 
         // Send WhatsApp confirmation

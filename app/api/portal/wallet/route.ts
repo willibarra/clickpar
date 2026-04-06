@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { normalizePhone } from '@/lib/utils/phone';
+import { resolveCustomer } from '@/lib/utils/resolve-customer';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -16,43 +16,8 @@ export async function GET() {
 
     const admin = await createAdminClient();
 
-    // Resolve customer via portal_user_id or phone
-    let customer: any = null;
-
-    const { data: byPortalId } = await (admin.from('customers') as any)
-        .select('id, full_name, wallet_balance')
-        .eq('portal_user_id', user.id)
-        .maybeSingle();
-
-    if (byPortalId) {
-        customer = byPortalId;
-    } else {
-        // Fallback: find by phone extracted from email
-        let resolvedPhone: string | null = null;
-        const { data: profile } = await (admin.from('profiles') as any)
-            .select('phone_number')
-            .eq('id', user.id)
-            .single();
-        resolvedPhone = profile?.phone_number || null;
-        if (!resolvedPhone && user.email?.endsWith('@clickpar.shop')) {
-            const extracted = user.email.replace('@clickpar.shop', '');
-            if (extracted) resolvedPhone = `+${extracted}`;
-        }
-        if (resolvedPhone) {
-            const phonesToTry = [
-                normalizePhone(resolvedPhone),
-                resolvedPhone,
-                resolvedPhone.replace(/^\+/, ''),
-            ];
-            for (const phone of phonesToTry) {
-                const { data } = await (admin.from('customers') as any)
-                    .select('id, full_name, wallet_balance')
-                    .eq('phone', phone)
-                    .maybeSingle();
-                if (data) { customer = data; break; }
-            }
-        }
-    }
+    // Resolve customer via centralized helper
+    const customer = await resolveCustomer(admin, user.id, user.email);
 
     if (!customer) {
         return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });

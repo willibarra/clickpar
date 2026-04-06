@@ -19,6 +19,7 @@ interface Customer {
     whatsapp_instance?: string | null;
     creator_slug?: string | null;
     creator_whatsapp?: string | null;
+    portal_user_id?: string | null;
     panel_disabled?: boolean;
 }
 
@@ -46,6 +47,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [creatorStats, setCreatorStats] = useState<{ total: number; last30Days: number } | null>(null);
     const [panelDisabled, setPanelDisabled] = useState(customer.panel_disabled ?? false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [hasPortalAccount, setHasPortalAccount] = useState(!!customer.portal_user_id);
 
     // Checks whether phone exists — required for portal password operations
     const hasPhone = !!customer.phone_number?.trim();
@@ -114,6 +116,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             const data = await res.json();
             if (data.password) {
                 setPortalPassword(data.password);
+                setHasPortalAccount(true);
             } else {
                 setError(data.error || 'No se pudo regenerar la contraseña');
             }
@@ -390,7 +393,10 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                             ) : (
                                                 <RefreshCw className="h-3.5 w-3.5" />
                                             )}
-                                            {regenerateConfirm ? '¿Seguro? Click para confirmar' : 'Regenerar contraseña'}
+                                            {regenerateConfirm 
+                                                ? '¿Seguro? Click para confirmar' 
+                                                : (hasPortalAccount ? 'Regenerar contraseña' : 'Generar Acceso')
+                                            }
                                         </Button>
                                         <Button
                                             type="button"

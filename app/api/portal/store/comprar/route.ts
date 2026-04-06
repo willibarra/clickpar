@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { normalizePhone } from '@/lib/utils/phone';
+import { resolveCustomer } from '@/lib/utils/resolve-customer';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -8,12 +8,11 @@ export const dynamic = 'force-dynamic';
  * Body: { account_id: string }
  *
  * Purchases an available slot from the store using the customer's wallet balance.
- * Steps:
- *  1. Authenticate user → resolve customer
- *  2. Fetch the target mother_account (must be show_in_store=true and active)
- *  3. Find a free sale_slot in that account
- *  4. Verify customer has sufficient wallet_balance
- *  5. Atomically: deduct balance + create sale + insert wallet_transaction
+ * Uses the `purchase_from_store` PostgreSQL RPC for full atomicity:
+ *  - SELECT FOR UPDATE on customer row (prevents double-spend)
+ *  - FOR UPDATE SKIP LOCKED on slots (prevents double-assign)
+ *  - Atomic balance deduction + sale creation + ledger entry
+ *  - Automatic rollback if any step fails
  */
 export async function POST(req: NextRequest) {
     // 1. Authenticate
@@ -35,144 +34,48 @@ export async function POST(req: NextRequest) {
 
     const admin = await createAdminClient();
 
-    // 3. Resolve customer
-    let customer: any = null;
-    const { data: byPortalId } = await (admin.from('customers') as any)
-        .select('id, full_name, phone, wallet_balance')
-        .eq('portal_user_id', user.id)
-        .maybeSingle();
-
-    if (byPortalId) {
-        customer = byPortalId;
-    } else {
-        let resolvedPhone: string | null = null;
-        const { data: profile } = await (admin.from('profiles') as any)
-            .select('phone_number')
-            .eq('id', user.id)
-            .single();
-        resolvedPhone = profile?.phone_number || null;
-        if (!resolvedPhone && user.email?.endsWith('@clickpar.shop')) {
-            const extracted = user.email.replace('@clickpar.shop', '');
-            if (extracted) resolvedPhone = `+${extracted}`;
-        }
-        if (resolvedPhone) {
-            const phonesToTry = [
-                normalizePhone(resolvedPhone),
-                resolvedPhone,
-                resolvedPhone.replace(/^\+/, ''),
-            ];
-            for (const phone of phonesToTry) {
-                const { data } = await (admin.from('customers') as any)
-                    .select('id, full_name, phone, wallet_balance')
-                    .eq('phone', phone)
-                    .maybeSingle();
-                if (data) { customer = data; break; }
-            }
-        }
-    }
-
+    // 3. Resolve customer (centralized helper)
+    const customer = await resolveCustomer(admin, user.id, user.email);
     if (!customer) {
         return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
-    // 4. Fetch the mother_account (must be store-visible and active)
-    const { data: account, error: accErr } = await (admin.from('mother_accounts') as any)
-        .select('id, platform, slot_price_gs, status, show_in_store')
-        .eq('id', accountId)
-        .eq('show_in_store', true)
-        .eq('status', 'active')
-        .single();
+    // 4. Execute atomic purchase via RPC
+    const { data: result, error: rpcError } = await (admin.rpc as any)('purchase_from_store', {
+        p_customer_id: customer.id,
+        p_account_id: accountId,
+        p_user_id: user.id,
+    });
 
-    if (accErr || !account) {
-        return NextResponse.json({ error: 'Producto no disponible en la tienda' }, { status: 404 });
+    if (rpcError) {
+        console.error('[Store/Comprar] RPC error:', rpcError);
+        return NextResponse.json({ error: 'Error al procesar la compra. Intentá nuevamente.' }, { status: 500 });
     }
 
-    const priceGs = Math.round(Number(account.slot_price_gs ?? 25000));
+    const rpcResult = result as { success: boolean; error?: string; code?: string; sale_id?: string; platform?: string; amount?: number; new_balance?: number; required?: number; available?: number };
 
-    // 5. Check balance
-    const currentBalance = Number(customer.wallet_balance ?? 0);
-    if (currentBalance < priceGs) {
+    if (!rpcResult.success) {
+        // Map RPC errors to HTTP statuses
+        const status = rpcResult.code === 'INSUFFICIENT_BALANCE' ? 400
+            : rpcResult.error?.includes('no disponible') ? 404
+            : rpcResult.error?.includes('slots') ? 409
+            : 400;
+
+        const errorMsg = rpcResult.code === 'INSUFFICIENT_BALANCE'
+            ? `Saldo insuficiente. Necesitás Gs. ${(rpcResult.required ?? 0).toLocaleString('es-PY')} y tenés Gs. ${(rpcResult.available ?? 0).toLocaleString('es-PY')}.`
+            : rpcResult.error;
+
         return NextResponse.json({
-            error: `Saldo insuficiente. Necesitás Gs. ${priceGs.toLocaleString('es-PY')} y tenés Gs. ${currentBalance.toLocaleString('es-PY')}.`,
-            code: 'INSUFFICIENT_BALANCE',
-        }, { status: 400 });
+            error: errorMsg,
+            code: rpcResult.code,
+        }, { status });
     }
 
-    // 6. Find an available slot in this account
-    const { data: slot, error: slotErr } = await (admin.from('sale_slots') as any)
-        .select('id, slot_identifier, pin_code')
-        .eq('mother_account_id', accountId)
-        .eq('status', 'available')
-        .limit(1)
-        .single();
-
-    if (slotErr || !slot) {
-        return NextResponse.json({ error: 'No hay slots disponibles en este plan en este momento.' }, { status: 409 });
-    }
-
-    // 7. Atomic operations (in sequence, admin client === service_role, bypasses RLS)
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 30);
-
-    // 7a. Deduct wallet balance (with optimistic concurrency check)
-    const { error: balanceErr } = await (admin.from('customers') as any)
-        .update({ wallet_balance: currentBalance - priceGs })
-        .eq('id', customer.id)
-        .gte('wallet_balance', priceGs); // Guard: ensures balance didn't change concurrently
-
-    if (balanceErr) {
-        console.error('[Store/Comprar] Balance deduction failed:', balanceErr);
-        return NextResponse.json({ error: 'Error al procesar el pago. Intentá nuevamente.' }, { status: 500 });
-    }
-
-    // 7b. Mark slot as sold
-    await (admin.from('sale_slots') as any)
-        .update({ status: 'sold' })
-        .eq('id', slot.id);
-
-    // 7c. Create the sale record
-    const { data: sale, error: saleErr } = await (admin.from('sales') as any)
-        .insert({
-            slot_id: slot.id,
-            customer_id: customer.id,
-            amount_gs: priceGs,
-            payment_method: 'wallet',
-            start_date: now.toISOString(),
-            end_date: endDate.toISOString(),
-            is_active: true,
-            sold_by: user.id,
-        })
-        .select('id')
-        .single();
-
-    if (saleErr || !sale) {
-        // Rollback balance and slot on failure
-        await (admin.from('customers') as any)
-            .update({ wallet_balance: currentBalance })
-            .eq('id', customer.id);
-        await (admin.from('sale_slots') as any)
-            .update({ status: 'available' })
-            .eq('id', slot.id);
-        console.error('[Store/Comprar] Sale creation failed:', saleErr);
-        return NextResponse.json({ error: 'Error al crear la venta' }, { status: 500 });
-    }
-
-    // 7d. Insert wallet ledger entry (debit)
-    await (admin.from('wallet_transactions') as any)
-        .insert({
-            customer_id: customer.id,
-            amount: -priceGs,
-            type: 'debit',
-            concept: `Compra ${account.platform} — Tienda ClickPar`,
-            reference_id: sale.id,
-        });
-
-    console.log(`[Store/Comprar] Sale created: customer=${customer.id}, platform=${account.platform}, sale=${sale.id}`);
+    console.log(`[Store/Comprar] Sale created: customer=${customer.id}, platform=${rpcResult.platform}, sale=${rpcResult.sale_id}`);
 
     return NextResponse.json({
         success: true,
-        message: `¡Tu servicio de ${account.platform} fue activado!`,
-        saleId: sale.id,
+        message: `¡Tu servicio de ${rpcResult.platform} fue activado!`,
+        saleId: rpcResult.sale_id,
     });
 }
