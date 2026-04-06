@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/admin/regenerate-password
  * Admin-only endpoint to regenerate a customer's portal password.
+ * 
+ * Lazy Provisioning: if the customer doesn't have a portal_user_id,
+ * we create an auth account. If one already exists by email (legacy),
+ * we find it, link it, and update the password.
  */
 export async function POST(req: NextRequest) {
     // Auth check — must be super_admin
@@ -56,17 +60,19 @@ export async function POST(req: NextRequest) {
 
     try {
         let authUserId = customer.portal_user_id;
+        let action: 'updated' | 'created' | 'linked' = 'updated';
 
         if (authUserId) {
-            // Update existing user's password
+            // ── PATH A: portal_user_id exists → just update password ──
             const { error: updateErr } = await admin.auth.admin.updateUserById(authUserId, {
                 password,
             });
             if (updateErr) {
                 return NextResponse.json({ error: `Error al actualizar: ${updateErr.message}` }, { status: 500 });
             }
+            action = 'updated';
         } else {
-            // Create new auth user (first time setup)
+            // ── PATH B: No portal_user_id → try to create new auth user ──
             const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
                 email,
                 password,
@@ -74,18 +80,40 @@ export async function POST(req: NextRequest) {
                 user_metadata: { full_name: customer.full_name, customer_id: customerId },
                 app_metadata: { user_role: 'customer' },
             });
-            if (createErr) {
-                return NextResponse.json({ error: `Error al crear usuario: ${createErr.message}` }, { status: 500 });
-            }
-            
-            if (newUser?.user?.id) {
+
+            if (!createErr && newUser?.user?.id) {
+                // Successfully created
                 authUserId = newUser.user.id;
+                action = 'created';
+            } else if (createErr?.message?.includes('already been registered')) {
+                // ── PATH C: Email already exists in auth → find and link ──
+                // Look up the existing auth user by email
+                const { data: listData } = await admin.auth.admin.listUsers({ perPage: 1000 });
+                const existingUser = listData?.users?.find((u: any) => u.email === email);
+
+                if (existingUser) {
+                    authUserId = existingUser.id;
+                    // Update their password
+                    const { error: updateErr2 } = await admin.auth.admin.updateUserById(authUserId, {
+                        password,
+                    });
+                    if (updateErr2) {
+                        return NextResponse.json({ error: `Error al actualizar usuario existente: ${updateErr2.message}` }, { status: 500 });
+                    }
+                    action = 'linked';
+                } else {
+                    // Email registered but we can't find it (very unlikely)
+                    return NextResponse.json({ 
+                        error: 'Ya existe una cuenta con este email pero no se pudo localizar. Contactá soporte.' 
+                    }, { status: 500 });
+                }
             } else {
-                return NextResponse.json({ error: 'Usuario creado pero no se devolvió el ID' }, { status: 500 });
+                // Some other creation error
+                return NextResponse.json({ error: `Error al crear usuario: ${createErr?.message}` }, { status: 500 });
             }
         }
 
-        // Store encrypted password and updated portal_user_id in customers table
+        // Store encrypted password and link portal_user_id in customers table
         await (admin.from('customers') as any)
             .update({ portal_password: encrypt(password), portal_user_id: authUserId })
             .eq('id', customerId);
@@ -93,13 +121,13 @@ export async function POST(req: NextRequest) {
         // Log this action
         await (admin.from('portal_access_log') as any).insert({
             user_id: user.id,
-            event_type: 'admin_regenerate_password',
-            metadata: { customer_id: customerId, customer_name: customer.full_name },
+            event_type: action === 'created' ? 'admin_create_portal_access' : 'admin_regenerate_password',
+            metadata: { customer_id: customerId, customer_name: customer.full_name, action },
             ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown',
             user_agent: req.headers.get('user-agent') || 'unknown',
         }).then(() => {}).catch(() => {}); // non-blocking
 
-        return NextResponse.json({ success: true, password });
+        return NextResponse.json({ success: true, password, action });
     } catch (err: any) {
         console.error('[regenerate-password] Error:', err.message);
         return NextResponse.json({ error: 'Error interno' }, { status: 500 });
