@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
         .select('id, end_date, customers(id, full_name, phone)')
         .eq('slot_id', slotId)
         .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
     if (!sale?.customers) return NextResponse.json({ customer: null });

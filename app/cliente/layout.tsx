@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { PortalHeader, PortalNav } from '@/components/portal/portal-header';
+import { WalletProvider } from '@/contexts/wallet-context';
 
 export default async function ClienteLayout({
     children,
@@ -35,12 +36,14 @@ export default async function ClienteLayout({
     const userRole = isCreator ? 'Creador' : 'Cliente';
 
     return (
-        <div className="flex min-h-screen flex-col bg-background">
-            <PortalHeader userName={userName} userRole={userRole} />
-            <PortalNav />
-            <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 sm:pb-6">
-                {children}
-            </main>
-        </div>
+        <WalletProvider>
+            <div className="flex min-h-screen flex-col bg-background">
+                <PortalHeader userName={userName} userRole={userRole} />
+                <PortalNav />
+                <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 sm:pb-6">
+                    {children}
+                </main>
+            </div>
+        </WalletProvider>
     );
 }

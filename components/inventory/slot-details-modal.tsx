@@ -242,9 +242,19 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
         // Need the active sale id — fetch it
         setExtending(true);
         try {
-            const res = await fetch(`/api/search/slot-customer?slotId=${slot.id}`);
-            const d = await res.json();
-            const saleId: string | undefined = d.sale_id;
+            let saleId: string | undefined;
+
+            const activeInlineSale = slot.sales?.find(s => s.is_active && s.customers);
+            if (activeInlineSale) {
+                saleId = activeInlineSale.id;
+            }
+
+            if (!saleId) {
+                const res = await fetch(`/api/search/slot-customer?slotId=${slot.id}`);
+                const d = await res.json();
+                saleId = d.sale_id;
+            }
+
             if (!saleId) { setExtendError('No se encontró la venta activa'); setExtending(false); return; }
 
             const result = await extendSale({ saleId, extraDays: days, amountGs: amount });

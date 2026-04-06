@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Tv, HelpCircle, LogOut, Zap, ShoppingBag, ArrowLeftRight, Wallet } from 'lucide-react';
+import { useWallet } from '@/contexts/wallet-context';
 
 const navItems = [
     { href: '/cliente', label: 'Servicios', icon: Tv },
@@ -16,16 +16,7 @@ const navItems = [
 export function PortalHeader({ userName, userRole }: { userName?: string; userRole?: string }) {
     const router = useRouter();
     const supabase = createClient();
-    const [balance, setBalance] = useState<number | null>(null);
-
-    useEffect(() => {
-        fetch('/api/portal/wallet')
-            .then((r) => r.json())
-            .then((d) => {
-                if (d.success) setBalance(d.balance);
-            })
-            .catch(() => {});
-    }, []);
+    const { balance } = useWallet();
 
     const handleLogout = async () => {
         await supabase.auth.signOut();

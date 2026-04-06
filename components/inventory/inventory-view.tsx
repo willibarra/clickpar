@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -181,6 +181,11 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
     const [searchQuery, setSearchQuery] = useState(initialSearch || '');
     const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
+    // Sync search from URL when server re-renders the page with a new ?q= param
+    useEffect(() => {
+        setSearchQuery(initialSearch || '');
+    }, [initialSearch]);
 
     // ── Filters ──────────────────────────────────
     const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());

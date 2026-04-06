@@ -478,14 +478,26 @@ export async function swapService(data: SwapServiceData) {
         let newSlotId: string;
         let newPlatform: string = '';
 
-        // Get old slot info for platform/mother_account context
+        // Get old slot info for platform/mother_account context + client credentials (family)
         const { data: oldSlotInfo } = await (supabase.from('sale_slots') as any)
-            .select('mother_account_id, mother_accounts:mother_account_id(platform)')
+            .select('mother_account_id, slot_identifier, pin_code, mother_accounts:mother_account_id(platform)')
             .eq('id', data.oldSlotId)
             .single();
 
         const motherAccountId = oldSlotInfo?.mother_account_id || '';
         const platform = oldSlotInfo?.mother_accounts?.platform || '';
+
+        // Check if this is a family-type account (Pantalla = correo cliente, PIN = contraseña cliente)
+        let isFamilyAccount = false;
+        if (platform) {
+            const { data: platData } = await (supabase.from('platforms') as any)
+                .select('business_type')
+                .eq('name', platform)
+                .single();
+            isFamilyAccount = platData?.business_type === 'family_account';
+        }
+        const oldSlotIdentifier = oldSlotInfo?.slot_identifier || '';
+        const oldPinCode = oldSlotInfo?.pin_code || '';
 
         // Get old sale dates for WhatsApp message
         const { data: oldSale } = await (supabase.from('sales') as any)
@@ -535,9 +547,14 @@ export async function swapService(data: SwapServiceData) {
 
         if (deactivateError) throw new Error(`Error desactivando venta anterior: ${deactivateError.message}`);
 
-        // Liberar slot anterior
+        // Liberar slot anterior (en familia: limpiar credenciales del cliente)
+        const freeSlotUpdate: any = { status: 'available' };
+        if (isFamilyAccount) {
+            freeSlotUpdate.slot_identifier = null;
+            freeSlotUpdate.pin_code = null;
+        }
         const { error: freeSlotError } = await (supabase.from('sale_slots') as any)
-            .update({ status: 'available' })
+            .update(freeSlotUpdate)
             .eq('id', data.oldSlotId);
 
         if (freeSlotError) throw new Error(`Error liberando slot anterior: ${freeSlotError.message}`);
@@ -560,9 +577,15 @@ export async function swapService(data: SwapServiceData) {
 
         if (newSaleError) throw new Error(`Error creando nueva venta: ${newSaleError.message}`);
 
-        // Marcar nuevo slot como vendido
+        // Marcar nuevo slot como vendido (en familia: transferir credenciales del cliente)
+        const markSoldUpdate: any = { status: 'sold' };
+        if (isFamilyAccount && oldSlotIdentifier) {
+            markSoldUpdate.slot_identifier = oldSlotIdentifier;
+            markSoldUpdate.pin_code = oldPinCode || null;
+            console.log(`[SwapService] Familia: moviendo credenciales cliente (${oldSlotIdentifier}) al nuevo slot`);
+        }
         const { error: markSoldError } = await (supabase.from('sale_slots') as any)
-            .update({ status: 'sold' })
+            .update(markSoldUpdate)
             .eq('id', newSlotId);
 
         if (markSoldError) throw new Error(`Error marcando nuevo slot: ${markSoldError.message}`);
@@ -739,9 +762,19 @@ export async function bulkSwapAccountClients(motherAccountId: string) {
 
         if (!account) throw new Error('Cuenta no encontrada');
 
-        // Get all active sales for this account's slots
+        // Check if this is a family-type platform
+        let isFamilyBulk = false;
+        if (account.platform) {
+            const { data: platData } = await (supabase.from('platforms') as any)
+                .select('business_type')
+                .eq('name', account.platform)
+                .single();
+            isFamilyBulk = platData?.business_type === 'family_account';
+        }
+
+        // Get all active sales for this account's slots (include credentials for family)
         const { data: slots } = await (supabase.from('sale_slots') as any)
-            .select('id')
+            .select('id, slot_identifier, pin_code')
             .eq('mother_account_id', motherAccountId)
             .eq('status', 'sold');
 
@@ -754,6 +787,11 @@ export async function bulkSwapAccountClients(motherAccountId: string) {
             .eq('is_active', true);
 
         if (!sales || sales.length === 0) return { success: true, moved: 0 };
+
+        // Build a map of slot credentials for family transfer
+        const slotCredMap = new Map<string, { slot_identifier: string | null; pin_code: string | null }>(
+            slots.map((s: any) => [s.id, { slot_identifier: s.slot_identifier, pin_code: s.pin_code }])
+        );
 
         // Get available slots from OTHER accounts of same platform
         const { data: availableSlots } = await (supabase.from('sale_slots') as any)
@@ -774,15 +812,21 @@ export async function bulkSwapAccountClients(motherAccountId: string) {
         for (let i = 0; i < sales.length; i++) {
             const sale = sales[i];
             const targetSlot = validSlots[i];
+            const oldCreds = slotCredMap.get(sale.slot_id);
 
             // Deactivate old sale
             await (supabase.from('sales') as any)
                 .update({ is_active: false })
                 .eq('id', sale.id);
 
-            // Free old slot
+            // Free old slot (clear credentials if family)
+            const freeUpdate: any = { status: 'available' };
+            if (isFamilyBulk) {
+                freeUpdate.slot_identifier = null;
+                freeUpdate.pin_code = null;
+            }
             await (supabase.from('sale_slots') as any)
-                .update({ status: 'available' })
+                .update(freeUpdate)
                 .eq('id', sale.slot_id);
 
             // Create new sale
@@ -798,9 +842,14 @@ export async function bulkSwapAccountClients(motherAccountId: string) {
                     payment_method: 'cash',
                 });
 
-            // Mark new slot as sold
+            // Mark new slot as sold (transfer credentials if family)
+            const soldUpdate: any = { status: 'sold' };
+            if (isFamilyBulk && oldCreds?.slot_identifier) {
+                soldUpdate.slot_identifier = oldCreds.slot_identifier;
+                soldUpdate.pin_code = oldCreds.pin_code || null;
+            }
             await (supabase.from('sale_slots') as any)
-                .update({ status: 'sold' })
+                .update(soldUpdate)
                 .eq('id', targetSlot.id);
 
             moved++;

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
     ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search,
-    MessageSquare, MessageSquareOff, Send
+    MessageSquare, MessageSquareOff, Send, Wand2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice, markAccountsAsPossibleAutopay, markAccountsAsNoRenovar, confirmNoRenovar } from '@/lib/actions/renewals';
@@ -87,6 +87,13 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const { rate: usdtRate } = useUsdtRate(); // Lee de localStorage (configurado en Settings)
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
+
+    // Smart selection modal state
+    const [showSmartSelect, setShowSmartSelect] = useState(false);
+    const [smartSupplier, setSmartSupplier] = useState<string>('all');
+    const [smartPlatform, setSmartPlatform] = useState<string>('all');
+    const [smartUsdt, setSmartUsdt] = useState<string>('all');
+    const [smartStatus, setSmartStatus] = useState<string>('all');
 
     // Client tab state
     const [clientFilter, setClientFilter] = useState<ClientFilterType>('all');
@@ -222,6 +229,39 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         return Array.from(set).sort();
     }, [accountsForPlatformFilter]);
 
+    // Unique suppliers from all accounts (for smart select)
+    const uniqueSuppliers = useMemo(() => {
+        const set = new Set<string>();
+        accounts.forEach(a => { if (a.supplier_name) set.add(a.supplier_name); });
+        return Array.from(set).sort();
+    }, [accounts]);
+
+    // Unique USDT values from all accounts (for smart select)
+    const uniqueUsdtValues = useMemo(() => {
+        const set = new Set<string>();
+        accounts.forEach(a => {
+            if (a.purchase_cost_usdt != null) set.add(String(Number(a.purchase_cost_usdt).toFixed(0)));
+        });
+        return Array.from(set).sort((a, b) => Number(a) - Number(b));
+    }, [accounts]);
+
+    // Preview count for smart select
+    const smartSelectPreview = useMemo(() => {
+        return accounts.filter(a => {
+            if (smartSupplier !== 'all' && a.supplier_name !== smartSupplier) return false;
+            if (smartPlatform !== 'all' && a.platform !== smartPlatform) return false;
+            if (smartUsdt !== 'all' && String(Number(a.purchase_cost_usdt).toFixed(0)) !== smartUsdt) return false;
+            if (smartStatus !== 'all') {
+                const days = getDaysUntil(a.renewal_date);
+                if (smartStatus === 'expired' && days >= 0) return false;
+                if (smartStatus === 'today' && days !== 0) return false;
+                if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
+                if (smartStatus === 'urgent' && days > 3) return false;
+            }
+            return true;
+        }).length;
+    }, [accounts, smartSupplier, smartPlatform, smartUsdt, smartStatus]);
+
     // Filter accounts and sort A-Z by email
     const filteredAccounts = useMemo(() => {
         return accounts.filter(a => {
@@ -322,7 +362,50 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const diff = Math.round((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         setProvDays(diff.toString());
+        // Auto-fill USDT: find most common cost among selected accounts
+        const selectedAccounts = accounts.filter(a => provSelected.has(a.id));
+        if (selectedAccounts.length > 0) {
+            const costMap: Record<string, number> = {};
+            selectedAccounts.forEach(a => {
+                if (a.purchase_cost_usdt != null) {
+                    const k = String(Number(a.purchase_cost_usdt).toFixed(2));
+                    costMap[k] = (costMap[k] || 0) + 1;
+                }
+            });
+            const dominant = Object.entries(costMap).sort((a, b) => b[1] - a[1])[0];
+            if (dominant) {
+                const usdtVal = dominant[0];
+                setProvUsdt(usdtVal);
+                if (usdtRate > 0) {
+                    const gs = Math.round(parseFloat(usdtVal) * usdtRate);
+                    if (!isNaN(gs)) setProvCost(gs.toString());
+                }
+            }
+        }
         setShowProvModal(true);
+    };
+
+    // Smart select: apply criteria and select matching accounts
+    const handleApplySmartSelect = () => {
+        const matched = accounts.filter(a => {
+            if (smartSupplier !== 'all' && a.supplier_name !== smartSupplier) return false;
+            if (smartPlatform !== 'all' && a.platform !== smartPlatform) return false;
+            if (smartUsdt !== 'all' && String(Number(a.purchase_cost_usdt).toFixed(0)) !== smartUsdt) return false;
+            if (smartStatus !== 'all') {
+                const days = getDaysUntil(a.renewal_date);
+                if (smartStatus === 'expired' && days >= 0) return false;
+                if (smartStatus === 'today' && days !== 0) return false;
+                if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
+                if (smartStatus === 'urgent' && days > 3) return false;
+            }
+            return true;
+        });
+        setProvSelected(new Set(matched.map(a => a.id)));
+        setShowSmartSelect(false);
+        // Reset filters to show all so user can see the selection
+        setProvFilter('all');
+        setProvPlatformFilter('all');
+        setProvCurrentPage(1);
     };
 
     const handleUsdtChange = (val: string) => {
@@ -568,14 +651,24 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                     {/* Search + Filters + Bulk Action */}
                     <div className="space-y-3">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                placeholder="Buscar por plataforma o email..."
-                                value={provSearch}
-                                onChange={(e) => { setProvSearch(e.target.value); setProvCurrentPage(1); }}
-                                className="pl-9 bg-[#1a1a1a] border-border"
-                            />
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    placeholder="Buscar por plataforma o email..."
+                                    value={provSearch}
+                                    onChange={(e) => { setProvSearch(e.target.value); setProvCurrentPage(1); }}
+                                    className="pl-9 bg-[#1a1a1a] border-border"
+                                />
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowSmartSelect(true)}
+                                className="shrink-0 gap-2 border-violet-500/50 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-400"
+                            >
+                                <Wand2 className="h-4 w-4" />
+                                Selección Inteligente
+                            </Button>
                         </div>
                         {/* Status filters row */}
                         <div className="flex items-center justify-between">
@@ -1466,6 +1559,120 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         >
                             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             {noRenovarData?.activeClients.length === 0 ? 'Confirmar No Renovar' : 'No Renovar sin mover'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* ─── SMART SELECT MODAL ─── */}
+            <Dialog open={showSmartSelect} onOpenChange={setShowSmartSelect}>
+                <DialogContent className="bg-card border-border sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-violet-400">
+                            <Wand2 className="h-5 w-5" />
+                            Selección Inteligente
+                        </DialogTitle>
+                        <DialogDescription>
+                            Elegí los criterios y seleccionaremos todas las cuentas que coincidan automáticamente.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        {/* Proveedor */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Proveedor</label>
+                            <Select value={smartSupplier} onValueChange={setSmartSupplier}>
+                                <SelectTrigger className="bg-[#1a1a1a] border-border">
+                                    <SelectValue placeholder="Todos los proveedores" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos los proveedores</SelectItem>
+                                    {uniqueSuppliers.map(s => (
+                                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Plataforma */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Plataforma</label>
+                            <Select value={smartPlatform} onValueChange={setSmartPlatform}>
+                                <SelectTrigger className="bg-[#1a1a1a] border-border">
+                                    <SelectValue placeholder="Todas las plataformas" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas las plataformas</SelectItem>
+                                    {uniquePlatforms.map(p => (
+                                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Monto USDT */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Costo USDT</label>
+                            <Select value={smartUsdt} onValueChange={setSmartUsdt}>
+                                <SelectTrigger className="bg-[#1a1a1a] border-border">
+                                    <SelectValue placeholder="Cualquier monto" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Cualquier monto</SelectItem>
+                                    {uniqueUsdtValues.map(v => (
+                                        <SelectItem key={v} value={v}>${v} USDT</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Estado */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</label>
+                            <div className="flex flex-wrap gap-2">
+                                {([
+                                    { key: 'all', label: 'Todos' },
+                                    { key: 'expired', label: '🔴 Vencidas' },
+                                    { key: 'today', label: '🟠 Vence Hoy' },
+                                    { key: '3days', label: '🟡 Próx. 3d' },
+                                    { key: 'urgent', label: '⚡ Urgentes (venc+hoy+3d)' },
+                                ] as { key: string; label: string }[]).map(opt => (
+                                    <button
+                                        key={opt.key}
+                                        type="button"
+                                        onClick={() => setSmartStatus(opt.key)}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                            smartStatus === opt.key
+                                                ? 'bg-violet-500 text-white'
+                                                : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Preview badge */}
+                        <div className={`rounded-lg border p-3 text-sm font-medium transition-colors ${
+                            smartSelectPreview > 0
+                                ? 'border-violet-500/40 bg-violet-500/10 text-violet-300'
+                                : 'border-border bg-[#1a1a1a] text-muted-foreground'
+                        }`}>
+                            {smartSelectPreview > 0
+                                ? `✅ Se seleccionarán ${smartSelectPreview} cuenta(s) que cumplen los criterios`
+                                : 'Ninguna cuenta coincide con los criterios actuales'}
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setShowSmartSelect(false)}>Cancelar</Button>
+                        <Button
+                            onClick={handleApplySmartSelect}
+                            disabled={smartSelectPreview === 0}
+                            className="bg-violet-600 hover:bg-violet-600/90 text-white gap-2"
+                        >
+                            <Wand2 className="h-4 w-4" />
+                            Seleccionar {smartSelectPreview > 0 ? `(${smartSelectPreview})` : ''}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

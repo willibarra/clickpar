@@ -298,7 +298,7 @@ export async function bulkRenewSubscriptions(saleIds: string[], amountGs: number
     for (const saleId of saleIds) {
         // Get current sale info
         const { data: sale } = await (supabase.from('sales') as any)
-            .select('id, start_date, customer_id, amount_gs')
+            .select('id, start_date, end_date, customer_id, amount_gs')
             .eq('id', saleId)
             .single();
 
@@ -307,8 +307,10 @@ export async function bulkRenewSubscriptions(saleIds: string[], amountGs: number
             continue;
         }
 
-        // Calcular nuevo end_date desde hoy + días
-        const newEndDate = new Date();
+        // Calcular nuevo end_date desde el end_date existente + días
+        // Si venció el 1/abril y renovás por 30 días → nuevo end = 1/mayo (no hoy + 30)
+        const baseDate = sale.end_date ? new Date(sale.end_date + 'T12:00:00') : new Date();
+        const newEndDate = new Date(baseDate);
         newEndDate.setDate(newEndDate.getDate() + daysToExtend);
         const newEndStr = newEndDate.toISOString().split('T')[0];
 

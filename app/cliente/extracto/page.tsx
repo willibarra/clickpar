@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import {
     Loader2, AlertTriangle, Wallet, TrendingUp, TrendingDown,
-    ArrowUpRight, ArrowDownLeft, RefreshCw, ExternalLink,
+    ArrowUpRight, ArrowDownLeft, RefreshCw, ExternalLink, MessageCircle, Lock,
 } from 'lucide-react';
+import { useWallet } from '@/contexts/wallet-context';
 
 interface WalletMovement {
     id: string;
@@ -17,7 +18,8 @@ interface WalletMovement {
 const TOPUP_AMOUNTS = [25000, 50000, 100000, 200000];
 
 export default function ExtractoPage() {
-    const [balance, setBalance] = useState<number>(0);
+    const { balance: walletBalance, refreshBalance } = useWallet();
+    const balance = walletBalance ?? 0;
     const [movements, setMovements] = useState<WalletMovement[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -30,11 +32,11 @@ export default function ExtractoPage() {
 
     const loadWallet = () => {
         setLoading(true);
+        refreshBalance(); // update shared balance (header + here)
         fetch('/api/portal/wallet')
             .then((r) => r.json())
             .then((data) => {
                 if (data.success) {
-                    setBalance(data.balance);
                     setMovements(data.movements);
                 } else {
                     setError(data.error || 'Error al cargar billetera');
@@ -180,22 +182,44 @@ export default function ExtractoPage() {
                     <p className="text-xs text-red-400">{topupError}</p>
                 )}
 
-                <button
-                    onClick={handleTopup}
-                    disabled={topupLoading || (!selectedAmount && !customAmount)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#86EFAC] to-[#6EE7B7] px-6 py-3 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {topupLoading ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <ExternalLink className="h-4 w-4" />
-                    )}
-                    {topupLoading
-                        ? 'Generando pago…'
-                        : topupFinalAmount
-                            ? `Pagar Gs. ${new Intl.NumberFormat('es-PY').format(topupFinalAmount)} con PagoPar`
-                            : 'Seleccioná un monto'}
-                </button>
+                {/* Payment buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                    {/* WhatsApp Transfer button */}
+                    <a
+                        href={topupFinalAmount
+                            ? `https://wa.me/595994540904?text=${encodeURIComponent(`Quiero recargar por Gs. ${new Intl.NumberFormat('es-PY').format(topupFinalAmount)} mi cuenta. Método de pago: Transferencia`)}`
+                            : undefined}
+                        onClick={!topupFinalAmount ? (e) => { e.preventDefault(); setTopupError('Seleccioná un monto primero'); } : undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all active:scale-95 ${
+                            topupFinalAmount
+                                ? 'bg-[#25D366] text-white hover:bg-[#20BD5C] shadow-lg shadow-[#25D366]/20'
+                                : 'bg-[#25D366]/50 text-white/70 cursor-not-allowed'
+                        }`}
+                    >
+                        <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                        <span className="leading-tight text-center">
+                            Pagar con<br /><span className="text-xs font-bold">Transferencia</span>
+                        </span>
+                    </a>
+
+                    {/* PagoPar button — disabled */}
+                    <button
+                        disabled
+                        title="Próximamente disponible"
+                        className="relative flex items-center justify-center gap-2 rounded-xl border border-border/40 bg-muted/40 px-4 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed overflow-hidden"
+                    >
+                        <Lock className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
+                        <span className="leading-tight text-center">
+                            Pagar con<br /><span className="text-xs font-bold opacity-60">PagoPar</span>
+                        </span>
+                        <span className="absolute top-1.5 right-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                            Pronto
+                        </span>
+                    </button>
+                </div>
+
                 <p className="text-center text-xs text-muted-foreground">
                     El saldo se acredita automáticamente al confirmar el pago.
                 </p>

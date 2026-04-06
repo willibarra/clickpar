@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
@@ -11,35 +11,73 @@ export function OmniSearch() {
     const [query, setQuery] = useState(searchParams.get('q') || '');
     const inputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    // Track the last query we actually navigated to, to avoid duplicate navigations
+    const lastNavigatedQuery = useRef<string>(searchParams.get('q') || '');
+    // Flag to prevent URL sync from overwriting user input while typing
+    const isTyping = useRef(false);
+    const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
-    // Sync query from URL when navigating
+    // Sync query from URL when navigating (but not while the user is actively typing)
     useEffect(() => {
         const urlQuery = searchParams.get('q') || '';
-        setQuery(urlQuery);
+        if (!isTyping.current) {
+            setQuery(urlQuery);
+            lastNavigatedQuery.current = urlQuery;
+        }
     }, [searchParams]);
 
-    // Debounced navigation to inventory with search param
+    // Debounced navigation — only triggers after user stops typing
+    const navigate = useCallback((value: string) => {
+        const trimmed = value.trim();
+
+        // Skip if this is the same query we already navigated to
+        if (trimmed === lastNavigatedQuery.current) return;
+
+        if (trimmed.length >= 2) {
+            lastNavigatedQuery.current = trimmed;
+            // Use replace to avoid stacking history entries that cause backlog
+            router.replace(`/inventory?q=${encodeURIComponent(trimmed)}`);
+        } else if (trimmed.length === 0 && pathname === '/inventory') {
+            lastNavigatedQuery.current = '';
+            router.replace('/inventory');
+        }
+    }, [router, pathname]);
+
     const handleSearch = (value: string) => {
         setQuery(value);
+
+        // Mark as typing to prevent URL sync from overwriting input
+        isTyping.current = true;
+        if (typingTimeout.current) clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => { isTyping.current = false; }, 1500);
+
+        // Cancel any pending navigation
         if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            if (value.trim().length >= 2) {
-                router.push(`/inventory?q=${encodeURIComponent(value.trim())}`);
-            } else if (value.trim().length === 0 && pathname === '/inventory') {
-                router.push('/inventory');
-            }
-        }, 300);
+
+        // Longer debounce (600ms) to avoid hammering the server with navigations
+        debounceRef.current = setTimeout(() => navigate(value), 600);
     };
 
     const handleClear = () => {
         setQuery('');
-        if (pathname.startsWith('/inventory')) router.push('/inventory');
+        lastNavigatedQuery.current = '';
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (pathname.startsWith('/inventory')) router.replace('/inventory');
         inputRef.current?.focus();
+    };
+
+    // Submit on Enter — immediate navigation, no debounce
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            navigate(query);
+        }
     };
 
     // Keyboard shortcut ⌘K
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 inputRef.current?.focus();
@@ -49,8 +87,8 @@ export function OmniSearch() {
                 inputRef.current?.blur();
             }
         };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
+        document.addEventListener('keydown', handleGlobalKeyDown);
+        return () => document.removeEventListener('keydown', handleGlobalKeyDown);
     }, []);
 
     return (
@@ -68,6 +106,7 @@ export function OmniSearch() {
                         placeholder="Buscar por teléfono, nombre, plataforma..."
                         value={query}
                         onChange={(e) => handleSearch(e.target.value)}
+                        onKeyDown={handleKeyDown}
                         className="
                             w-full bg-transparent
                             pl-10 pr-20 py-2.5

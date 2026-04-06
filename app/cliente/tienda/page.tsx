@@ -5,6 +5,7 @@ import {
     Loader2, AlertTriangle, ShoppingBag, Wallet, CheckCircle2,
     RefreshCw, ShoppingCart, X, Mail, Key
 } from 'lucide-react';
+import { useWallet } from '@/contexts/wallet-context';
 
 interface Product {
     id: string;
@@ -285,7 +286,8 @@ function ConfirmModal({ product, balance, onClose, onSuccess }: ConfirmModalProp
 
 export default function TiendaPage() {
     const [products, setProducts] = useState<Product[]>([]);
-    const [balance, setBalance] = useState<number>(0);
+    const { balance: walletBalance, refreshBalance } = useWallet();
+    const balance = walletBalance ?? 0;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -298,14 +300,11 @@ export default function TiendaPage() {
     }, []);
 
     const fetchData = () => {
-        Promise.all([
-            fetch('/api/portal/store').then((r) => r.json()),
-            fetch('/api/portal/wallet').then((r) => r.json()),
-        ])
-            .then(([storeData, walletData]) => {
+        fetch('/api/portal/store')
+            .then((r) => r.json())
+            .then((storeData) => {
                 if (storeData.success) setProducts(storeData.products);
                 else setError(storeData.error || 'Error al cargar tienda');
-                if (walletData.success) setBalance(walletData.balance);
             })
             .catch(() => setError('Error de conexión'))
             .finally(() => setLoading(false));
@@ -324,7 +323,8 @@ export default function TiendaPage() {
                 desc: 'Ya está disponible en tu sección de Servicios.'
             });
         }
-        fetchData(); // reload balance and store
+        fetchData(); // reload store products
+        refreshBalance(); // update balance in header + everywhere
     };
 
     if (loading) {

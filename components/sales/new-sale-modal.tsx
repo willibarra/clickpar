@@ -103,6 +103,16 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const [clientEmail, setClientEmail] = useState('');
     const [clientPassword, setClientPassword] = useState('');
     const [saleInstructions, setSaleInstructions] = useState<string | null>(null);
+    const [saleCredentials, setSaleCredentials] = useState<{
+        email?: string;
+        password?: string;
+        profile?: string;
+        pin?: string;
+        expirationDate?: string;
+        clientEmail?: string;
+        clientPassword?: string;
+        familyAccessType?: string;
+    } | null>(null);
 
 
     const supabase = createClient();
@@ -383,8 +393,9 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                     setLoading(false);
                     return;
                 }
-                // Store instructions for copy button
+                // Store instructions and credentials for copy button
                 if (result.instructions) setSaleInstructions(result.instructions);
+                if (result.credentials) setSaleCredentials(result.credentials);
             }
 
             setSuccess(true);
@@ -415,6 +426,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setClientPassword('');
         setFamilyAccessType('credentials');
         setIsCreadorCustomer(false);
+        setSaleCredentials(null);
         setDuration(String(daysUntilSameDayNextMonth()));
     };
 
@@ -461,32 +473,63 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                    const now = new Date();
-                                    const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                                    const lines = [
-                                        `✅ *Venta Registrada*`,
-                                        `📦 Servicio: ${selectedPlatform}${saleMode === 'full' ? ' (Cuenta Completa)' : isFamilyPlatform ? ' (Plan Familia)' : ''}`,
-                                        `👤 Cliente: ${selectedCustomer?.full_name || 'N/A'}`,
-                                        `📱 Teléfono: ${selectedCustomer?.phone || 'N/A'}`,
-                                    ];
-                                    // Family credentials
-                                    if (isFamilyPlatform && clientEmail) {
-                                        lines.push(`📧 Correo del cliente: ${clientEmail}`);
-                                        if (familyAccessType === 'credentials' && clientPassword) {
-                                            lines.push(`🔑 Contraseña: ${clientPassword}`);
-                                        } else if (familyAccessType === 'invite') {
-                                            lines.push(`📩 Invitación enviada a: ${clientEmail}`);
-                                        }
+                                    let lines: string[];
+
+                                    if (saleCredentials?.familyAccessType === 'credentials' && saleCredentials.clientEmail && saleCredentials.clientPassword) {
+                                        // Family account — credentials we created
+                                        lines = [
+                                            `✅ *Tu acceso a ${selectedPlatform} (Plan Familiar)*`,
+                                            ``,
+                                            `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                                            `📧 *Correo:* ${saleCredentials.clientEmail}`,
+                                            `🔑 *Contraseña:* ${saleCredentials.clientPassword}`,
+                                            `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+                                            ``,
+                                            `_Ingresá con estas credenciales a ${selectedPlatform}._`,
+                                        ];
+                                    } else if (saleCredentials?.familyAccessType === 'invite' && saleCredentials.clientEmail) {
+                                        // Family account — invitation
+                                        lines = [
+                                            `✅ *Acceso a ${selectedPlatform} (Plan Familiar)*`,
+                                            ``,
+                                            `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                                            `📧 Hemos enviado una invitación a: *${saleCredentials.clientEmail}*`,
+                                            ``,
+                                            `⚠️ *Revisá tu correo y aceptá la invitación* para activar tu acceso.`,
+                                            `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+                                        ];
+                                    } else if (saleCredentials?.email) {
+                                        // Regular slot — standard credentials
+                                        lines = [
+                                            `✅ *Tus credenciales de ${selectedPlatform}*`,
+                                            ``,
+                                            `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                                            `📧 *Correo:* ${saleCredentials.email}`,
+                                            `🔑 *Contraseña:* ${saleCredentials.password}`,
+                                            saleCredentials.profile ? `👤 *Perfil:* ${saleCredentials.profile}` : '',
+                                            saleCredentials.pin ? `🔒 *PIN:* ${saleCredentials.pin}` : '',
+                                            `📅 *Vigencia:* ${saleCredentials.expirationDate || ''}`,
+                                        ].filter(Boolean);
+                                    } else {
+                                        // Fallback: generic info (no credentials available)
+                                        const now = new Date();
+                                        const fecha = now.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                        lines = [
+                                            `✅ *Venta Registrada*`,
+                                            `📦 Servicio: ${selectedPlatform}${saleMode === 'full' ? ' (Cuenta Completa)' : ''}`,
+                                            `👤 Cliente: ${selectedCustomer?.full_name || 'N/A'}`,
+                                            `📱 Teléfono: ${selectedCustomer?.phone || 'N/A'}`,
+                                            `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,
+                                            `⏰ Duración: ${duration} días`,
+                                            `📅 Fecha: ${fecha}`,
+                                        ];
                                     }
-                                    // Instructions (from mother account, if send_instructions enabled)
+
+                                    // Append instructions if available
                                     if (saleInstructions) {
-                                        lines.push(`📋 Instrucciones: ${saleInstructions}`);
+                                        lines.push(``, `📋 *Instrucciones:* ${saleInstructions}`);
                                     }
-                                    lines.push(
-                                        `💰 Precio: Gs. ${Number(salePrice).toLocaleString('es-PY')}`,
-                                        `⏰ Duración: ${duration} días`,
-                                        `📅 Fecha: ${fecha}`,
-                                    );
+
                                     const text = lines.join('\n');
                                     navigator.clipboard.writeText(text).then(() => {
                                         setCopied(true);

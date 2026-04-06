@@ -167,6 +167,7 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 open={modalMode === 'extend'}
                 onClose={() => setModalMode(null)}
                 slotId={slot.id}
+                saleId={activeSale?.id}
                 slotName={slot.slot_identifier}
                 platform={account.platform}
                 customerName={customer?.full_name}
@@ -240,13 +241,14 @@ interface ExtendModalProps {
     open: boolean;
     onClose: () => void;
     slotId: string;
+    saleId?: string;
     slotName: string | null;
     platform: string;
     customerName: string | null | undefined;
     currentEndDate: string | null | undefined;
 }
 
-function ExtendModal({ open, onClose, slotId, slotName, platform, customerName, currentEndDate }: ExtendModalProps) {
+function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, platform, customerName, currentEndDate }: ExtendModalProps) {
     const PRESETS = [30, 60, 90];
     const [days, setDays] = useState(30);
     const [useCustom, setUseCustom] = useState(false);
@@ -272,9 +274,14 @@ function ExtendModal({ open, onClose, slotId, slotName, platform, customerName, 
 
         setLoading(true);
         try {
-            const res = await fetch(`/api/search/slot-customer?slotId=${slotId}`);
-            const d = await res.json();
-            const saleId: string | undefined = d.sale_id;
+            let saleId = initialSaleId;
+
+            if (!saleId) {
+                const res = await fetch(`/api/search/slot-customer?slotId=${slotId}`);
+                const d = await res.json();
+                saleId = d.sale_id;
+            }
+
             if (!saleId) { setError('No se encontró la venta activa'); setLoading(false); return; }
 
             const result = await extendSale({ saleId, extraDays: effectiveDays, amountGs: effectiveAmount });
