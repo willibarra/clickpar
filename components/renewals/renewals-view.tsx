@@ -108,7 +108,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [showReleaseModal, setShowReleaseModal] = useState(false);
     const [showBatchSendModal, setShowBatchSendModal] = useState(false);
     // Client sorting
-    type ClientSortCol = 'expiry' | 'customer' | 'platform' | 'status' | 'amount';
+    type ClientSortCol = 'expiry' | 'customer' | 'platform' | 'status' | 'amount' | 'notice';
     const [clientSortCol, setClientSortCol] = useState<ClientSortCol>('expiry');
     const [clientSortDir, setClientSortDir] = useState<'asc' | 'desc'>('asc');
     const [sendingNotice, setSendingNotice] = useState<Set<string>>(new Set());
@@ -193,6 +193,10 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                 primary = a.daysUntilExpiry - b.daysUntilExpiry;
             } else if (clientSortCol === 'amount') {
                 primary = (a.amount_gs || 0) - (b.amount_gs || 0);
+            } else if (clientSortCol === 'notice') {
+                const aTime = a.lastNotified?.sentAt ? new Date(a.lastNotified.sentAt).getTime() : 0;
+                const bTime = b.lastNotified?.sentAt ? new Date(b.lastNotified.sentAt).getTime() : 0;
+                primary = aTime - bTime;
             }
             if (primary !== 0) return dir * primary;
             // Tiebreaker: always vencimiento asc
@@ -1020,6 +1024,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     { col: 'expiry' as const, label: 'Vencimiento' },
                                     { col: 'status' as const, label: 'Estado' },
                                     { col: 'amount' as const, label: 'Monto' },
+                                    { col: 'notice' as const, label: 'Aviso WA' },
                                 ] as { col: ClientSortCol; label: string }[]).map(({ col, label }) => (
                                     <button
                                         key={col}
@@ -1046,7 +1051,6 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         )}
                                     </button>
                                 ))}
-                                <div>Aviso WA</div>
                                 <div></div>
                             </div>
                             {paginatedSubs.length === 0 && (

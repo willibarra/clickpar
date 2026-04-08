@@ -147,54 +147,8 @@ async function composeWhatsApp(
         return;
     }
 
-    // Try AI via N8N first (except manual messages which must use standard templates)
-    if (useAiMessages && config && !isManual) {
-        try {
-            // Fetch sale data for N8N
-            const { data: saleData } = await supabase
-                .from('sales' as any)
-                .select('id, amount_gs, end_date')
-                .eq('id', msg.sale_id)
-                .single();
-
-            const sent = await sendRenewalToN8N({
-                customer: {
-                    id: msg.customer_id || '',
-                    name: msg.customer_name || 'Cliente',
-                    phone: msg.phone || '',
-                    whatsapp_instance: msg.instance_name || undefined,
-                },
-                sale: {
-                    id: msg.sale_id || '',
-                    platform: msg.platform || 'Servicio',
-                    platform_display: msg.platform || 'Servicio',
-                    amount_gs: saleData?.amount_gs || 0,
-                    end_date: saleData?.end_date || '',
-                },
-                type: config.n8nType,
-                instanceName: msg.instance_name || undefined,
-            });
-
-            if (sent) {
-                // N8N sends the message itself, mark as sent
-                await supabase
-                    .from('message_queue' as any)
-                    .update({
-                        status: 'sent',
-                        compose_method: 'ai_n8n',
-                        message_body: '[AI via N8N — sent directly]',
-                        sent_at: new Date().toISOString(),
-                    })
-                    .eq('id', msg.id);
-                results.sent_via_ai++;
-                return;
-            }
-        } catch (e: any) {
-            // Fallback silently to template
-            console.warn(`[Compose] N8N failed for ${msg.id}, falling back to template: ${e.message}`);
-        }
-    }
-
+    // Desactivado a pedido: Nunca usar IA para mensajes de cobro, ni manual ni automático.
+    
     // Fallback: static template
     if (config?.templateKey) {
         // We need sale data for template variables

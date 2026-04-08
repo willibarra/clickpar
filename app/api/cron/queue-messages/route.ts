@@ -44,11 +44,7 @@ export async function POST(request: NextRequest) {
     const threeDaysStr = formatDate(addDays(today, 3));
 
     const dateRanges: { filterDate: string; type: MessageType; templateKey: string; daysLabel: string }[] = [
-        { filterDate: sevenDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '7d' },
-        { filterDate: threeDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '3d' },
-        { filterDate: tomorrowStr,   type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '1d' },
         { filterDate: todayStr,      type: 'expiry_today',      templateKey: 'vencimiento_hoy',    daysLabel: '0d' },
-        { filterDate: yesterdayStr,  type: 'expired_yesterday', templateKey: 'vencimiento_vencido', daysLabel: '-1d' },
     ];
 
     for (const range of dateRanges) {
@@ -59,7 +55,31 @@ export async function POST(request: NextRequest) {
                 .eq('is_active', true)
                 .eq('end_date', range.filterDate);
 
+            // Fetch already queued messages for this template today to avoid manual+auto duplicates
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            
+            const { data: alreadyQueued } = await supabase
+                .from('message_queue' as any)
+                .select('sale_id')
+                .eq('template_key', range.templateKey)
+                .gte('created_at', startOfDay.toISOString());
+                
+            const { data: alreadySentLog } = await (supabase.from('whatsapp_send_log') as any)
+                .select('sale_id')
+                .eq('template_key', range.templateKey)
+                .gte('created_at', startOfDay.toISOString());
+            
+            const alreadyProcessedSaleIds = new Set([
+                ...(alreadyQueued || []).map((q: any) => q.sale_id),
+                ...(alreadySentLog || []).map((q: any) => q.sale_id)
+            ]);
+
             for (const sale of (sales || []) as any[]) {
+                if (alreadyProcessedSaleIds.has(sale.id)) {
+                    // Skip! Ya se envió o encoló manualmente hoy.
+                    continue;
+                }
                 const customer = sale.customers;
                 const slot = sale.sale_slots;
                 const platform = slot?.mother_accounts?.platform || 'Servicio';
