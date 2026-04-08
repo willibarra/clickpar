@@ -4,7 +4,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { checkPasswordRotation } from './notifications';
-import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification } from '@/lib/whatsapp';
+import { sendPreExpiryReminder, sendExpiryNotification, sendExpiredNotification, getPlatformDisplayName } from '@/lib/whatsapp';
 
 /**
  * Legacy createRenewal for backward compatibility with finance/renewal-modal.tsx
@@ -730,23 +730,24 @@ export async function queueBulkRenewalNotices(clients: Array<{
         if (messageType === 'expired_yesterday') templateKey = 'vencimiento_vencido';
         else if (messageType === 'expiry_today') templateKey = 'vencimiento_hoy';
 
-        const idempotencyKey = `manual:${client.sale_id}:${messageType}:${timestamp}`;
+        const idempotencyDate = new Date().toISOString().split('T')[0];
+        const idempotencyKey = `manual:${client.sale_id}:${messageType}:${idempotencyDate}`;
 
-        const { error } = await supabase.from('message_queue').insert({
+        const { error } = await supabase.from('message_queue').upsert({
             customer_id: client.customer_id || null,
             sale_id: client.sale_id,
             message_type: messageType,
             channel: 'whatsapp',
             phone: client.phone,
             customer_name: client.customer_name,
-            platform: client.platform,
+            platform: await getPlatformDisplayName(client.platform),
             template_key: templateKey,
             status: 'pending',
             scheduled_at: new Date().toISOString(),
             retry_count: 0,
             max_retries: 3,
             idempotency_key: idempotencyKey,
-        } as any);
+        } as any, { onConflict: 'idempotency_key', ignoreDuplicates: true });
 
         if (error) {
             errors.push(`Error al encolar ${client.customer_name}: ${error.message}`);
