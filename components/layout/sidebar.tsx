@@ -21,6 +21,7 @@ import {
   TicketCheck,
   Truck,
   Bot,
+  ShieldCheck,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -32,6 +33,7 @@ const allNavItems = [
   { href: '/renewals', label: 'Renovaciones', icon: CalendarClock, adminOnly: false },
   { href: '/customers', label: 'Clientes', icon: Users, adminOnly: false },
   { href: '/tickets', label: 'Tickets', icon: TicketCheck, adminOnly: false },
+  { href: '/code-requests', label: 'Códigos', icon: ShieldCheck, adminOnly: false },
   { href: '/emails', label: 'Correos', icon: Mail, adminOnly: false },
   { href: '/finance', label: 'Finanzas', icon: Wallet, adminOnly: true },
   { href: '/statistics', label: 'Estadísticas', icon: BarChart3, adminOnly: true },

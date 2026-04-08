@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ interface Slot {
     status: string;
     slot_identifier: string;
     pin_code: string | null;
+    created_at?: string;
     sales?: Array<{
         id: string;
         start_date: string | null;
@@ -175,11 +176,61 @@ function CopyablePassword({ password }: { password: string }) {
     );
 }
 
+// ── Search highlight helper ──────────────────────
+
+/** Renders text with matching portions highlighted */
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+    if (!query || !text) return <>{text}</>;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerText.indexOf(lowerQuery);
+    if (idx === -1) return <>{text}</>;
+
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + query.length);
+    const after = text.slice(idx + query.length);
+
+    return (
+        <>
+            {before}
+            <mark className="bg-yellow-400/30 text-yellow-200 rounded-sm px-0.5 ring-1 ring-yellow-400/40">{match}</mark>
+            {after}
+        </>
+    );
+}
+
+/** Check if a specific value contains the search query */
+function isMatch(value: string | null | undefined, query: string): boolean {
+    if (!value || !query) return false;
+    return value.toLowerCase().includes(query.toLowerCase());
+}
+
+function sortSlots(a: Slot, b: Slot) {
+    const getNum = (str: string | null) => {
+        if (!str) return 0;
+        const m1 = str.match(/^(\d+)\.\s*/);
+        if (m1) return parseInt(m1[1], 10);
+        const m2 = str.match(/^Perfil\s+(\d+)/i);
+        if (m2) return parseInt(m2[1], 10);
+        return 0;
+    };
+    const numA = getNum(a.slot_identifier);
+    const numB = getNum(b.slot_identifier);
+    
+    if (numA !== 0 || numB !== 0) {
+        if (numA !== numB) return numA - numB;
+    }
+    
+    // Fallback static determinista: Ordena por ID real para que no brinquen al editarse
+    return a.id.localeCompare(b.id);
+}
+
 // ── Main component ───────────────────────────────
 
 export function InventoryView({ accounts, platformColors, statusColors, initialSearch }: InventoryViewProps) {
     const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
     const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+    const deferredSearchQuery = useDeferredValue(searchQuery);
     const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
     // Sync search from URL when server re-renders the page with a new ?q= param
@@ -277,13 +328,33 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
         if (saleTypeFilter.size > 0) n += saleTypeFilter.size;
         if (availabilityFilter !== 'all') n++;
         if (renewalRangeFilter !== 'all') n++;
-        if (searchQuery.trim()) n++;
+        if (deferredSearchQuery.trim()) n++;
         return n;
-    }, [platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter, searchQuery]);
+    }, [platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter, deferredSearchQuery]);
+
+    // ── Precompute Search Vector ───────────────────
+    const searchableAccounts = useMemo(() => {
+        return accounts.map(a => {
+            const parts = [
+                a.platform,
+                a.email,
+                ...(a.sale_slots?.map(s => {
+                    const slotId = s.slot_identifier || '';
+                    const customerNames = s.sales?.map(sale => sale.customers?.full_name || '').join(' ') || '';
+                    const customerPhones = s.sales?.map(sale => sale.customers?.phone || '').join(' ') || '';
+                    return `${slotId} ${customerNames} ${customerPhones}`;
+                }) || [])
+            ];
+            return {
+                ...a,
+                _searchVector: parts.join(' ').toLowerCase()
+            };
+        });
+    }, [accounts]);
 
     // ── Filtering ────────────────────────────────
     const filteredAccounts = useMemo(() => {
-        let result = accounts;
+        let result = searchableAccounts;
         if (platformFilter.size > 0)
             result = result.filter(a => platformFilter.has(a.platform));
         if (supplierFilter.size > 0)
@@ -314,28 +385,12 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                 return true;
             });
         }
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter(a => {
-                // Match on account-level fields
-                if (a.platform.toLowerCase().includes(q)) return true;
-                if (a.email.toLowerCase().includes(q)) return true;
-                // Match on slot-level fields (pantalla/slot_identifier)
-                if (a.sale_slots?.some((s: any) =>
-                    s.slot_identifier?.toLowerCase().includes(q)
-                )) return true;
-                // Match on customer fields (nombre, teléfono)
-                if (a.sale_slots?.some((s: any) =>
-                    s.sales?.some((sale: any) =>
-                        sale.customers?.full_name?.toLowerCase().includes(q) ||
-                        sale.customers?.phone?.toLowerCase().includes(q)
-                    )
-                )) return true;
-                return false;
-            });
+        if (deferredSearchQuery.trim()) {
+            const q = deferredSearchQuery.toLowerCase();
+            result = result.filter(a => a._searchVector.includes(q));
         }
         return result;
-    }, [accounts, searchQuery, platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter]);
+    }, [searchableAccounts, deferredSearchQuery, platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter]);
 
     // ── Sorting ──────────────────────────────────
     const sortedAccounts = useMemo(() => {
@@ -814,14 +869,22 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                 <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">📝 {account.notes}</p>
                                             </div>
                                         )}
+                                        {(account.sale_type === 'family' || account.invitation_url || account.invite_address) && (
+                                            <div className="mx-4 mb-2 bg-white/5 border border-white/10 rounded p-2 text-xs">
+                                                <div className="text-white/70 mb-1"><span className="font-medium text-purple-400">🏢 Proveedor:</span> {account.supplier_name || 'No especificado'}</div>
+                                                {(account.invitation_url || account.invite_address) && (
+                                                    <div className="text-white/70">
+                                                        <span className="font-medium text-purple-400">🔗 Invitación Familia:</span> 
+                                                        {account.invitation_url && <span className="block mt-0.5 truncate text-[11px] bg-black/40 p-1 rounded font-mono" title={account.invitation_url}>{account.invitation_url}</span>}
+                                                        {account.invite_address && <span className="block mt-0.5 truncate text-[11px] bg-black/40 p-1 rounded font-mono" title={account.invite_address}>{account.invite_address}</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </CardHeader>
                                     <CardContent>
                                         <div className="mb-3 flex flex-wrap gap-1">
-                                            {[...slots].sort((a, b) => {
-                                                const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                                const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                                return numA - numB;
-                                            }).map((slot) => (
+                                            {[...slots].sort(sortSlots).map((slot) => (
                                                 <SlotDetailsModal
                                                     key={slot.id}
                                                     slot={slot}
@@ -903,11 +966,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
 
                             {/* One <tbody> per account for clean group separation */}
                             {paginatedAccounts.map((account) => {
-                                const slots = [...(account.sale_slots || [])].sort((a, b) => {
-                                    const numA = parseInt(a.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                    const numB = parseInt(b.slot_identifier?.match(/\d+/)?.[0] ?? '0');
-                                    return numA - numB;
-                                });
+                                const slots = [...(account.sale_slots || [])].sort(sortSlots);
                                 const isQuarantine = account.status === 'quarantine';
                                 const isSelected = selectedIds.has(account.id);
                                 const available = getAvailable(account);
@@ -971,10 +1030,20 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
 
                                                 return (
                                                     <tr key={slot.id} className="transition-colors">
-                                                        {isFirst && (
+                                                        {isFirst && (() => {
+                                                            // Determine if any slot in this account has a direct client match
+                                                            const activeQ = deferredSearchQuery.trim();
+                                                            const hasSlotMatch = activeQ && slots.some(s => {
+                                                                const sale = s.sales?.[0];
+                                                                const c = sale?.customers;
+                                                                return isMatch(c?.full_name, activeQ) || isMatch(c?.phone, activeQ) || isMatch(s.slot_identifier, activeQ) || isMatch(s.pin_code, activeQ);
+                                                            });
+                                                            const emailMatch = activeQ && isMatch(account.email, activeQ);
+                                                            const accountHighlight = hasSlotMatch || emailMatch;
+                                                            return (
                                                             <>
                                                                 {/* CUENTA MADRE — left cells with rowspan */}
-                                                                <td rowSpan={rowCount} className={`px-3 align-middle ${leftBg} ${isSelected ? 'border-l-2 border-l-[#86EFAC]' : ''}`}>
+                                                                <td rowSpan={rowCount} className={`px-3 align-middle ${leftBg} ${isSelected ? 'border-l-2 border-l-[#86EFAC]' : accountHighlight ? 'border-l-2 border-l-yellow-400/60' : ''}`}>
                                                                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(account.id)} aria-label={`Seleccionar ${account.email}`} className="h-4 w-4 rounded border-border accent-[#86EFAC] cursor-pointer" />
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle ${leftBg}`}>
@@ -988,7 +1057,13 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle ${leftBg}`}>
                                                                     <div className="flex flex-col items-start gap-1">
-                                                                        <CopyableEmail email={account.email} supplierName={account.supplier_name} />
+                                                                        {emailMatch ? (
+                                                                            <span className="text-sm text-muted-foreground">
+                                                                                <HighlightMatch text={account.email} query={activeQ} />
+                                                                            </span>
+                                                                        ) : (
+                                                                            <CopyableEmail email={account.email} supplierName={account.supplier_name} />
+                                                                        )}
                                                                         <CopyablePassword password={account.password} />
                                                                         <span className="text-[11px] text-muted-foreground/60">
                                                                             <span className="text-[#86EFAC] font-semibold">{available}</span>/{slots.length} libres
@@ -999,6 +1074,18 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                             initialValue={!!account.show_in_store}
                                                                         />
                                                                         {account.notes && <p className="text-[10px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">📝 {account.notes}</p>}
+                                                                        {(account.sale_type === 'family' || account.invitation_url || account.invite_address) && (
+                                                                            <div className="mt-1.5 bg-white/5 border border-white/10 rounded p-1.5 w-full text-[10px]">
+                                                                                <div className="text-white/60 mb-0.5"><span className="font-medium text-purple-400">🏢 Proveedor:</span> {account.supplier_name || 'No especificado'}</div>
+                                                                                {(account.invitation_url || account.invite_address) && (
+                                                                                    <div className="text-white/60 mt-1">
+                                                                                        <span className="font-medium text-purple-400">🔗 Invitación:</span> 
+                                                                                        {account.invitation_url && <span className="block truncate max-w-[180px] bg-black/40 p-0.5 rounded mt-0.5 font-mono" title={account.invitation_url}>{account.invitation_url}</span>}
+                                                                                        {account.invite_address && <span className="block truncate max-w-[180px] bg-black/40 p-0.5 rounded mt-0.5 font-mono" title={account.invite_address}>{account.invite_address}</span>}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
@@ -1014,7 +1101,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     }
                                                                 </td>
                                                             </>
-                                                        )}
+                                                        );})()}
 
                                                         {/* CLIENTES — right cells: # | Nombre | Número | Pantalla | Pin | Ult Pago | Vencimiento | Acciones */}
                                                         <td className={`px-3 py-2.5 text-center ${rightBg} ${slotBorder}`}>
@@ -1023,20 +1110,41 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                 <span className="text-xs font-semibold text-foreground/70">{idx + 1}</span>
                                                             </div>
                                                         </td>
-                                                        <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
+                                                        {(() => {
+                                                            const activeQ = deferredSearchQuery.trim();
+                                                            const nameMatch = isMatch(customer?.full_name, activeQ);
+                                                            const phoneMatch = isMatch(customer?.phone, activeQ);
+                                                            const slotIdMatch = isMatch(slot.slot_identifier, activeQ);
+                                                            const pinMatch = isMatch(slot.pin_code, activeQ);
+                                                            const rowHasMatch = activeQ && (nameMatch || phoneMatch || slotIdMatch || pinMatch);
+                                                            const matchBg = rowHasMatch ? 'bg-yellow-400/[0.06]' : '';
+                                                            return (
+                                                                <>
+                                                        <td className={`px-4 py-2.5 ${rightBg} ${matchBg} ${slotBorder}`}>
                                                             <span className={customer?.full_name ? 'text-sm text-foreground/80' : 'text-xs text-muted-foreground/40 italic'}>
-                                                                {customer?.full_name || 'libre'}
+                                                                {customer?.full_name ? (
+                                                                    <HighlightMatch text={customer.full_name} query={activeQ} />
+                                                                ) : 'libre'}
                                                             </span>
                                                         </td>
-                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground ${rightBg} ${slotBorder}`}>
-                                                            {customer?.phone || '—'}
+                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground ${rightBg} ${matchBg} ${slotBorder}`}>
+                                                            {customer?.phone ? (
+                                                                <HighlightMatch text={customer.phone} query={activeQ} />
+                                                            ) : '—'}
                                                         </td>
-                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground/70 w-20 max-w-[5rem] break-words whitespace-normal ${rightBg} ${slotBorder}`}>
-                                                            {slot.slot_identifier || '—'}
+                                                        <td className={`px-4 py-2.5 text-xs text-muted-foreground/70 w-20 max-w-[5rem] break-words whitespace-normal ${rightBg} ${matchBg} ${slotBorder}`}>
+                                                            {slot.slot_identifier ? (
+                                                                <HighlightMatch text={slot.slot_identifier} query={activeQ} />
+                                                            ) : '—'}
                                                         </td>
-                                                        <td className={`px-4 py-2.5 text-xs font-mono text-muted-foreground/60 ${rightBg} ${slotBorder}`}>
-                                                            {slot.pin_code || <span className="text-muted-foreground/30">—</span>}
+                                                        <td className={`px-4 py-2.5 text-xs font-mono text-muted-foreground/60 ${rightBg} ${matchBg} ${slotBorder}`}>
+                                                            {slot.pin_code ? (
+                                                                <HighlightMatch text={slot.pin_code} query={activeQ} />
+                                                            ) : <span className="text-muted-foreground/30">—</span>}
                                                         </td>
+                                                                </>
+                                                            );
+                                                        })()}
                                                         <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
                                                             {activeSale?.start_date ? (
                                                                 <span className="text-xs text-muted-foreground">{formatRelativeOnly(activeSale.start_date, 'past')}</span>
@@ -1067,6 +1175,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     platform: account.platform,
                                                                     email: account.email,
                                                                     password: account.password,
+                                                                    sale_type: account.sale_type,
                                                                 }}
                                                                 customer={customer ?? null}
                                                                 accountEmail={account.email}

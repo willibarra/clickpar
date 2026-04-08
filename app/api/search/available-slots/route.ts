@@ -29,7 +29,8 @@ export async function GET() {
                 platform: s.mother_accounts?.platform || 'Desconocido',
                 account_email: s.mother_accounts?.email || '',
                 account_id: s.mother_accounts?.id || '',
-            }));
+                renewal: s.mother_accounts?.renewal_date || '1970-01-01'
+            })).sort((a: any, b: any) => new Date(b.renewal).getTime() - new Date(a.renewal).getTime());
 
         return NextResponse.json({ slots: formattedSlots });
     } catch (error: any) {

@@ -11,6 +11,7 @@ import { Loader2, User, Key, Eye, EyeOff, Copy, Check, Search, Phone, Calendar, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { updateSlot, deleteSlot, swapSlotCustomer } from '@/lib/actions/inventory';
 import { extendSale } from '@/lib/actions/sales';
+import { InlineEditCustomerModal } from '@/components/customers/inline-edit-customer-modal';
 
 interface SlotSale {
     id: string;
@@ -75,6 +76,7 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
     const [slotName, setSlotName] = useState(slot.slot_identifier || '');
     const [slotCustomer, setSlotCustomer] = useState<{ id: string; full_name: string | null; phone: string | null; end_date: string | null } | null>(null);
     const [loadingCustomer, setLoadingCustomer] = useState(slot.status === 'sold');
+    const [editCustomerOpen, setEditCustomerOpen] = useState(false);
 
     // ── Intercambiar mode ──────────────────────────────────
     const [swapMode, setSwapMode] = useState(false);
@@ -257,7 +259,7 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
 
             if (!saleId) { setExtendError('No se encontró la venta activa'); setExtending(false); return; }
 
-            const result = await extendSale({ saleId, extraDays: days, amountGs: amount });
+            const result = await extendSale({ saleId, extraDays: days, amountGs: amount }) as any;
             if (result.error) {
                 setExtendError(result.error);
             } else {
@@ -295,8 +297,7 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
 
     function handleGoToCustomer() {
         if (!slotCustomer) return;
-        router.push(`/customers?edit=${slotCustomer.id}`);
-        setOpen(false);
+        setEditCustomerOpen(true);
     }
     
     function handleCopyFormat() {
@@ -332,6 +333,7 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
     const canSell = slot.status === 'available' && !isQuarantine;
 
     return (
+        <>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setConfirmDelete(false); }}>
             <DialogTrigger asChild>
                 {trigger ?? (
@@ -863,5 +865,14 @@ export function SlotDetailsModal({ slot, account, accountStatus, trigger }: Slot
                 )}
             </DialogContent>
         </Dialog>
+
+        {slotCustomer?.id && (
+            <InlineEditCustomerModal
+                customerId={slotCustomer.id}
+                open={editCustomerOpen}
+                onOpenChange={setEditCustomerOpen}
+            />
+        )}
+        </>
     );
 }

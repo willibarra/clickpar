@@ -97,7 +97,7 @@ export function ExtendSaleModal({
                 saleId,
                 extraDays: days,
                 amountGs: amount,
-            });
+            }) as any;
             if (result.error) {
                 setError(result.error);
             } else {

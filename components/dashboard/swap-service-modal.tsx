@@ -57,6 +57,8 @@ const platformColors: Record<string, string> = {
 
 type Step = 'select_slot' | 'post_swap';
 
+import { createPortal } from 'react-dom';
+
 export function SwapServiceModal({ isOpen, onClose, service, customerId, customerName, onSwapped }: SwapServiceModalProps) {
     const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -84,7 +86,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         setIsLoading(true);
         setSelectedSlotId(null);
         setError('');
-        setFilterPlatform('all');
+        setFilterPlatform(service.platform || 'all');
         setStep('select_slot');
         setSiblings([]);
         setMotherAccountId('');
@@ -104,7 +106,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                 setError('Error cargando slots disponibles');
             })
             .finally(() => setIsLoading(false));
-    }, [isOpen]);
+    }, [isOpen, service.platform]);
 
     const handleSwap = async () => {
         if (!selectedSlotId) return;
@@ -208,8 +210,8 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && (step === 'post_swap' ? handleFinish() : onClose())}>
+    return createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && (step === 'post_swap' ? handleFinish() : onClose())}>
             <div className="w-full max-w-xl rounded-xl border border-border bg-[#0d0d0d] shadow-2xl max-h-[85vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-border p-5">
@@ -523,6 +525,6 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                     </>
                 )}
             </div>
-        </div>
+        </div>, document.body
     );
 }

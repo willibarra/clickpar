@@ -20,13 +20,17 @@ import {
     Send,
 } from 'lucide-react';
 import { CodeIframeModal } from '@/components/portal/code-iframe-modal';
+import { CodeRequestModal } from '@/components/portal/code-request-modal';
 
 interface FAQItem {
     q: string;
     a: string;
 }
 
-interface HelpItem {
+interface ServiceHelpItem {
+    saleId: string;
+    email: string;
+    pin: string | null;
     platform: string;
     supplierName: string;
     supportInstructions: string;
@@ -34,6 +38,7 @@ interface HelpItem {
     faqItems: FAQItem[];
     needsCode: boolean;
     codeUrl: string | null;
+    codeSource: string;
 }
 
 const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
@@ -91,7 +96,7 @@ function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: strin
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20"
             >
                 <Search className="h-4 w-4" />
-                Consultar Código
+                Abrir iFrame (Código)
             </button>
             <CodeIframeModal
                 isOpen={showModal}
@@ -103,73 +108,119 @@ function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: strin
     );
 }
 
-function PlatformHelpCard({ item }: { item: HelpItem }) {
+function TelegramCodeButton({ saleId, platform }: { saleId: string; platform: string }) {
+    const [showModal, setShowModal] = useState(false);
+
+    return (
+        <>
+            <button
+                onClick={() => setShowModal(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8]/30 bg-[#818CF8]/10 py-2.5 text-sm font-medium text-[#818CF8] transition-all hover:bg-[#818CF8]/20"
+            >
+                <Send className="h-4 w-4" />
+                Solicitar Código
+            </button>
+            <CodeRequestModal
+                isOpen={showModal}
+                onClose={() => setShowModal(false)}
+                saleId={saleId}
+                platform={platform}
+            />
+        </>
+    );
+}
+
+function ServiceSupportCard({ item }: { item: ServiceHelpItem }) {
+    const [expanded, setExpanded] = useState(false);
     const platformInfo = PLATFORM_ICONS[item.platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
+
+    const showVerCode = item.needsCode && item.codeUrl && item.codeSource !== 'telegram_bot';
+    const showTelegramCode = item.needsCode && item.codeSource === 'telegram_bot' && item.saleId;
 
     return (
         <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
-            {/* Platform header */}
+            {/* Account Header */}
             <div className={`bg-gradient-to-r ${platformInfo.gradient} px-5 py-3.5`}>
                 <div className="flex items-center gap-3">
                     <span className="text-xl">{platformInfo.emoji}</span>
                     <div>
-                        <h3 className="text-base font-bold text-white">{item.platform}</h3>
-                        <p className="text-[11px] text-white/60">Proveedor: {item.supplierName}</p>
+                        <h3 className="text-base font-bold text-white">Cuenta de {item.platform}</h3>
+                        <p className="text-sm font-mono text-white/90">{item.email}</p>
                     </div>
                 </div>
             </div>
 
-            <div className="space-y-4 p-5">
-                {/* Instructions summary */}
-                {item.supportInstructions && (
-                    <div className="flex items-start gap-3 rounded-xl bg-blue-500/5 border border-blue-500/15 p-3.5">
-                        <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
-                        <p className="text-sm text-blue-200/80 leading-relaxed">
-                            {item.supportInstructions}
-                        </p>
-                    </div>
-                )}
-
-                {/* Step-by-step guide */}
-                {item.helpSteps.length > 0 && (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                            <ListChecks className="h-4 w-4" />
-                            <span className="text-xs font-medium uppercase tracking-wider">Pasos de acceso</span>
-                        </div>
-                        <div className="space-y-1.5">
-                            {item.helpSteps.map((step, i) => (
-                                <div key={i} className="flex items-start gap-3 rounded-lg bg-muted/30 px-3.5 py-2.5">
-                                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/20 text-[10px] font-bold text-[#86EFAC]">
-                                        {i + 1}
-                                    </span>
-                                    <span className="text-sm text-foreground/90 leading-relaxed">{step}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Code lookup button */}
-                {item.needsCode && item.codeUrl && (
-                    <VerCodeButton platform={item.platform} codeUrl={item.codeUrl} />
-                )}
-
-                {/* FAQs */}
-                {item.faqItems.length > 0 && (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                            <HelpCircle className="h-4 w-4" />
-                            <span className="text-xs font-medium uppercase tracking-wider">Preguntas frecuentes</span>
-                        </div>
-                        <div className="space-y-1.5">
-                            {item.faqItems.map((faq, i) => (
-                                <FAQAccordion key={i} item={faq} />
-                            ))}
-                        </div>
-                    </div>
-                )}
+            {/* Accordion Toggle */}
+            <div className="p-4 bg-muted/5">
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex w-full items-center justify-between rounded-xl border border-border/40 bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-muted/50 hover:border-border/80"
+                >
+                    <span className="flex items-center gap-2">
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                        Soporte {item.platform} {item.supplierName && `(${item.supplierName})`}
+                    </span>
+                    {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
             </div>
+
+            {/* Expanded Content */}
+            {expanded && (
+                <div className="space-y-4 p-5 pt-2 border-t border-border/20">
+                    {/* Instructions summary */}
+                    {item.supportInstructions && (
+                        <div className="flex items-start gap-3 rounded-xl bg-blue-500/5 border border-blue-500/15 p-3.5">
+                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
+                            <p className="text-sm text-blue-200/80 leading-relaxed">
+                                {item.supportInstructions}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Step-by-step guide */}
+                    {item.helpSteps && item.helpSteps.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <ListChecks className="h-4 w-4" />
+                                <span className="text-xs font-medium uppercase tracking-wider">Pasos de acceso</span>
+                            </div>
+                            <div className="space-y-1.5">
+                                {item.helpSteps.map((step, i) => (
+                                    <div key={i} className="flex items-start gap-3 rounded-lg bg-muted/30 px-3.5 py-2.5">
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/20 text-[10px] font-bold text-[#86EFAC]">
+                                            {i + 1}
+                                        </span>
+                                        <span className="text-sm text-foreground/90 leading-relaxed">{step}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Code Actions */}
+                    {(showVerCode || showTelegramCode) && (
+                        <div className="pt-2">
+                            {showVerCode && <VerCodeButton platform={item.platform} codeUrl={item.codeUrl!} />}
+                            {showTelegramCode && <TelegramCodeButton saleId={item.saleId} platform={item.platform} />}
+                        </div>
+                    )}
+
+                    {/* FAQs */}
+                    {item.faqItems && item.faqItems.length > 0 && (
+                        <div className="space-y-2 pt-2">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <HelpCircle className="h-4 w-4" />
+                                <span className="text-xs font-medium uppercase tracking-wider">Preguntas frecuentes</span>
+                            </div>
+                            <div className="space-y-1.5">
+                                {item.faqItems.map((faq, i) => (
+                                    <FAQAccordion key={i} item={faq} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -189,7 +240,7 @@ const ESTADO_CONFIG: Record<string, { label: string; icon: React.ElementType; co
 };
 
 export default function SoportePage() {
-    const [helpItems, setHelpItems] = useState<HelpItem[]>([]);
+    const [helpItems, setHelpItems] = useState<ServiceHelpItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -278,15 +329,36 @@ export default function SoportePage() {
             <div>
                 <h1 className="text-2xl font-bold text-foreground">Soporte</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Ayuda personalizada para tus servicios activos
+                    Ayuda personalizada para cada uno de tus servicios activos
                 </p>
             </div>
+
+            {/* Personalized help per account/service */}
+            {helpItems.length > 0 ? (
+                <div className="space-y-4">
+                    {helpItems.map((item) => (
+                        <ServiceSupportCard key={item.saleId} item={item} />
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/50 bg-card py-12 text-center">
+                    <div className="rounded-full bg-muted p-4">
+                        <HelpCircle className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div>
+                        <p className="font-medium text-foreground">Sin servicios activos</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            No tenés cuentas activas en este momento
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* ── REPORTAR UN PROBLEMA ── */}
             <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
                 <div className="flex items-center gap-2 border-b border-border/30 bg-muted/30 px-5 py-3.5">
                     <TicketCheck className="h-4 w-4 text-[#86EFAC]" />
-                    <span className="text-sm font-semibold text-foreground">Reportar un Problema</span>
+                    <span className="text-sm font-semibold text-foreground">Reportar un Problema (Tickets)</span>
                 </div>
                 <form onSubmit={handleTicketSubmit} className="space-y-4 p-5">
                     {/* Tipo selector */}
@@ -410,36 +482,15 @@ export default function SoportePage() {
                 </div>
             )}
 
-            {/* Personalized help per service */}
-            {helpItems.length > 0 ? (
-                <div className="space-y-4">
-                    {helpItems.map((item, i) => (
-                        <PlatformHelpCard key={`${item.platform}-${item.supplierName}-${i}`} item={item} />
-                    ))}
-                </div>
-            ) : (
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/50 bg-card py-12 text-center">
-                    <div className="rounded-full bg-muted p-4">
-                        <HelpCircle className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <div>
-                        <p className="font-medium text-foreground">Sin servicios activos</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            La ayuda se personaliza según tus servicios contratados
-                        </p>
-                    </div>
-                </div>
-            )}
-
             {/* General FAQ - always shown */}
             <div className="space-y-3">
                 <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                     Preguntas Generales
                 </h2>
                 <div className="space-y-1.5">
-                    <FAQAccordion item={{ q: '¿Cómo renuevo mi servicio?', a: 'Escribinos por WhatsApp antes del vencimiento. Aceptamos Giros (Tigo, Personal, Claro), WALLY, ZIMPLE y Transferencia bancaria.' }} />
+                    <FAQAccordion item={{ q: '¿Cómo renuevo mi servicio?', a: 'Podes renovar desde la pestaña "Servicios" usando PagoPar, o escribinos por WhatsApp. Aceptamos Giros (Tigo, Personal, Claro), WALLY, ZIMPLE y Transferencia bancaria.' }} />
                     <FAQAccordion item={{ q: '¿Puedo cambiar de plataforma?', a: 'Sí, al momento de renovar podés elegir otra plataforma. El precio puede variar según el servicio elegido.' }} />
-                    <FAQAccordion item={{ q: '¿Dónde veo mis credenciales?', a: 'En la sección "Servicios" de tu panel tenés el correo, contraseña y perfil de cada servicio.' }} />
+                    <FAQAccordion item={{ q: '¿Dónde veo mis credenciales?', a: 'En la sección "Servicios" de tu panel tenés el correo, contraseña y PIN de cada cuenta.' }} />
                 </div>
             </div>
 

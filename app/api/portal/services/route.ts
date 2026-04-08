@@ -160,6 +160,7 @@ export async function GET() {
             supplierName: account?.supplier_name || null,
             needsCode: providerConfig?.needs_code || false,
             codeUrl: providerConfig?.code_url || null,
+            codeSource: providerConfig?.code_source || 'manual',
             isCanje: sale.is_canje || false,
         };
     });

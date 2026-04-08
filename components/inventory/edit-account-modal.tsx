@@ -621,7 +621,7 @@ export function EditAccountModal({ account }: { account: Account }) {
                                 <Input
                                     id="email"
                                     name="email"
-                                    type="email"
+                                    type="text"
                                     defaultValue={account.email}
                                     required
                                 />
@@ -862,7 +862,15 @@ export function EditAccountModal({ account }: { account: Account }) {
                             <Button
                                 type="button"
                                 variant="destructive"
-                                onClick={() => setConfirmDelete(true)}
+                                onClick={() => {
+                                    const hasOccupied = account.sale_slots?.some(s => s.status && s.status !== 'available');
+                                    if (hasOccupied) {
+                                        setError('No puedes eliminar una cuenta que tiene clientes asignados. Primero mueve, suspende o libera los perfiles ocupados.');
+                                        window.scrollTo(0, 0);
+                                        return;
+                                    }
+                                    setConfirmDelete(true);
+                                }}
                                 disabled={loading}
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />

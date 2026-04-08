@@ -86,6 +86,8 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         clientEmail?: string;
         clientPassword?: string;
         familyAccessType?: string;
+        isCombo?: boolean;
+        comboCredentials?: any[];
     } | null>(null);
 
     // Customer search state
@@ -280,6 +282,10 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
                     setIsLoading(false);
                     return;
                 }
+                
+                if (result.comboCredentials) {
+                    setSaleCredentials({ isCombo: true, comboCredentials: result.comboCredentials });
+                }
             } else {
                 const { createQuickSale } = await import('@/lib/actions/sales');
                 const result = await createQuickSale({
@@ -354,7 +360,26 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
     const handleCopyData = () => {
         let lines: string[];
 
-        if (saleCredentials?.familyAccessType === 'credentials' && saleCredentials.clientEmail && saleCredentials.clientPassword) {
+        if (saleCredentials?.isCombo && saleCredentials.comboCredentials) {
+            lines = [
+                `✅ *Tus credenciales (Combo)*`,
+                ``,
+                `👤 Hola ${selectedCustomer?.full_name || ''}!`,
+                `Aquí tienes los datos de tus cuentas:`,
+                ``
+            ];
+            
+            saleCredentials.comboCredentials.forEach(cred => {
+                lines.push(`📱 *${cred.platform}*`);
+                lines.push(`📧 Correo: ${cred.email}`);
+                lines.push(`🔑 Clave: ${cred.password}`);
+                if (cred.profile) lines.push(`👤 Perfil: ${cred.profile}`);
+                if (cred.pin) lines.push(`🔒 PIN: ${cred.pin}`);
+                lines.push(`📅 Vigencia: ${cred.expirationDate}`);
+                lines.push(``);
+            });
+            lines.push(`_¡Gracias por tu compra!_`);
+        } else if (saleCredentials?.familyAccessType === 'credentials' && saleCredentials.clientEmail && saleCredentials.clientPassword) {
             // Family account — credentials we created
             lines = [
                 `✅ *Tu acceso a ${getSaleName()} (Plan Familiar)*`,

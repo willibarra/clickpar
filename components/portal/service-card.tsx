@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink } from 'lucide-react';
+import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink, Send } from 'lucide-react';
 import { CodeIframeModal } from './code-iframe-modal';
+import { CodeRequestModal } from './code-request-modal';
 
 interface ServiceCardProps {
     saleId?: string;
@@ -16,6 +17,7 @@ interface ServiceCardProps {
     supplierName?: string | null;
     needsCode?: boolean;
     codeUrl?: string | null;
+    codeSource?: string;
     isCanje?: boolean;
 }
 
@@ -92,6 +94,28 @@ function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: strin
     );
 }
 
+function TelegramCodeButton({ saleId, platform }: { saleId: string; platform: string }) {
+    const [showModal, setShowModal] = useState(false);
+
+    return (
+        <>
+            <button
+                onClick={() => setShowModal(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8]/30 bg-[#818CF8]/10 py-2.5 text-sm font-medium text-[#818CF8] transition-all hover:bg-[#818CF8]/20"
+            >
+                <Send className="h-4 w-4" />
+                Pedir Código
+            </button>
+            <CodeRequestModal
+                isOpen={showModal}
+                onClose={() => setShowModal(false)}
+                saleId={saleId}
+                platform={platform}
+            />
+        </>
+    );
+}
+
 function RenewButton({ saleId }: { saleId: string }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -140,11 +164,12 @@ function RenewButton({ saleId }: { saleId: string }) {
     );
 }
 
-export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl, isCanje }: ServiceCardProps) {
+export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl, codeSource, isCanje }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
     const platformInfo = PLATFORM_ICONS[platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
     const expiryBadge = getExpiryBadge(expiresAt, isCanje);
-    const showVerCode = needsCode && codeUrl;
+    const showVerCode = needsCode && codeUrl && codeSource !== 'telegram_bot';
+    const showTelegramCode = needsCode && codeSource === 'telegram_bot' && saleId;
 
     // Show Renovar button when <= 7 days remaining or expired (and not a canje)
     const showRenovar = !isCanje && saleId && expiryBadge.daysLeft !== null && expiryBadge.daysLeft <= 7;
@@ -234,8 +259,11 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                     </div>
                 )}
 
-                {/* Ver Código button */}
+                {/* Ver Código button (Gmail/iframe) */}
                 {showVerCode && <VerCodeButton platform={platform} codeUrl={codeUrl} />}
+
+                {/* Telegram code request button */}
+                {showTelegramCode && <TelegramCodeButton saleId={saleId!} platform={platform} />}
 
                 {/* Expiry date */}
                 {formattedDate && (

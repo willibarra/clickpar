@@ -65,6 +65,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             setLoading(false);
         } else {
             setOpen(false);
+            onOpenChangeProp?.(false);
             setLoading(false);
         }
     }
@@ -79,6 +80,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             setDeleteConfirm(false);
         } else {
             setOpen(false);
+            onOpenChangeProp?.(false);
         }
     }
 

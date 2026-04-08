@@ -1,0 +1,1 @@
+ALTER TABLE sale_slots ADD COLUMN slot_index INTEGER DEFAULT 0;

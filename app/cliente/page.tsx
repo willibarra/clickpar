@@ -18,6 +18,7 @@ interface Service {
     supplierName: string | null;
     needsCode: boolean;
     codeUrl: string | null;
+    codeSource: string;
     isCanje: boolean;
 }
 
@@ -227,6 +228,7 @@ export default function PortalDashboard() {
                             supplierName={service.supplierName}
                             needsCode={service.needsCode}
                             codeUrl={service.codeUrl}
+                            codeSource={service.codeSource}
                             isCanje={service.isCanje}
                         />
                     ))}

@@ -22,6 +22,7 @@ interface SupportConfig {
     faq_items: FaqItem[];
     needs_code: boolean;
     code_url: string | null;
+    code_source: string;
 }
 
 const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
@@ -32,6 +33,7 @@ const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
     faq_items: [],
     needs_code: false,
     code_url: null,
+    code_source: 'manual',
 };
 
 // ─── Step List Editor ──────────────────────────────────────────────────────
@@ -346,15 +348,59 @@ function EditModal({
                                     </button>
                                 </div>
                                 {draft.needs_code && (
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-medium text-muted-foreground">URL del servicio de código</label>
-                                        <Input
-                                            value={draft.code_url || ''}
-                                            onChange={(e) => set('code_url', e.target.value || null)}
-                                            placeholder="https://householdcode.com/es"
-                                            className="h-8 text-sm"
-                                        />
-                                    </div>
+                                    <>
+                                        {/* Source selector */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-medium text-muted-foreground">Fuente del código</label>
+                                            <div className="flex gap-2 flex-wrap">
+                                                {[
+                                                    { value: 'manual', label: '🤝 Manual' },
+                                                    { value: 'iframe', label: '🌐 iFrame (URL)' },
+                                                    { value: 'telegram_bot', label: '🤖 Telegram Bot' },
+                                                    { value: 'imap', label: '📨 IMAP (Correo)' },
+                                                ].map(opt => (
+                                                    <button
+                                                        key={opt.value}
+                                                        onClick={() => set('code_source', opt.value)}
+                                                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                                            (draft.code_source || 'manual') === opt.value
+                                                                ? 'border-[#86EFAC]/60 bg-[#86EFAC]/10 text-[#86EFAC]'
+                                                                : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border'
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* URL field (only for iframe) */}
+                                        {(draft.code_source === 'iframe' || (!draft.code_source && draft.code_url)) && (
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-medium text-muted-foreground">URL del servicio de código</label>
+                                                <Input
+                                                    value={draft.code_url || ''}
+                                                    onChange={(e) => set('code_url', e.target.value || null)}
+                                                    placeholder="https://householdcode.com/es"
+                                                    className="h-8 text-sm"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* IMAP hint */}
+                                        {draft.code_source === 'imap' && (
+                                            <p className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2">
+                                                📨 Se buscará el código automáticamente en las cuentas IMAP configuradas en Ajustes → Cuentas IMAP.
+                                            </p>
+                                        )}
+
+                                        {/* Telegram hint */}
+                                        {draft.code_source === 'telegram_bot' && (
+                                            <p className="text-xs text-[#818CF8]/80 bg-[#818CF8]/5 border border-[#818CF8]/15 rounded-lg px-3 py-2">
+                                                🤖 Se usará el UserBot de Telegram configurado en Ajustes → Telegram UserBot para pedir el código al proveedor.
+                                            </p>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         )}

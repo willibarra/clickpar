@@ -842,6 +842,10 @@ export interface Database {
                     code_url: string | null;
                     support_instructions: string | null;
                     needs_code: boolean;
+                    telegram_bot_username: string | null;
+                    telegram_user_identifier: string | null;
+                    telegram_account_field: string;
+                    code_source: string;
                     created_at: string;
                 };
                 Insert: {
@@ -851,6 +855,10 @@ export interface Database {
                     code_url?: string | null;
                     support_instructions?: string | null;
                     needs_code?: boolean;
+                    telegram_bot_username?: string | null;
+                    telegram_user_identifier?: string | null;
+                    telegram_account_field?: string;
+                    code_source?: string;
                     created_at?: string;
                 };
                 Update: {
@@ -860,6 +868,10 @@ export interface Database {
                     code_url?: string | null;
                     support_instructions?: string | null;
                     needs_code?: boolean;
+                    telegram_bot_username?: string | null;
+                    telegram_user_identifier?: string | null;
+                    telegram_account_field?: string;
+                    code_source?: string;
                     created_at?: string;
                 };
             };
@@ -1011,6 +1023,27 @@ export type PaymentMethodRow = Database['public']['Tables']['payment_methods']['
 export type ProviderSupportConfig = Database['public']['Tables']['provider_support_config']['Row'];
 export type GmailToken = Database['public']['Tables']['gmail_tokens']['Row'];
 export type OwnedEmail = Database['public']['Tables']['owned_emails']['Row'];
+
+// Code Requests (Telegram verification codes)
+export interface CodeRequest {
+    id: string;
+    sale_id: string;
+    customer_id: string;
+    platform: string;
+    account_email: string;
+    supplier_name: string | null;
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'expired';
+    code: string | null;
+    resolved_by: string | null;
+    resolved_at: string | null;
+    auto_source: string;
+    telegram_bot_username: string | null;
+    telegram_user_identifier: string | null;
+    notes: string | null;
+    expires_at: string;
+    created_at: string;
+    updated_at: string;
+}
 
 // Legacy alias (subscriptions → sales)
 /** @deprecated Use Sale instead */

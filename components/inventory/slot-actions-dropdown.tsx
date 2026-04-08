@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle } from 'lucide-react';
+import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil } from 'lucide-react';
 import { extendSale, cancelSubscription } from '@/lib/actions/sales';
-import { swapSlotCustomer, freezeMotherAccount } from '@/lib/actions/inventory';
+import { swapSlotCustomer, freezeMotherAccount, updateSlot } from '@/lib/actions/inventory';
 import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
@@ -16,6 +16,7 @@ import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuSeparator, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import { InlineEditCustomerModal } from '@/components/customers/inline-edit-customer-modal';
 
 interface SlotActionsDropdownProps {
     slot: {
@@ -27,7 +28,8 @@ interface SlotActionsDropdownProps {
     account: {
         platform: string;
         email: string;
-        password: string;
+        password: string | null;
+        sale_type?: string | null;
     };
     customer: {
         id: string;
@@ -50,7 +52,7 @@ interface CustomerResult {
     phone: string | null;
 }
 
-type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze';
+type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze' | 'edit_customer' | 'edit_slot';
 
 export function SlotActionsDropdown({ slot, account, customer, activeSale, accountEmail, motherAccountId }: SlotActionsDropdownProps) {
     const router = useRouter();
@@ -59,14 +61,36 @@ export function SlotActionsDropdown({ slot, account, customer, activeSale, accou
 
     // ── Copy service data ───────────────────────────────────────────
     function handleCopy() {
-        const text = `📝 Acceso a ${account.platform}
+        const platformName = (account.platform || '').toLowerCase();
+        const saleType = (account.sale_type || '').toLowerCase();
+        
+        // Cuentas tipo Familia (no mostrar cuenta madre)
+        const isFamily = saleType === 'family' || 
+                         saleType === 'familia' || 
+                         saleType === 'familiar' || 
+                         platformName.includes('spotify') || 
+                         platformName.includes('youtube') || 
+                         platformName.includes('canva');
+                         
+        console.log('Copying service:', { platformName, saleType, isFamily, account });
+        
+        let text = '';
+        if (isFamily) {
+            text = `📝 Plataforma: ${account.platform}
 📱 Perfil: ${slot.slot_identifier || 'Principal'}
 🔑 PIN: ${slot.pin_code || 'Sin PIN'}
-
-✉️ Correo: ${account.email}
-🔒 Clave: ${account.password}
 ${customer?.full_name ? `\n👤 Cliente: ${customer.full_name}` : ''}
-${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}`;
+${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}`.trim();
+        } else {
+            text = `📝 Plataforma: ${account.platform}
+✉️ Correo: ${account.email}
+🔒 Clave: ${account.password || 'Sin clave'}
+📱 Perfil: ${slot.slot_identifier || 'Principal'}
+🔑 PIN: ${slot.pin_code || 'Sin PIN'}
+${customer?.full_name ? `\n👤 Cliente: ${customer.full_name}` : ''}
+${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}`.trim();
+        }
+        
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -94,12 +118,10 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 bg-[#111] border-border text-sm">
                     {/* Editar cliente */}
-                    {hasSoldCustomer && getEditLink() ? (
-                        <DropdownMenuItem asChild>
-                            <a href={getEditLink()!} className="flex items-center gap-2 cursor-pointer text-sky-400 focus:text-sky-300 focus:bg-sky-500/10">
-                                <Edit3 className="h-3.5 w-3.5" />
-                                Editar cliente
-                            </a>
+                    {hasSoldCustomer ? (
+                        <DropdownMenuItem onClick={() => setModalMode('edit_customer')} className="flex items-center gap-2 cursor-pointer text-sky-400 focus:text-sky-300 focus:bg-sky-500/10">
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Editar cliente
                         </DropdownMenuItem>
                     ) : (
                         <DropdownMenuItem disabled className="flex items-center gap-2 text-muted-foreground/40">
@@ -115,9 +137,15 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                             : <><Copy className="h-3.5 w-3.5" />Copiar servicio</>
                         }
                     </DropdownMenuItem>
-
                     <DropdownMenuSeparator />
 
+                    {/* Editar pantalla/perfil */}
+                    <DropdownMenuItem onClick={() => setModalMode('edit_slot')} className="flex items-center gap-2 cursor-pointer">
+                        <Pencil className="h-3.5 w-3.5 text-blue-400" />
+                        <span className="text-blue-400">Editar perfil/pantalla</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
                     {/* Extender */}
                     <DropdownMenuItem
                         onClick={() => hasSoldCustomer && setModalMode('extend')}
@@ -185,20 +213,20 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
             />
 
             {/* Swap account modal — mueve al cliente a otra CUENTA/slot disponible */}
-            {modalMode === 'swap_account' && activeSale?.id && customer?.id && (
+            {modalMode === 'swap_account' && (
                 <SwapServiceModal
                     isOpen={true}
                     onClose={() => setModalMode(null)}
                     service={{
-                        sale_id: activeSale.id,
+                        sale_id: activeSale?.id || '',
                         slot_id: slot.id,
                         platform: account.platform,
                         slot: slot.slot_identifier || '',
                         account_email: accountEmail || account.email,
-                        amount: activeSale.amount || 0,
+                        amount: activeSale?.amount || 0,
                     }}
-                    customerId={customer.id}
-                    customerName={customer.full_name || '(sin nombre)'}
+                    customerId={customer?.id || ''}
+                    customerName={customer?.full_name || '(sin nombre)'}
                     onSwapped={(newAccountEmail) => {
                         setModalMode(null);
                         if (newAccountEmail) {
@@ -231,7 +259,96 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 email={account.email}
                 onFrozen={() => { setModalMode(null); router.refresh(); }}
             />
+
+            {/* Inline edit customer modal */}
+            {modalMode === 'edit_customer' && customer?.id && (
+                <InlineEditCustomerModal
+                    customerId={customer.id}
+                    open={modalMode === 'edit_customer'}
+                    onOpenChange={(v) => !v && setModalMode(null)}
+                />
+            )}
+            {/* Edit Slot Modal */}
+            <EditSlotModal
+                open={modalMode === 'edit_slot'}
+                onClose={() => setModalMode(null)}
+                slotId={slot.id}
+                initialIdentifier={slot.slot_identifier || ''}
+                initialPin={slot.pin_code || ''}
+                onEdited={() => { setModalMode(null); router.refresh(); }}
+            />
         </>
+    );
+}
+
+// ── Edit Slot Modal ─────────────────────────────────────────────────────────────
+
+interface EditSlotModalProps {
+    open: boolean;
+    onClose: () => void;
+    slotId: string;
+    initialIdentifier: string;
+    initialPin: string;
+    onEdited: () => void;
+}
+
+function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, onEdited }: EditSlotModalProps) {
+    const [identifier, setIdentifier] = useState(initialIdentifier);
+    const [pin, setPin] = useState(initialPin);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (open) {
+            setIdentifier(initialIdentifier);
+            setPin(initialPin);
+            setError('');
+        }
+    }, [open, initialIdentifier, initialPin]);
+
+    const handleSave = async () => {
+        setLoading(true);
+        setError('');
+        const formData = new FormData();
+        formData.append('slot_identifier', identifier);
+        formData.append('pin_code', pin);
+        
+        const result = await updateSlot(slotId, formData);
+        setLoading(false);
+        if (result.error) {
+            setError(result.error);
+        } else {
+            onEdited();
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="sm:max-w-[400px] bg-card border-border">
+                <DialogHeader>
+                    <DialogTitle>Editar Perfil / Pantalla</DialogTitle>
+                    <DialogDescription>Modifica el nombre del perfil o el PIN.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-3">
+                    {error && <div className="text-sm text-red-500 bg-red-500/10 p-2 rounded">{error}</div>}
+                    <div className="space-y-2">
+                        <Label>Identificador (Pantalla/Perfil)</Label>
+                        <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="Ej: Perfil 1, o 0905AA..." />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>PIN / Contraseña</Label>
+                        <Input value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Pin o clave del perfil" />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-border pt-4 mt-2">
+                    <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+                    <Button className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90" onClick={handleSave} disabled={loading}>
+                        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Guardar
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -257,13 +374,26 @@ function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, p
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [comboInfo, setComboInfo] = useState<{ isCombo: boolean; siblings: any[]; totalPrice: number } | null>(null);
 
     function reset() {
         setDays(30); setUseCustom(false); setCustomDays('');
-        setAmount(''); setError(null); setSuccess(null);
+        setAmount(''); setError(null); setSuccess(null); setComboInfo(null);
     }
 
     useEffect(() => { if (!open) reset(); }, [open]);
+
+    // Fetch combo info when modal opens
+    useEffect(() => {
+        if (!open || !initialSaleId) return;
+        (async () => {
+            try {
+                const { getComboInfo } = await import('@/lib/actions/sales');
+                const info = await getComboInfo(initialSaleId);
+                setComboInfo(info as any);
+            } catch { /* ignore */ }
+        })();
+    }, [open, initialSaleId]);
 
     async function handleExtend() {
         setError(null);
@@ -284,7 +414,7 @@ function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, p
 
             if (!saleId) { setError('No se encontró la venta activa'); setLoading(false); return; }
 
-            const result = await extendSale({ saleId, extraDays: effectiveDays, amountGs: effectiveAmount });
+            const result = await extendSale({ saleId, extraDays: effectiveDays, amountGs: effectiveAmount }) as any;
             if (result.error) {
                 setError(result.error);
             } else {
@@ -312,6 +442,26 @@ function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, p
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
+                    {/* Combo banner */}
+                    {comboInfo?.isCombo && (
+                        <div className="rounded-lg bg-[#F97316]/10 border border-[#F97316]/30 px-3 py-2">
+                            <p className="text-xs font-semibold text-[#F97316] mb-1">📦 Este servicio es parte de un Combo</p>
+                            <p className="text-[11px] text-muted-foreground">
+                                Se extenderán los {comboInfo.siblings.length} servicios juntos:
+                            </p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                                {comboInfo.siblings.map((s: any, i: number) => (
+                                    <span key={i} className="text-[10px] bg-[#F97316]/20 text-[#F97316] px-1.5 py-0.5 rounded font-medium">
+                                        {s.platform}
+                                    </span>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                                Precio actual del combo: <span className="text-foreground font-medium">Gs. {comboInfo.totalPrice?.toLocaleString('es-PY')}</span>
+                            </p>
+                        </div>
+                    )}
+
                     {currentEndDate && (
                         <p className="text-xs text-muted-foreground">
                             Vence actualmente: <span className="font-medium text-foreground">{new Date(currentEndDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
@@ -360,7 +510,10 @@ function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, p
 
                     {/* Amount */}
                     <div className="space-y-2">
-                        <Label className="text-xs">Monto cobrado (Gs.)</Label>
+                        <Label className="text-xs">
+                            Monto cobrado (Gs.)
+                            {comboInfo?.isCombo && <span className="text-[#F97316] ml-1">(combo completo)</span>}
+                        </Label>
                         <Input
                             type="text"
                             placeholder="Ej: 30000"
@@ -383,7 +536,10 @@ function ExtendModal({ open, onClose, slotId, saleId: initialSaleId, slotName, p
                         className="bg-emerald-600 hover:bg-emerald-500 text-white"
                     >
                         {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-                        {useCustom ? `Extender ${customDays || '?'}d` : `Extender ${days}d`}
+                        {comboInfo?.isCombo
+                            ? `Extender Combo ${useCustom ? (customDays || '?') + 'd' : days + 'd'}`
+                            : useCustom ? `Extender ${customDays || '?'}d` : `Extender ${days}d`
+                        }
                     </Button>
                 </div>
             </DialogContent>
@@ -533,14 +689,27 @@ interface SuspendModalProps {
 function SuspendModal({ open, onClose, slotId, saleId, slotName, platform, customerName, onSuspended }: SuspendModalProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [comboInfo, setComboInfo] = useState<{ isCombo: boolean; siblings: any[] } | null>(null);
 
-    useEffect(() => { if (!open) setError(null); }, [open]);
+    useEffect(() => { if (!open) { setError(null); setComboInfo(null); } }, [open]);
 
-    async function handleSuspend() {
+    // Fetch combo info when modal opens
+    useEffect(() => {
+        if (!open || !saleId) return;
+        (async () => {
+            try {
+                const { getComboInfo } = await import('@/lib/actions/sales');
+                const info = await getComboInfo(saleId);
+                setComboInfo(info as any);
+            } catch { /* ignore */ }
+        })();
+    }, [open, saleId]);
+
+    async function handleSuspend(cancelAll: boolean) {
         if (!saleId) { setError('No se encontró la venta activa'); return; }
         setLoading(true);
         setError(null);
-        const result = await cancelSubscription(saleId, slotId);
+        const result = await cancelSubscription(saleId, slotId, cancelAll);
         if (result.error) {
             setError(result.error);
         } else {
@@ -551,7 +720,7 @@ function SuspendModal({ open, onClose, slotId, saleId, slotName, platform, custo
 
     return (
         <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent className="sm:max-w-[380px] bg-card border-border">
+            <DialogContent className="sm:max-w-[400px] bg-card border-border">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-red-400">
                         <Ban className="h-4 w-4" />
@@ -564,6 +733,20 @@ function SuspendModal({ open, onClose, slotId, saleId, slotName, platform, custo
                 </DialogHeader>
 
                 <div className="py-2 space-y-3">
+                    {/* Combo banner */}
+                    {comboInfo?.isCombo && (
+                        <div className="rounded-lg bg-[#F97316]/10 border border-[#F97316]/30 px-3 py-2">
+                            <p className="text-xs font-semibold text-[#F97316] mb-1">📦 Este servicio es parte de un Combo</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                                {comboInfo.siblings.map((s: any, i: number) => (
+                                    <span key={i} className="text-[10px] bg-[#F97316]/20 text-[#F97316] px-1.5 py-0.5 rounded font-medium">
+                                        {s.platform}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 flex items-start gap-3">
                         <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-red-300">
@@ -575,15 +758,38 @@ function SuspendModal({ open, onClose, slotId, saleId, slotName, platform, custo
 
                 <div className="flex justify-end gap-2 pt-1">
                     <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>Cancelar</Button>
-                    <Button
-                        size="sm"
-                        onClick={handleSuspend}
-                        disabled={loading}
-                        className="bg-red-600 hover:bg-red-500 text-white"
-                    >
-                        {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-                        Sí, suspender
-                    </Button>
+                    {comboInfo?.isCombo ? (
+                        <>
+                            <Button
+                                size="sm"
+                                onClick={() => handleSuspend(false)}
+                                disabled={loading}
+                                className="bg-orange-600 hover:bg-orange-500 text-white text-xs"
+                            >
+                                {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                                Solo este servicio
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={() => handleSuspend(true)}
+                                disabled={loading}
+                                className="bg-red-600 hover:bg-red-500 text-white text-xs"
+                            >
+                                {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                                Todo el combo ({comboInfo.siblings.length})
+                            </Button>
+                        </>
+                    ) : (
+                        <Button
+                            size="sm"
+                            onClick={() => handleSuspend(false)}
+                            disabled={loading}
+                            className="bg-red-600 hover:bg-red-500 text-white"
+                        >
+                            {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                            Sí, suspender
+                        </Button>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

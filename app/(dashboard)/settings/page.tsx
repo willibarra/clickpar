@@ -4,7 +4,7 @@ import buildInfo from '@/lib/build-info.json';
 
 import { useState, useEffect, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Shield, Save, Loader2, ChevronDown, MessageSquare, Mail, Package, Users as UsersIcon, Monitor, Info, Activity, TrendingUp, Check, HelpCircle, AlertTriangle, Send } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,8 @@ import { StockAlertSettings } from '@/components/settings/stock-alert-settings';
 import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
 import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
 import { SupportConfigPanel } from '@/components/settings/support-config-panel';
+import { TelegramSessionPanel } from '@/components/settings/telegram-session-panel';
+import { ImapAccountsPanel } from '@/components/settings/imap-accounts-panel';
 import { useUsdtRate } from '@/lib/usdt-rate';
 
 // ==========================================
@@ -386,6 +388,30 @@ export default function SettingsPage() {
                     <WhatsAppSettingsPanel />
                 </div>
             </CollapsibleSection>
+
+            {/* 6.25. Telegram UserBot */}
+            {isSuperAdmin && (
+                <CollapsibleSection
+                    icon={<Send className="h-5 w-5" />}
+                    iconColor="text-[#818CF8]"
+                    title="Telegram UserBot"
+                    description="Sesión de Telegram para obtener códigos automáticamente"
+                >
+                    <TelegramSessionPanel />
+                </CollapsibleSection>
+            )}
+
+            {/* 6.5. Cuentas IMAP */}
+            {isSuperAdmin && (
+                <CollapsibleSection
+                    icon={<Mail className="h-5 w-5" />}
+                    iconColor="text-amber-400"
+                    title="Cuentas IMAP (Correos)"
+                    description="Hotmail, Outlook, cPanel — para búsqueda automática de códigos"
+                >
+                    <ImapAccountsPanel />
+                </CollapsibleSection>
+            )}
 
             {/* 6.5. Gestión de Crisis (Admin) */}
             {isAdmin && (
