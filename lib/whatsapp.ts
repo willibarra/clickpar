@@ -583,6 +583,16 @@ export async function sendText(
         }
 
         if (res.ok && data?.key?.id) {
+            // [NUEVO] El Sellado (Bind): Si el cliente no tenía instancia predefinida, marcarlo permanentemente a la que el sistema eligió
+            if (!options?.instanceName && options?.customerId) {
+                try {
+                    const supabase = await waSupabase();
+                    await supabase.from('customers').update({ whatsapp_instance: instanceName }).eq('id', options.customerId);
+                } catch {
+                    // Ignore error on binding
+                }
+            }
+
             return {
                 success: true,
                 messageId: data.key.id,
