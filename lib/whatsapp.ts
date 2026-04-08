@@ -549,7 +549,20 @@ export async function sendText(
             delayApplied = await waitForRandomDelay();
         }
 
-        const instanceName = await pickInstance(options?.instanceName);
+        let requestedInstance = options?.instanceName;
+        
+        // Si no tenemos instancia pedida pero tenemos ID de cliente, leemos la DB
+        if (!requestedInstance && options?.customerId) {
+            try {
+                const supabase = await waSupabase();
+                const { data } = await supabase.from('customers').select('whatsapp_instance').eq('id', options.customerId).single();
+                if (data?.whatsapp_instance) {
+                    requestedInstance = data.whatsapp_instance;
+                }
+            } catch { /* ignorar */ }
+        }
+
+        const instanceName = await pickInstance(requestedInstance);
         const formattedPhone = formatPhone(phone);
 
         const res = await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
