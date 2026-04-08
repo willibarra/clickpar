@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         .eq('status', 'composed')
         .lte('scheduled_at', new Date().toISOString())
         .order('scheduled_at', { ascending: true })
-        .limit(50);
+        .limit(200);
 
     if (fetchErr) {
         return NextResponse.json({ error: fetchErr.message }, { status: 500 });
