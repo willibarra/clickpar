@@ -48,7 +48,7 @@ export async function bulkImportCustomers(
                 result.duplicates++;
                 if (options.updateDuplicates) {
                     const updateData: Record<string, string> = {};
-                    if (row.name) updateData.name = row.name;
+                    if (row.name) updateData.full_name = row.name;
                     if (row.notes) updateData.notes = row.notes;
 
                     const { error } = await supabase
@@ -67,7 +67,7 @@ export async function bulkImportCustomers(
 
             // Insertar nuevo
             const { error } = await supabase.from('customers').insert({
-                name: row.name || 'Sin nombre',
+                full_name: row.name || 'Sin nombre',
                 phone,
                 notes: row.notes || null,
             });
@@ -108,11 +108,13 @@ export async function bulkImportMotherAccounts(
                 continue;
             }
 
-            // Verificar duplicado por email
+            // Verificar duplicado por email y plataforma
             const { data: existing } = await supabase
                 .from('mother_accounts')
                 .select('id')
-                .eq('email', row.email)
+                .eq('platform', row.platform)
+                .ilike('email', row.email)
+                .is('deleted_at', null)
                 .maybeSingle();
 
             if (existing) {

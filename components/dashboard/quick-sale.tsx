@@ -220,6 +220,20 @@ export function QuickSaleWidget({ platforms, preselect }: QuickSaleWidgetProps) 
         try {
             const { normalizePhone } = await import('@/lib/utils/phone');
             const phone = normalizePhone(newCustomerPhone);
+
+            // Validar duplicado por teléfono
+            const { data: existing } = await (supabase.from('customers') as any)
+                .select('id, full_name')
+                .eq('phone', phone)
+                .limit(1)
+                .single();
+
+            if (existing) {
+                setErrorMsg(`Ya existe un cliente con ese teléfono: ${existing.full_name}`);
+                setSearchLoading(false);
+                return;
+            }
+
             const { data, error } = await (supabase.from('customers') as any)
                 .insert({ full_name: newCustomerName.trim(), phone })
                 .select('id, full_name, phone')

@@ -45,6 +45,22 @@ export async function createMotherAccount(formData: FormData) {
         invite_address: (formData.get('invite_address') as string) || null,
     };
 
+    // Validar duplicado: misma plataforma + mismo email (solo cuentas activas, no eliminadas)
+    if (data.email) {
+        const emailNorm = data.email.trim().toLowerCase();
+        const { data: existingAccount } = await (supabase.from('mother_accounts') as any)
+            .select('id')
+            .eq('platform', data.platform)
+            .ilike('email', emailNorm)
+            .is('deleted_at', null)
+            .limit(1)
+            .single();
+
+        if (existingAccount) {
+            return { error: `Ya existe una cuenta activa de ${data.platform} con el correo ${data.email}` };
+        }
+    }
+
     // Upsert owned email if checkbox was checked
     const isOwnedEmail = formData.get('is_owned_email') === 'true';
     if (isOwnedEmail) {
@@ -178,6 +194,21 @@ export async function bulkCreateMotherAccounts(
                 continue;
             }
 
+            // Validar duplicado: misma plataforma + mismo email
+            const emailNormCheck = email.toLowerCase();
+            const { data: existingAccount } = await (supabase.from('mother_accounts') as any)
+                .select('id')
+                .eq('platform', sharedData.platform)
+                .ilike('email', emailNormCheck)
+                .is('deleted_at', null)
+                .limit(1)
+                .single();
+
+            if (existingAccount) {
+                results.errors.push({ email, error: `Ya existe una cuenta activa de ${sharedData.platform} con este correo` });
+                continue;
+            }
+
             // Upsert owned email if checkbox was checked
             if (sharedData.is_owned_email) {
                 const emailNorm = email.toLowerCase();
@@ -286,10 +317,31 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         currentAccount.password !== newPassword
     );
 
+    const newPlatform = formData.get('platform') as string;
+
+    // Validar duplicado: si cambió email o plataforma, verificar que no exista otra cuenta igual
+    const emailChanged = currentAccount && currentAccount.email?.toLowerCase() !== newEmail?.toLowerCase();
+    const platformChanged = currentAccount && currentAccount.platform !== newPlatform;
+    if (newEmail && (emailChanged || platformChanged)) {
+        const emailNorm = newEmail.trim().toLowerCase();
+        const { data: existingAccount } = await (supabase.from('mother_accounts') as any)
+            .select('id')
+            .eq('platform', newPlatform)
+            .ilike('email', emailNorm)
+            .is('deleted_at', null)
+            .neq('id', id)
+            .limit(1)
+            .single();
+
+        if (existingAccount) {
+            return { error: `Ya existe otra cuenta activa de ${newPlatform} con el correo ${newEmail}` };
+        }
+    }
+
     const parsedMaxSlots = parseInt(formData.get('max_slots') as string);
     const isAutopay = formData.get('is_autopay') === 'on' || formData.get('is_autopay') === 'true';
     const data: Record<string, any> = {
-        platform: formData.get('platform') as string,
+        platform: newPlatform,
         email: newEmail,
         password: newPassword,
         purchase_cost_usdt: parseFloat(formData.get('purchase_cost_usdt') as string) || 0,

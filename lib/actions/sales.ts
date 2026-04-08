@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 // Kommo CRM desactivado temporalmente
 import {
   sendSaleCredentials,
+  sendCredentialUpdate,
   sendFamilyCredentials,
   sendFamilyInvite,
   getWhatsAppSettings,
@@ -751,16 +752,10 @@ export async function swapService(data: SwapServiceData) {
               "[WhatsApp/Swap] Cuenta FAMILIA — omitiendo mensaje automático de cambio",
             );
           } else {
-            // Usar fecha de vencimiento original del cliente, no recalcular
-            const expDateStr = originalEndDate
-              ? new Date(originalEndDate + "T12:00:00").toLocaleDateString(
-                  "es-PY",
-                )
-              : new Date(Date.now() + 30 * 86400000).toLocaleDateString(
-                  "es-PY",
-                );
+            // Esperar 5 segundos antes de enviar el mensaje, solicitado por el usuario
+            await new Promise((r) => setTimeout(r, 5000));
 
-            await sendSaleCredentials({
+            await sendCredentialUpdate({
               customerPhone: customer.phone || data.customerId,
               customerName: customer.full_name || customer.phone,
               platform: acct.platform || newPlatform,
@@ -768,7 +763,6 @@ export async function swapService(data: SwapServiceData) {
               password: acct.password || "",
               profile: newSlotInfo.slot_identifier || "Perfil asignado",
               pin: newSlotInfo.pin_code || undefined,
-              expirationDate: expDateStr,
               customerId: data.customerId,
               instanceName: customer.whatsapp_instance || undefined,
             });
@@ -1930,4 +1924,73 @@ async function extendSaleIndividual(supabase: any, data: ExtendSaleData) {
     isCombo: false,
     message: `Suscripción extendida ${data.extraDays} días — nuevo vencimiento: ${new Date(newEndDate + "T12:00:00").toLocaleDateString("es-PY")}`,
   };
+}
+
+export async function enqueueManualReminder(saleId: string) {
+  const supabase = await createAdminClient();
+  try {
+    const { data: sale, error: saleError } = await (supabase.from("sales") as any)
+      .select("id, amount_gs, end_date, customer_id, slot_id")
+      .eq("id", saleId)
+      .single();
+
+    if (saleError || !sale) throw new Error("Venta no encontrada (Error en base de datos)");
+    
+    // Get customer
+    const { data: customer, error: customerError } = await (supabase.from("customers") as any)
+      .select("id, full_name, phone, whatsapp_instance")
+      .eq("id", sale.customer_id)
+      .single();
+
+    if (customerError || !customer || !customer.phone) throw new Error("El cliente no tiene teléfono asignado o no se encontró");
+
+    // Get platform from slot -> mother_account
+    let platform = "Servicio";
+    if (sale.slot_id) {
+        const { data: slot } = await (supabase.from("sale_slots") as any)
+            .select("mother_account_id")
+            .eq("id", sale.slot_id)
+            .single();
+        
+        if (slot?.mother_account_id) {
+            const { data: mother } = await (supabase.from("mother_accounts") as any)
+                .select("platform")
+                .eq("id", slot.mother_account_id)
+                .single();
+            if (mother?.platform) platform = mother.platform;
+        }
+    }
+    
+    const idempotencyKey = `manual:${saleId}:${Date.now()}`;
+
+    const { error: queueError } = await (supabase.from("message_queue") as any)
+      .insert({
+        customer_id: customer.id,
+        sale_id: sale.id,
+        message_type: 'manual_reminder',
+        channel: 'whatsapp',
+        phone: customer.phone,
+        customer_name: customer.full_name || 'Cliente',
+        platform: platform,
+        instance_name: customer.whatsapp_instance,
+        idempotency_key: idempotencyKey,
+        status: 'pending'
+      });
+
+    if (queueError) throw new Error(`Error encolando recordatorio: ${queueError.message}`);
+
+    // Disparador fantasma para envío inmediato
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    fetch(`${baseUrl}/api/cron/trigger-pipeline?secret=clickpar-cron-2024`, { method: 'GET' })
+        .catch(err => console.error('[ManualReminder] Fallo disparador fantasma:', err));
+
+    await logAction("manual_reminder", "sale", saleId, {
+      message: `encoló un recordatorio de pago manual para ${customer.full_name || customer.phone}`,
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }

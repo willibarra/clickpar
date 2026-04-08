@@ -510,6 +510,7 @@ export async function sendText(
         customerId?: string;
         saleId?: string;
         skipRateLimiting?: boolean;
+        triggeredBy?: 'manual' | 'auto';
     }
 ): Promise<SendResult> {
     let delayApplied = 0;
@@ -535,6 +536,7 @@ export async function sendText(
                         sale_id: options?.saleId || null,
                         delay_applied_ms: 0,
                         rate_limited: true,
+                        triggered_by: options?.triggeredBy || 'auto',
                     });
                 } catch { /* non-fatal */ }
                 return {
@@ -574,6 +576,7 @@ export async function sendText(
                 sale_id: options?.saleId || null,
                 delay_applied_ms: delayApplied,
                 rate_limited: false,
+                triggered_by: options?.triggeredBy || 'auto',
             });
         } catch {
             // Don't fail if logging fails
@@ -656,6 +659,7 @@ export async function sendSaleCredentials(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    triggeredBy?: 'manual' | 'auto';
 }): Promise<SendResult> {
     // Resolve nickname
     const displayName = await getPlatformDisplayName(params.platform);
@@ -783,6 +787,7 @@ export async function sendPreExpiryReminder(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    triggeredBy?: 'manual' | 'auto';
 }): Promise<SendResult> {
     // Resolve nickname
     const displayName = await getPlatformDisplayName(params.platform);
@@ -804,6 +809,7 @@ export async function sendPreExpiryReminder(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        triggeredBy: params.triggeredBy,
     });
 }
 
@@ -818,6 +824,7 @@ export async function sendExpiryNotification(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    triggeredBy?: 'manual' | 'auto';
 }): Promise<SendResult> {
     // Resolve nickname
     const displayName = await getPlatformDisplayName(params.platform);
@@ -837,6 +844,7 @@ export async function sendExpiryNotification(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        triggeredBy: params.triggeredBy,
     });
 }
 
@@ -853,6 +861,7 @@ export async function sendExpiredNotification(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    triggeredBy?: 'manual' | 'auto';
 }): Promise<SendResult> {
     const displayName = await getPlatformDisplayName(params.platform);
 
@@ -872,6 +881,7 @@ export async function sendExpiredNotification(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        triggeredBy: params.triggeredBy,
     });
 }
 
@@ -888,6 +898,7 @@ export async function sendCredentialUpdate(params: {
     profile: string;
     pin?: string;
     customerId?: string;
+    instanceName?: string;
 }): Promise<SendResult> {
     const message = await getRenderedTemplate('credenciales_actualizadas', {
         nombre: params.customerName,
@@ -905,6 +916,7 @@ export async function sendCredentialUpdate(params: {
     return sendText(params.customerPhone, message, {
         templateKey: 'credenciales_actualizadas',
         customerId: params.customerId,
+        instanceName: params.instanceName,
     });
 }
 

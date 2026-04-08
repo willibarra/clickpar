@@ -65,7 +65,7 @@ export function todayMidnight(): Date {
 // Types
 // ==========================================
 
-export type MessageType = 'pre_expiry' | 'expiry_today' | 'expired_yesterday' | 'cancelled';
+export type MessageType = 'pre_expiry' | 'expiry_today' | 'expired_yesterday' | 'cancelled' | 'manual_reminder';
 export type Channel = 'whatsapp' | 'kommo';
 export type QueueStatus = 'pending' | 'composed' | 'sending' | 'sent' | 'failed' | 'skipped';
 
@@ -118,6 +118,11 @@ const MESSAGE_TYPE_CONFIGS: Record<string, MessageTypeConfig> = {
         settingsFlag: 'auto_send_expiry',
         n8nType: 'expired_yesterday',
     },
+    manual_reminder: {
+        templateKey: 'vencimiento_vencido',
+        settingsFlag: 'auto_send_expiry',
+        n8nType: 'expired_yesterday',
+    },
 };
 
 export function getMessageTypeConfig(type: string): MessageTypeConfig | null {
@@ -164,6 +169,13 @@ export function buildKommoMessage(
                 `❌ *Servicio cancelado*\n\n` +
                 `Hola ${name}, tu servicio de *${displayPlatform}* fue cancelado por falta de pago.\n\n` +
                 `Si querés reactivar tu cuenta, escribinos y con gusto te ayudamos 🤝`
+            );
+        case 'manual_reminder':
+            return (
+                `⚠️ *Recordatorio de Pago*\n\n` +
+                `Hola ${name}, te recordamos que el pago de tu servicio de *${displayPlatform}* se encuentra pendiente.\n\n` +
+                `💰 Renovación: Gs. ${price}\n` +
+                `Escribinos para renovar 📲`
             );
     }
 }

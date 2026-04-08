@@ -279,6 +279,20 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
 
         const phone = normalizePhone(newCustomerPhone);
 
+        // Validar duplicado por teléfono
+        const { data: existingCust } = await (supabase
+            .from('customers') as any)
+            .select('id, full_name')
+            .eq('phone', phone)
+            .limit(1)
+            .single();
+
+        if (existingCust) {
+            setError(`Ya existe un cliente con ese teléfono: ${existingCust.full_name}`);
+            setCreatingCustomer(false);
+            return;
+        }
+
         const { data, error: createError } = await (supabase
             .from('customers') as any)
             .insert({

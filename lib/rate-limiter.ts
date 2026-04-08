@@ -13,9 +13,9 @@ import { createAdminClient } from '@/lib/supabase/server';
 // Configuration
 // ==========================================
 
-const MIN_DELAY_MS = 8_000;   // 8 seconds minimum
+const MIN_DELAY_MS = 20_000;   // 20 seconds minimum (as requested)
 const MAX_DELAY_MS = 25_000;  // 25 seconds maximum
-const MAX_MESSAGES_PER_HOUR = 30;
+const MAX_MESSAGES_PER_HOUR = 200;
 const BATCH_SIZE = 10;
 const BATCH_PAUSE_MS = 5 * 60 * 1000; // 5 minutes between batches
 

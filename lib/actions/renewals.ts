@@ -175,10 +175,10 @@ export async function getClientSubscriptions() {
 
     // 4. Obtener último aviso enviado por venta (whatsapp_send_log)
     const saleIds = sales.map((s: any) => s.id) as string[];
-    const notifMap = new Map<string, { sentAt: string; template: string }>();
+    const notifMap = new Map<string, { sentAt: string; template: string; triggeredBy: string }>();
     for (const ids of chunk(saleIds, 200)) {
         const { data: logs } = await (supabase.from('whatsapp_send_log') as any)
-            .select('sale_id, created_at, template_key, status')
+            .select('sale_id, created_at, template_key, status, triggered_by')
             .in('sale_id', ids)
             .in('template_key', ['pre_vencimiento', 'vencimiento_hoy', 'vencimiento_vencido'])
             .eq('status', 'sent')
@@ -186,7 +186,11 @@ export async function getClientSubscriptions() {
         // Guardar el log más reciente por sale_id
         (logs || []).forEach((log: any) => {
             if (!notifMap.has(log.sale_id)) {
-                notifMap.set(log.sale_id, { sentAt: log.created_at, template: log.template_key });
+                notifMap.set(log.sale_id, { 
+                    sentAt: log.created_at, 
+                    template: log.template_key,
+                    triggeredBy: log.triggered_by || 'auto',
+                });
             }
         });
     }
@@ -496,6 +500,7 @@ export async function sendRenewalNotice(saleId: string) {
             customerId: customer.id,
             saleId: sale.id,
             instanceName: customer.whatsapp_instance || undefined,
+            triggeredBy: 'manual',
         });
     } else if (daysUntil === 0) {
         // Expires today → vencimiento_hoy "vence hoy"
@@ -507,6 +512,7 @@ export async function sendRenewalNotice(saleId: string) {
             customerId: customer.id,
             saleId: sale.id,
             instanceName: customer.whatsapp_instance || undefined,
+            triggeredBy: 'manual',
         });
     } else {
         // Future → pre_vencimiento
@@ -520,6 +526,7 @@ export async function sendRenewalNotice(saleId: string) {
             customerId: customer.id,
             saleId: sale.id,
             instanceName: customer.whatsapp_instance || undefined,
+            triggeredBy: 'manual',
         });
     }
 
@@ -692,3 +699,74 @@ export async function confirmNoRenovar(
     if (errors.length > 0) return { success: false, error: errors.join('; ') };
     return { success: true };
 }
+
+/**
+ * Queue bulk renewal notices to run asynchronously via background CRON
+ * Eliminates browser-side slow loops.
+ */
+export async function queueBulkRenewalNotices(clients: Array<{
+    sale_id: string;
+    customer_id?: string;
+    phone: string;
+    customer_name: string;
+    platform: string;
+    days: number;
+    amount?: number;
+    end_date?: string;
+}>) {
+    const supabase = await createAdminClient();
+    const errors: string[] = [];
+    const timestamp = Date.now();
+    let queued = 0;
+
+    for (const client of clients) {
+        if (!client.phone) continue;
+
+        let messageType = 'pre_expiry';
+        if (client.days < 0) messageType = 'expired_yesterday';
+        else if (client.days === 0) messageType = 'expiry_today';
+
+        let templateKey = 'pre_vencimiento';
+        if (messageType === 'expired_yesterday') templateKey = 'vencimiento_vencido';
+        else if (messageType === 'expiry_today') templateKey = 'vencimiento_hoy';
+
+        const idempotencyKey = `manual:${client.sale_id}:${messageType}:${timestamp}`;
+
+        const { error } = await supabase.from('message_queue').insert({
+            customer_id: client.customer_id || null,
+            sale_id: client.sale_id,
+            message_type: messageType,
+            channel: 'whatsapp',
+            phone: client.phone,
+            customer_name: client.customer_name,
+            platform: client.platform,
+            template_key: templateKey,
+            status: 'pending',
+            scheduled_at: new Date().toISOString(),
+            retry_count: 0,
+            max_retries: 3,
+            idempotency_key: idempotencyKey,
+        } as any);
+
+        if (error) {
+            errors.push(`Error al encolar ${client.customer_name}: ${error.message}`);
+        } else {
+            queued++;
+        }
+    }
+
+    if (queued > 0) {
+        // Disparador fantasma: activa el cron instantáneamente
+        // En Next.js Node, un fetch sin await correrá asíncronamente
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        fetch(`${baseUrl}/api/cron/trigger-pipeline?secret=clickpar-cron-2024`, { method: 'GET' })
+            .catch(err => console.error('[BulkQueue] Fallo disparador fantasma:', err));
+    }
+
+    if (errors.length > 0 && queued === 0) {
+        return { success: false, error: `${errors.length} error(es) al encolar`, details: errors };
+    }
+
+    return { success: true, queued, errors: errors.length > 0 ? errors : undefined };
+}
+

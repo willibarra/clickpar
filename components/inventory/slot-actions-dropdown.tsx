@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil } from 'lucide-react';
-import { extendSale, cancelSubscription } from '@/lib/actions/sales';
+import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing } from 'lucide-react';
+import { extendSale, cancelSubscription, enqueueManualReminder } from '@/lib/actions/sales';
 import { swapSlotCustomer, freezeMotherAccount, updateSlot } from '@/lib/actions/inventory';
 import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
 import {
@@ -41,6 +41,7 @@ interface SlotActionsDropdownProps {
         end_date: string | null;
         start_date?: string | null;
         amount?: number;
+        reminders_sent?: number;
     } | null;
     accountEmail?: string;
     motherAccountId?: string;
@@ -58,6 +59,7 @@ export function SlotActionsDropdown({ slot, account, customer, activeSale, accou
     const router = useRouter();
     const [copied, setCopied] = useState(false);
     const [modalMode, setModalMode] = useState<ModalMode>(null);
+    const [sendingReminder, setSendingReminder] = useState(false);
 
     // ── Copy service data ───────────────────────────────────────────
     function handleCopy() {
@@ -106,6 +108,19 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
     }
 
     const hasSoldCustomer = !!customer?.id && slot.status === 'sold';
+    const isExpired = activeSale?.end_date ? new Date(activeSale.end_date + 'T12:00:00') <= new Date() : false;
+
+    async function handleSendReminder() {
+        if (!activeSale?.id) return;
+        setSendingReminder(true);
+        try {
+            const result = await enqueueManualReminder(activeSale.id);
+            if (result.error) alert(result.error);
+        } catch (e: any) {
+            alert(e.message);
+        }
+        setSendingReminder(false);
+    }
 
     return (
         <>
@@ -167,6 +182,20 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
+
+                    {/* Enviar Recordatorio */}
+                    {hasSoldCustomer && isExpired && (
+                        <DropdownMenuItem
+                            onClick={(e) => { e.preventDefault(); handleSendReminder(); }}
+                            disabled={sendingReminder}
+                            className="flex items-center gap-2 cursor-pointer"
+                        >
+                            {sendingReminder ? <Loader2 className="h-3.5 w-3.5 text-yellow-500 animate-spin" /> : <BellRing className="h-3.5 w-3.5 text-yellow-500" />}
+                            <span className="text-yellow-500">
+                                {(activeSale?.reminders_sent || 0) > 0 ? 'Reenviar recordatorio' : 'Enviar recordatorio'}
+                            </span>
+                        </DropdownMenuItem>
+                    )}
 
                     {/* Suspender */}
                     <DropdownMenuItem

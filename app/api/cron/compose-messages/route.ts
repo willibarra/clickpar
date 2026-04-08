@@ -119,7 +119,9 @@ async function composeWhatsApp(
     const config = getMessageTypeConfig(msg.message_type);
 
     // Check if auto-send is enabled for this message type
-    if (config && waSettings) {
+    // If idempotency_key starts with 'manual:', bypass the check because the admin forced it.
+    const isManual = msg.idempotency_key?.startsWith('manual:');
+    if (config && waSettings && !isManual) {
         const flag = config.settingsFlag;
         if (!waSettings[flag]) {
             // Auto-send disabled, skip
@@ -145,8 +147,8 @@ async function composeWhatsApp(
         return;
     }
 
-    // Try AI via N8N first
-    if (useAiMessages && config) {
+    // Try AI via N8N first (except manual messages which must use standard templates)
+    if (useAiMessages && config && !isManual) {
         try {
             // Fetch sale data for N8N
             const { data: saleData } = await supabase
@@ -241,6 +243,8 @@ async function composeWhatsApp(
         body = `🔴 *Tu servicio vence HOY*\n\nHola ${name}, tu servicio de *${platform}* vence hoy (${expDate}).\n\n💰 Renovación: Gs. ${price}\n\nEscribinos ahora para renovar ✅`;
     } else if (msg.message_type === 'expired_yesterday') {
         body = `⚠️ *Servicio vencido*\n\nHola ${name}, tu servicio de *${platform}* venció ayer.\n\nÚltima oportunidad para renovar antes de cancelar definitivamente.\n\n💰 Gs. ${price} | Escribinos 📲`;
+    } else if (msg.message_type === 'manual_reminder') {
+        body = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\n\nEscribinos para renovar 📲`;
     } else {
         body = `Hola ${name}, hay una novedad con tu servicio de *${platform}*. Escribinos para más info.`;
     }

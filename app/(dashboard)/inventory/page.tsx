@@ -54,6 +54,19 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
         .select('id, slot_id, customer_id, start_date, end_date')
         .eq('is_active', true);
 
+    // Fetch manual reminder counts
+    const { data: manualReminders } = await supabase
+        .from('message_queue')
+        .select('sale_id')
+        .eq('message_type', 'manual_reminder');
+
+    const reminderCounts = (manualReminders || []).reduce((acc: Record<string, number>, row: any) => {
+        if (row.sale_id) {
+            acc[row.sale_id] = (acc[row.sale_id] || 0) + 1;
+        }
+        return acc;
+    }, {});
+
     // Step 3: Fetch all customers as a lookup map (simpler and reliable vs .in with 1000+ IDs)
     const { data: allCustomers } = await supabase
         .from('customers')
@@ -63,7 +76,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
 
     // Build sale lookup map by slot_id for O(1) merge
     const saleBySlot: Record<string, any> = Object.fromEntries(
-        ((activeSales || []) as any[]).map((s: any) => [s.slot_id, s])
+        ((activeSales || []) as any[]).map((s: any) => [
+            s.slot_id, 
+            { ...s, reminders_sent: reminderCounts[s.id] || 0 }
+        ])
     );
 
     // Merge: slot + sale + customer

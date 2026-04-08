@@ -1053,6 +1053,25 @@ async function handleConfirmarNuevaCuenta(
     try {
         const supabase = await createAdminClient();
 
+        // Validar duplicado: misma plataforma + mismo email
+        const emailNorm = email.trim().toLowerCase();
+        const { data: existingAccount } = await (supabase
+            .from('mother_accounts') as any)
+            .select('id')
+            .eq('platform', platform)
+            .ilike('email', emailNorm)
+            .is('deleted_at', null)
+            .limit(1)
+            .single();
+
+        if (existingAccount) {
+            await sendMessage(chatId,
+                `⚠️ Ya existe una cuenta activa de *${safeMd(platform)}* con el correo *${safeMd(email)}*\\n\\nNo se creó la cuenta duplicada\\.`,
+                { buttons: BACK_BUTTON }
+            );
+            return;
+        }
+
         const today = new Date().toISOString().split('T')[0];
 
         // Create mother account

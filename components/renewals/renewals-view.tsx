@@ -1117,10 +1117,12 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                         <div>
                                             {sub.lastNotified ? (
                                                 <div
-                                                    className="flex items-center gap-1 text-xs text-[#86EFAC] cursor-default"
+                                                    className="flex items-center gap-1.5 text-xs text-[#86EFAC] cursor-default bg-[#86EFAC]/10 px-2 py-0.5 rounded-full w-fit"
                                                     title={`${sub.lastNotified.template === 'vencimiento_hoy' ? 'Aviso día de vencimiento' : 'Aviso previo'} · ${formatDateES(new Date(sub.lastNotified.sentAt), { time: true })}`}
                                                 >
-                                                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
+                                                    <span className="text-[10px]" title={sub.lastNotified.triggeredBy === 'manual' ? 'Enviado Manualmente' : 'Enviado por Cron/Robot'}>
+                                                        {sub.lastNotified.triggeredBy === 'manual' ? '👤' : '🤖'}
+                                                    </span>
                                                     <span>
                                                         {formatDateES(new Date(sub.lastNotified.sentAt))}
                                                     </span>
@@ -1441,6 +1443,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             .filter((s: any) => clientSelected.has(s.id))
                             .map((s: any) => ({
                                 sale_id: s.id,
+                                customer_id: s.customer?.id,
                                 phone: s.customer?.phone || '',
                                 customer_name: s.customer?.full_name || s.customer?.phone || '',
                                 platform: s.slot?.mother_account?.platform || 'Plataforma',

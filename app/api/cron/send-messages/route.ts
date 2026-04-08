@@ -171,6 +171,7 @@ async function sendWhatsApp(
         templateKey: msg.template_key || undefined,
         customerId: msg.customer_id || undefined,
         saleId: msg.sale_id || undefined,
+        triggeredBy: msg.idempotency_key?.startsWith('manual:') ? 'manual' : 'auto',
     });
 
     if (result.success) {
