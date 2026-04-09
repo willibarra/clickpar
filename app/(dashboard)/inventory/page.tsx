@@ -51,7 +51,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     // Step 2: Fetch active sales (plain — PostgREST FK not registered for customers join)
     const { data: activeSales } = await supabase
         .from('sales')
-        .select('id, slot_id, customer_id, start_date, end_date')
+        .select('id, slot_id, customer_id, start_date, end_date, amount_gs')
         .eq('is_active', true);
 
     // Fetch manual reminder counts
@@ -67,6 +67,32 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
         return acc;
     }, {});
 
+    // Fetch latest notification status per sale from whatsapp_send_log
+    const saleIdsForLog = ((activeSales || []) as any[]).map((s: any) => s.id);
+    const notifMap: Record<string, { triggered_by: string; sent_at: string }> = {};
+    if (saleIdsForLog.length > 0) {
+        // Fetch in batches of 200
+        for (let i = 0; i < saleIdsForLog.length; i += 200) {
+            const batch = saleIdsForLog.slice(i, i + 200);
+            const { data: logs } = await supabase
+                .from('whatsapp_send_log')
+                .select('sale_id, triggered_by, created_at')
+                .in('sale_id', batch)
+                .in('template_key', ['pre_vencimiento', 'vencimiento_hoy', 'vencimiento_vencido'])
+                .eq('status', 'sent')
+                .order('created_at', { ascending: false });
+            // Keep the most recent log per sale_id
+            (logs || []).forEach((log: any) => {
+                if (!notifMap[log.sale_id]) {
+                    notifMap[log.sale_id] = {
+                        triggered_by: log.triggered_by || 'auto',
+                        sent_at: log.created_at,
+                    };
+                }
+            });
+        }
+    }
+
     // Step 3: Fetch all customers as a lookup map (simpler and reliable vs .in with 1000+ IDs)
     const { data: allCustomers } = await supabase
         .from('customers')
@@ -78,7 +104,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     const saleBySlot: Record<string, any> = Object.fromEntries(
         ((activeSales || []) as any[]).map((s: any) => [
             s.slot_id, 
-            { ...s, reminders_sent: reminderCounts[s.id] || 0 }
+            { 
+                ...s, 
+                reminders_sent: reminderCounts[s.id] || 0,
+                notification_status: notifMap[s.id] || null,
+            }
         ])
     );
 

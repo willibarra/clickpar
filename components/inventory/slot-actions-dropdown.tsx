@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing } from 'lucide-react';
-import { extendSale, cancelSubscription, enqueueManualReminder } from '@/lib/actions/sales';
+import { extendSale, cancelSubscription, enqueueManualReminder, logReminderCopied } from '@/lib/actions/sales';
 import { swapSlotCustomer, freezeMotherAccount, updateSlot } from '@/lib/actions/inventory';
 import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
 import {
@@ -58,8 +58,25 @@ type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze
 export function SlotActionsDropdown({ slot, account, customer, activeSale, accountEmail, motherAccountId }: SlotActionsDropdownProps) {
     const router = useRouter();
     const [copied, setCopied] = useState(false);
+    const [copiedReminder, setCopiedReminder] = useState(false);
     const [modalMode, setModalMode] = useState<ModalMode>(null);
     const [sendingReminder, setSendingReminder] = useState(false);
+
+    // ── Copy reminder message ───────────────────────────────────────
+    async function handleCopyReminder() {
+        const name = customer?.full_name || 'Cliente';
+        const platform = account.platform || 'Servicio';
+        const price = (activeSale?.amount || 0).toLocaleString();
+        const text = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\nEscribinos para renovar 📲`;
+        navigator.clipboard.writeText(text);
+        setCopiedReminder(true);
+        setTimeout(() => setCopiedReminder(false), 2000);
+        // Log to DB so 📋 icon appears in Vencimiento column
+        if (activeSale?.id) {
+            await logReminderCopied(activeSale.id);
+            router.refresh();
+        }
+    }
 
     // ── Copy service data ───────────────────────────────────────────
     function handleCopy() {
@@ -81,7 +98,7 @@ export function SlotActionsDropdown({ slot, account, customer, activeSale, accou
             text = `📝 Plataforma: ${account.platform}
 📱 Perfil: ${slot.slot_identifier || 'Principal'}
 🔑 PIN: ${slot.pin_code || 'Sin PIN'}
-${customer?.full_name ? `\n👤 Cliente: ${customer.full_name}` : ''}
+${customer?.phone || customer?.full_name ? `\n👤 Cliente: ${customer.phone || customer.full_name}` : ''}
 ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}`.trim();
         } else {
             text = `📝 Plataforma: ${account.platform}
@@ -89,7 +106,7 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
 🔒 Clave: ${account.password || 'Sin clave'}
 📱 Perfil: ${slot.slot_identifier || 'Principal'}
 🔑 PIN: ${slot.pin_code || 'Sin PIN'}
-${customer?.full_name ? `\n👤 Cliente: ${customer.full_name}` : ''}
+${customer?.phone || customer?.full_name ? `\n👤 Cliente: ${customer.phone || customer.full_name}` : ''}
 ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}`.trim();
         }
         
@@ -194,6 +211,19 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                             <span className="text-yellow-500">
                                 {(activeSale?.reminders_sent || 0) > 0 ? 'Reenviar recordatorio' : 'Enviar recordatorio'}
                             </span>
+                        </DropdownMenuItem>
+                    )}
+
+                    {/* Copiar Recordatorio */}
+                    {hasSoldCustomer && isExpired && (
+                        <DropdownMenuItem
+                            onClick={(e) => { e.preventDefault(); handleCopyReminder(); }}
+                            className="flex items-center gap-2 cursor-pointer"
+                        >
+                            {copiedReminder
+                                ? <><Check className="h-3.5 w-3.5 text-[#86EFAC]" /><span className="text-[#86EFAC]">¡Recordatorio copiado!</span></>
+                                : <><Copy className="h-3.5 w-3.5 text-yellow-500" /><span className="text-yellow-500">Copiar recordatorio</span></>
+                            }
                         </DropdownMenuItem>
                     )}
 

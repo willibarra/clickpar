@@ -1925,6 +1925,64 @@ async function extendSaleIndividual(supabase: any, data: ExtendSaleData) {
     message: `Suscripción extendida ${data.extraDays} días — nuevo vencimiento: ${new Date(newEndDate + "T12:00:00").toLocaleDateString("es-PY")}`,
   };
 }
+/**
+ * Log that a reminder was copied to clipboard (for manual sending via WhatsApp).
+ * Creates a whatsapp_send_log entry with triggered_by='copied' so the UI 
+ * can show a 📋 icon indicating the message was copied.
+ */
+export async function logReminderCopied(saleId: string) {
+  const supabase = await createAdminClient();
+  try {
+    // Get sale info for the log
+    const { data: sale } = await (supabase.from("sales") as any)
+      .select("id, customer_id, slot_id")
+      .eq("id", saleId)
+      .single();
+    if (!sale) return { error: "Venta no encontrada" };
+
+    // Get customer phone
+    const { data: customer } = await (supabase.from("customers") as any)
+      .select("id, phone")
+      .eq("id", sale.customer_id)
+      .single();
+
+    // Get platform
+    let platform = "Servicio";
+    if (sale.slot_id) {
+      const { data: slot } = await (supabase.from("sale_slots") as any)
+        .select("mother_account_id")
+        .eq("id", sale.slot_id)
+        .single();
+      if (slot?.mother_account_id) {
+        const { data: mother } = await (supabase.from("mother_accounts") as any)
+          .select("platform")
+          .eq("id", slot.mother_account_id)
+          .single();
+        if (mother?.platform) platform = mother.platform;
+      }
+    }
+
+    await (supabase.from("whatsapp_send_log") as any).insert({
+      template_key: "vencimiento_vencido",
+      phone: customer?.phone || null,
+      message: "(copiado al portapapeles)",
+      instance_used: null,
+      status: "sent",
+      customer_id: sale.customer_id,
+      sale_id: saleId,
+      delay_applied_ms: 0,
+      rate_limited: false,
+      triggered_by: "copied",
+    });
+
+    revalidatePath("/");
+    revalidatePath("/inventory");
+    revalidatePath("/renewals");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
 
 export async function enqueueManualReminder(saleId: string) {
   const supabase = await createAdminClient();

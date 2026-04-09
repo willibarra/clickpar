@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice, markAccountsAsPossibleAutopay, markAccountsAsNoRenovar, confirmNoRenovar } from '@/lib/actions/renewals';
+import { logReminderCopied } from '@/lib/actions/sales';
 import { BatchSendModal } from "./batch-send-modal";
 
 type FilterType = 'all' | 'expired' | 'today' | '3days';
@@ -77,6 +78,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [provFilter, setProvFilter] = useState<FilterType>('all');
     const [provSearch, setProvSearch] = useState('');
     const [provPlatformFilter, setProvPlatformFilter] = useState<string>('all');
+    const [provSupplierFilter, setProvSupplierFilter] = useState<string>('all');
     const [provSelected, setProvSelected] = useState<Set<string>>(new Set());
     const [showProvModal, setShowProvModal] = useState(false);
     const [provCost, setProvCost] = useState('');
@@ -112,6 +114,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [clientSortCol, setClientSortCol] = useState<ClientSortCol>('expiry');
     const [clientSortDir, setClientSortDir] = useState<'asc' | 'desc'>('asc');
     const [sendingNotice, setSendingNotice] = useState<Set<string>>(new Set());
+    const [copiedReminders, setCopiedReminders] = useState<Set<string>>(new Set());
 
     // No Renovar modal state
     const [showAutopayModal, setShowAutopayModal] = useState(false);
@@ -233,6 +236,16 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         return Array.from(set).sort();
     }, [accountsForPlatformFilter]);
 
+    // Unique suppliers derived from context-filtered accounts (respects status + search + platform filters)
+    const uniqueProvSuppliers = useMemo(() => {
+        const set = new Set<string>();
+        const base = provPlatformFilter === 'all'
+            ? accountsForPlatformFilter
+            : accountsForPlatformFilter.filter(a => a.platform === provPlatformFilter);
+        base.forEach(a => { if (a.supplier_name) set.add(a.supplier_name); });
+        return Array.from(set).sort();
+    }, [accountsForPlatformFilter, provPlatformFilter]);
+
     // Unique suppliers from all accounts (for smart select)
     const uniqueSuppliers = useMemo(() => {
         const set = new Set<string>();
@@ -276,6 +289,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (provPlatformFilter !== 'all') {
                 if (a.platform !== provPlatformFilter) return false;
             }
+            if (provSupplierFilter !== 'all') {
+                if ((a.supplier_name || '') !== provSupplierFilter) return false;
+            }
             if (provSearch.trim()) {
                 const q = provSearch.toLowerCase();
                 return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
@@ -286,7 +302,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             const db = b.renewal_date || '9999';
             return da.localeCompare(db);
         });
-    }, [accounts, provFilter, provPlatformFilter, provSearch]);
+    }, [accounts, provFilter, provPlatformFilter, provSupplierFilter, provSearch]);
 
     // Paginate providers
     const paginatedAccounts = useMemo(() => {
@@ -357,17 +373,64 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         }
     };
 
+    /**
+     * Calcula el día objetivo del mes siguiente basado en la fecha de vencimiento de la cuenta.
+     * Ejemplo: si venció el 30/mar, el objetivo es 30/abr → calcula días desde `fromDate` hasta 30/abr.
+     * Maneja meses cortos (ej: 31/ene → 28/feb en año no bisiesto).
+     */
+    const calcDaysToNextSameDay = (renewalDateStr: string, fromDate: Date): number => {
+        const renewal = new Date(renewalDateStr + 'T00:00:00');
+        const dayOfMonth = renewal.getDate();
+        // Target: same day-of-month in the next month from the renewal
+        const targetMonth = renewal.getMonth() + 1;
+        const targetYear = renewal.getFullYear() + (targetMonth > 11 ? 1 : 0);
+        const targetMonthNorm = targetMonth % 12;
+        // Clamp day to last day of target month (e.g., 31 → 28 for Feb)
+        const lastDayOfTarget = new Date(targetYear, targetMonthNorm + 1, 0).getDate();
+        const clampedDay = Math.min(dayOfMonth, lastDayOfTarget);
+        const target = new Date(targetYear, targetMonthNorm, clampedDay);
+        target.setHours(0, 0, 0, 0);
+        const from = new Date(fromDate);
+        from.setHours(0, 0, 0, 0);
+        const diff = Math.round((target.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+        return Math.max(1, diff);
+    };
+
     // Open provider modal (no need to fetch - uses configured rate from Settings)
     const handleOpenProvModal = () => {
         const today = new Date();
         const todayIso = today.toISOString().split('T')[0];
         setProvRenewalDate(todayIso);
-        // Auto-calcular días restantes del mes actual
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        const diff = Math.round((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        setProvDays(diff.toString());
-        // Auto-fill USDT: find most common cost among selected accounts
+
         const selectedAccounts = accounts.filter(a => provSelected.has(a.id));
+
+        // Auto-calcular días basado en el vencimiento de las cuentas seleccionadas
+        if (selectedAccounts.length > 0) {
+            // Find dominant renewal_date day-of-month across selected accounts
+            const dateMap: Record<string, number> = {};
+            selectedAccounts.forEach(a => {
+                if (a.renewal_date) {
+                    dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                }
+            });
+            const dominantEntry = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+            if (dominantEntry) {
+                const days = calcDaysToNextSameDay(dominantEntry[0], today);
+                setProvDays(days.toString());
+            } else {
+                // No renewal_date → fallback to end of month
+                const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                const diff = Math.round((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                setProvDays(diff.toString());
+            }
+        } else {
+            // Fallback: end of current month
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const diff = Math.round((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            setProvDays(diff.toString());
+        }
+
+        // Auto-fill USDT: find most common cost among selected accounts
         if (selectedAccounts.length > 0) {
             const costMap: Record<string, number> = {};
             selectedAccounts.forEach(a => {
@@ -409,6 +472,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         // Reset filters to show all so user can see the selection
         setProvFilter('all');
         setProvPlatformFilter('all');
+        setProvSupplierFilter('all');
         setProvCurrentPage(1);
     };
 
@@ -428,7 +492,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         if (isNaN(cost) || cost <= 0 || isNaN(days) || days <= 0) return;
 
         startTransition(async () => {
-            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days, usdt);
+            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days, usdt, provRenewalDate);
             if (result.success) {
                 setShowProvModal(false);
                 setProvSelected(new Set());
@@ -470,6 +534,26 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         } finally {
             setSendingNotice(prev => { const n = new Set(prev); n.delete(saleId); return n; });
         }
+    };
+
+    // Copy reminder message to clipboard for a single sale
+    const handleCopyNotice = async (sub: any) => {
+        const customer = sub.customer;
+        const slot = sub.slot;
+        const account = slot?.mother_account;
+        const name = customer?.full_name || 'Cliente';
+        const platform = account?.platform || 'Servicio';
+        const price = (sub.amount_gs || 0).toLocaleString();
+        const text = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\nEscribinos para renovar 📲`;
+        navigator.clipboard.writeText(text);
+        setCopiedReminders(prev => new Set(prev).add(sub.id));
+        toast.success('Recordatorio copiado 📋');
+        // Log to DB so 📋 icon appears in Aviso WA column
+        await logReminderCopied(sub.id);
+        router.refresh();
+        setTimeout(() => {
+            setCopiedReminders(prev => { const n = new Set(prev); n.delete(sub.id); return n; });
+        }, 3000);
     };
 
     // Bulk release (liberar) unpaid clients
@@ -604,7 +688,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                     <div className="grid grid-cols-4 gap-3">
                         {/* TOTAL urgente */}
                         <button
-                            onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'all'
                                     ? 'border-[#86EFAC] bg-[#86EFAC]/10 ring-1 ring-[#86EFAC]/50'
@@ -617,7 +701,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         </button>
                         {/* Vencidas */}
                         <button
-                            onClick={() => { setProvFilter('expired'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            onClick={() => { setProvFilter('expired'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'expired'
                                     ? 'border-red-400 bg-red-500/15 ring-1 ring-red-400/50'
@@ -629,7 +713,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         </button>
                         {/* Vencen Hoy */}
                         <button
-                            onClick={() => { setProvFilter('today'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            onClick={() => { setProvFilter('today'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'today'
                                     ? 'border-orange-400 bg-orange-500/15 ring-1 ring-orange-400/50'
@@ -641,7 +725,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         </button>
                         {/* Próx. 3 días */}
                         <button
-                            onClick={() => { setProvFilter('3days'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                            onClick={() => { setProvFilter('3days'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
                             className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === '3days'
                                     ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
@@ -730,7 +814,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-xs text-muted-foreground">Cuenta:</span>
                                 <button
-                                    onClick={() => { setProvPlatformFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                    onClick={() => { setProvPlatformFilter('all'); setProvSupplierFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                                         provPlatformFilter === 'all'
                                             ? 'bg-white/10 text-white ring-1 ring-white/30'
@@ -744,7 +828,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     return (
                                         <button
                                             key={platform}
-                                            onClick={() => { setProvPlatformFilter(platform); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                            onClick={() => { setProvPlatformFilter(platform); setProvSupplierFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
                                             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                                                 provPlatformFilter === platform
                                                     ? 'bg-[#F97316] text-white'
@@ -752,6 +836,42 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                             }`}
                                         >
                                             {platform} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Supplier / proveedor filter chips */}
+                        {uniqueProvSuppliers.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Proveedor:</span>
+                                <button
+                                    onClick={() => { setProvSupplierFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                        provSupplierFilter === 'all'
+                                            ? 'bg-white/10 text-white ring-1 ring-white/30'
+                                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    Todos
+                                </button>
+                                {uniqueProvSuppliers.map(supplier => {
+                                    const base = provPlatformFilter === 'all'
+                                        ? accountsForPlatformFilter
+                                        : accountsForPlatformFilter.filter(a => a.platform === provPlatformFilter);
+                                    const count = base.filter(a => a.supplier_name === supplier).length;
+                                    return (
+                                        <button
+                                            key={supplier}
+                                            onClick={() => { setProvSupplierFilter(supplier); setProvSelected(new Set()); setProvCurrentPage(1); }}
+                                            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                                provSupplierFilter === supplier
+                                                    ? 'bg-violet-500 text-white'
+                                                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {supplier} ({count})
                                         </button>
                                     );
                                 })}
@@ -1124,8 +1244,12 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                     className="flex items-center gap-1.5 text-xs text-[#86EFAC] cursor-default bg-[#86EFAC]/10 px-2 py-0.5 rounded-full w-fit"
                                                     title={`${sub.lastNotified.template === 'vencimiento_hoy' ? 'Aviso día de vencimiento' : 'Aviso previo'} · ${formatDateES(new Date(sub.lastNotified.sentAt), { time: true })}`}
                                                 >
-                                                    <span className="text-[10px]" title={sub.lastNotified.triggeredBy === 'manual' ? 'Enviado Manualmente' : 'Enviado por Cron/Robot'}>
-                                                        {sub.lastNotified.triggeredBy === 'manual' ? '👤' : '🤖'}
+                                                    <span className="text-[10px]" title={
+                                                        sub.lastNotified.triggeredBy === 'copied' ? 'Copiado Manualmente' 
+                                                        : sub.lastNotified.triggeredBy === 'manual' ? 'Enviado Manualmente' 
+                                                        : 'Enviado por Cron/Robot'
+                                                    }>
+                                                        {sub.lastNotified.triggeredBy === 'copied' ? '📋' : sub.lastNotified.triggeredBy === 'manual' ? '👤' : '🤖'}
                                                     </span>
                                                     <span>
                                                         {formatDateES(new Date(sub.lastNotified.sentAt))}
@@ -1141,8 +1265,22 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 </div>
                                             )}
                                         </div>
-                                        {/* Botón Enviar Aviso WA */}
-                                        <div>
+                                        {/* Botón Enviar Aviso WA + Copiar */}
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleCopyNotice(sub)}
+                                                title="Copiar recordatorio"
+                                                className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all
+                                                    ${copiedReminders.has(sub.id)
+                                                        ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
+                                                        : 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/40 hover:text-orange-200'
+                                                    }`}
+                                            >
+                                                {copiedReminders.has(sub.id)
+                                                    ? <Check className="h-3 w-3" />
+                                                    : <Copy className="h-3 w-3" />
+                                                }
+                                            </button>
                                             <button
                                                 onClick={() => handleSendNotice(sub.id)}
                                                 disabled={isSending || !customer?.phone}
@@ -1275,17 +1413,28 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 onChange={e => {
                                     const newDate = e.target.value;
                                     setProvRenewalDate(newDate);
-                                    // Calcular días hasta fin de mes desde la nueva fecha
+                                    // Recalcular días basado en vencimiento de cuentas seleccionadas
                                     if (newDate) {
-                                        const d = new Date(newDate + 'T12:00:00');
-                                        const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-                                        const diff = Math.round((endOfMonth.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                                        setProvDays(diff.toString());
+                                        const fromDate = new Date(newDate + 'T12:00:00');
+                                        const selectedAccounts = accounts.filter(a => provSelected.has(a.id));
+                                        const dateMap: Record<string, number> = {};
+                                        selectedAccounts.forEach(a => {
+                                            if (a.renewal_date) dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                                        });
+                                        const dominantEntry = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+                                        if (dominantEntry) {
+                                            const days = calcDaysToNextSameDay(dominantEntry[0], fromDate);
+                                            setProvDays(days.toString());
+                                        } else {
+                                            const endOfMonth = new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 0);
+                                            const diff = Math.round((endOfMonth.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                            setProvDays(diff.toString());
+                                        }
                                     }
                                 }}
                                 className="w-full rounded-md border border-border bg-[#1a1a1a] px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
                             />
-                            {/* Botones rápidos de días del mes actual */}
+                            {/* Botones rápidos: mismo día del mes siguiente + fin de mes + 30d */}
                             {(() => {
                                 const base = provRenewalDate ? new Date(provRenewalDate + 'T12:00:00') : new Date();
                                 const year = base.getFullYear();
@@ -1293,17 +1442,32 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 const daysInMonth = new Date(year, month + 1, 0).getDate();
                                 const endOfMonth = new Date(year, month + 1, 0);
                                 const daysToEnd = Math.round((endOfMonth.getTime() - base.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                                const options = [
-                                    { label: `Fin del mes (${daysToEnd}d)`, value: daysToEnd },
-                                    { label: '30 días', value: 30 },
-                                ];
-                                // Si el mes tiene más días agrega opciones útiles
-                                if (daysInMonth === 31) options.splice(1, 0, { label: '31 días', value: 31 });
+
+                                const options: { label: string; value: number }[] = [];
+
+                                // Primary: calculate "Mismo día" based on selected accounts' renewal_date
+                                const selectedAccounts = accounts.filter(a => provSelected.has(a.id));
+                                const dateMap: Record<string, number> = {};
+                                selectedAccounts.forEach(a => {
+                                    if (a.renewal_date) dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                                });
+                                const dominantEntry = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+                                if (dominantEntry) {
+                                    const renewalD = new Date(dominantEntry[0] + 'T00:00:00');
+                                    const dayNum = renewalD.getDate();
+                                    const sameDayDays = calcDaysToNextSameDay(dominantEntry[0], base);
+                                    options.push({ label: `Día ${dayNum} próx. mes (${sameDayDays}d)`, value: sameDayDays });
+                                }
+
+                                options.push({ label: `Fin del mes (${daysToEnd}d)`, value: daysToEnd });
+                                options.push({ label: '30 días', value: 30 });
+                                if (daysInMonth === 31) options.push({ label: '31 días', value: 31 });
+
                                 return (
                                     <div className="flex flex-wrap gap-2 pt-1">
                                         {options.map(opt => (
                                             <button
-                                                key={opt.value}
+                                                key={opt.label}
                                                 type="button"
                                                 onClick={() => setProvDays(opt.value.toString())}
                                                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${

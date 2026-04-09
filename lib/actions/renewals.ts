@@ -219,7 +219,8 @@ export async function bulkRenewAccounts(
     accountIds: string[],
     totalCostGs: number,
     daysToExtend: number,
-    totalCostUsdt?: number
+    totalCostUsdt?: number,
+    baseStartDate?: string
 ) {
     const supabase = await createAdminClient();
     const errors: string[] = [];
@@ -241,15 +242,21 @@ export async function bulkRenewAccounts(
             continue;
         }
 
-        // Calculate new renewal date
-        const currentDate = (account as any).renewal_date ? new Date((account as any).renewal_date + 'T12:00:00') : new Date();
-        const newDate = new Date(currentDate);
+        // Calculate new renewal date explicitly from user's chosen start date or fallback
+        let baseDateStr = baseStartDate;
+        if (!baseDateStr) {
+            baseDateStr = (account as any).renewal_date || new Date().toISOString().split('T')[0];
+        }
+        
+        const newDate = new Date(baseDateStr + 'T12:00:00');
         newDate.setDate(newDate.getDate() + daysToExtend);
         const newRenewalDate = newDate.toISOString().split('T')[0];
+        const newBillingDay = newDate.getDate();
 
-        // Build update payload — always update renewal_date and cost
+        // Build update payload — update renewal_date, target_billing_day, and cost
         const updatePayload: Record<string, any> = {
             renewal_date: newRenewalDate,
+            target_billing_day: newBillingDay,
             purchase_cost_gs: costPerAccountGs,
         };
         if (costPerAccountUsdt != null) {

@@ -28,6 +28,9 @@ interface Slot {
         start_date: string | null;
         end_date: string | null;
         is_active: boolean;
+        amount_gs?: number;
+        reminders_sent?: number;
+        notification_status?: { triggered_by: string; sent_at: string } | null;
         customers: { id: string; full_name: string | null; phone: string | null } | null;
     }>;
 }
@@ -1155,7 +1158,27 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                         <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
                                                             {endDate ? (
                                                                 <div className="flex flex-col gap-0.5">
-                                                                    <span className={`text-xs font-medium ${expiryColor(endDate)}`}>{formatRelativeOnly(endDate, 'future')}</span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className={`text-xs font-medium ${expiryColor(endDate)}`}>{formatRelativeOnly(endDate, 'future')}</span>
+                                                                        {activeSale?.notification_status && (
+                                                                            <span
+                                                                                className="text-[10px] cursor-default"
+                                                                                title={
+                                                                                    activeSale.notification_status.triggered_by === 'copied'
+                                                                                        ? 'Recordatorio copiado'
+                                                                                        : activeSale.notification_status.triggered_by === 'manual'
+                                                                                        ? 'Recordatorio enviado manualmente'
+                                                                                        : 'Recordatorio automático'
+                                                                                }
+                                                                            >
+                                                                                {activeSale.notification_status.triggered_by === 'copied'
+                                                                                    ? '📋'
+                                                                                    : activeSale.notification_status.triggered_by === 'manual'
+                                                                                    ? '👤'
+                                                                                    : '🤖'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(endDate)}</span>
                                                                 </div>
                                                             ) : (
@@ -1184,6 +1207,8 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     id: activeSale.id,
                                                                     end_date: activeSale.end_date,
                                                                     start_date: activeSale.start_date,
+                                                                    amount: activeSale.amount_gs || 0,
+                                                                    reminders_sent: activeSale.reminders_sent || 0,
                                                                 } : null}
                                                             />
                                                         </td>
