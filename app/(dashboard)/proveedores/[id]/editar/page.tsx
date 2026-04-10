@@ -6,7 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 export default async function EditarProveedorPage({
     params,
 }: {
-    params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
     const authClient = await createClient();
     const { data: { user } } = await authClient.auth.getUser();
@@ -19,23 +19,24 @@ export default async function EditarProveedorPage({
         .single();
     if (!profile || profile.role !== 'super_admin') redirect('/');
 
-    const supplier = await getSupplierDetail(params.id);
+    const { id } = await params;
+    const supplier = await getSupplierDetail(id);
     if (!supplier) redirect('/proveedores');
 
     async function handleUpdate(formData: FormData) {
         'use server';
-        const result = await updateSupplier(params.id, formData);
+        const result = await updateSupplier(id, formData);
         if (result.error) {
-            redirect(`/proveedores/${params.id}/editar?error=${encodeURIComponent(result.error)}`);
+            redirect(`/proveedores/${id}/editar?error=${encodeURIComponent(result.error)}`);
         }
-        redirect(`/proveedores/${params.id}`);
+        redirect(`/proveedores/${id}`);
     }
 
     return (
         <div className="space-y-6 max-w-xl">
             {/* Back */}
             <a
-                href={`/proveedores/${params.id}`}
+                href={`/proveedores/${id}`}
                 className="inline-flex items-center gap-2 text-sm transition-colors hover:text-white"
                 style={{ color: '#8b8ba7' }}
             >
@@ -121,7 +122,7 @@ export default async function EditarProveedorPage({
                 {/* Actions */}
                 <div className="flex items-center gap-3 pt-2">
                     <a
-                        href={`/proveedores/${params.id}`}
+                        href={`/proveedores/${id}`}
                         className="rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
                         style={{
                             background: 'rgba(255,255,255,0.05)',

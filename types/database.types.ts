@@ -640,6 +640,7 @@ export interface Database {
                     name: string;
                     message: string;
                     enabled: boolean;
+                    variant: number;
                     updated_at: string;
                     created_at: string;
                 };
@@ -649,6 +650,7 @@ export interface Database {
                     name: string;
                     message: string;
                     enabled?: boolean;
+                    variant?: number;
                     updated_at?: string;
                     created_at?: string;
                 };
@@ -658,6 +660,7 @@ export interface Database {
                     name?: string;
                     message?: string;
                     enabled?: boolean;
+                    variant?: number;
                     updated_at?: string;
                     created_at?: string;
                 };

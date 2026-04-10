@@ -49,7 +49,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 export default async function SupplierDetailPage({
     params,
 }: {
-    params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
     const authClient = await createClient();
     const { data: { user } } = await authClient.auth.getUser();
@@ -62,7 +62,8 @@ export default async function SupplierDetailPage({
         .single();
     if (!profile || profile.role !== 'super_admin') redirect('/');
 
-    const supplier = await getSupplierDetail(params.id);
+    const { id } = await params;
+    const supplier = await getSupplierDetail(id);
     if (!supplier) redirect('/proveedores');
 
     const isSinProveedor = supplier.id === '00000000-0000-0000-0000-000000000001';

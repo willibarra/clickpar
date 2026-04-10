@@ -29,8 +29,7 @@ export function SupplierCard({ supplier, platformBadges }: SupplierProps) {
     const [deleting, setDeleting] = useState(false);
     const isSinProveedor = supplier.id === '00000000-0000-0000-0000-000000000001';
 
-    const handleDelete = async (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleDelete = async () => {
         if (!confirm(`¿Estás seguro de eliminar a ${supplier.name}? Todas sus cuentas pasarán a "SIN PROVEEDOR".`)) return;
         
         setDeleting(true);
@@ -41,8 +40,7 @@ export function SupplierCard({ supplier, platformBadges }: SupplierProps) {
         }
     };
 
-    const handleEdit = (e: React.MouseEvent) => {
-        e.stopPropagation();
+    const handleEdit = () => {
         router.push(`/proveedores/${supplier.id}/editar`);
     };
 
@@ -119,11 +117,11 @@ export function SupplierCard({ supplier, platformBadges }: SupplierProps) {
                         <DropdownMenuContent align="end" className="w-40">
                             <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleEdit} className="cursor-pointer gap-2">
+                            <DropdownMenuItem onSelect={handleEdit} className="cursor-pointer gap-2">
                                 <Edit3 className="h-4 w-4" />
                                 Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleDelete} className="cursor-pointer text-red-400 gap-2 focus:text-red-400">
+                            <DropdownMenuItem onSelect={handleDelete} className="cursor-pointer text-red-400 gap-2 focus:text-red-400">
                                 <Trash2 className="h-4 w-4" />
                                 Eliminar
                             </DropdownMenuItem>

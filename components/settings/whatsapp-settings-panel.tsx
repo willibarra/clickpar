@@ -5,6 +5,7 @@ import {
     MessageSquare, Wifi, WifiOff, RefreshCw, Send, Settings2,
     Check, X, QrCode, Smartphone, Edit3, Eye,
     ArrowLeftRight, Hash, ToggleLeft, Loader2,
+    ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ type Template = {
     name: string;
     message: string;
     enabled: boolean;
+    variant: number;
 };
 
 type Settings = {
@@ -53,8 +55,18 @@ const TEMPLATE_LABELS: Record<string, { label: string; icon: string; color: stri
     venta_credenciales: { label: '📦 Credenciales de Venta', icon: '📦', color: 'text-green-400' },
     pre_vencimiento: { label: '⏰ Pre-Vencimiento', icon: '⏰', color: 'text-yellow-400' },
     vencimiento_hoy: { label: '🔴 Vencimiento', icon: '🔴', color: 'text-red-400' },
+    vencimiento_vencido: { label: '⚠️ Servicio Vencido', icon: '⚠️', color: 'text-orange-400' },
     credenciales_actualizadas: { label: '🔄 Credenciales Actualizadas', icon: '🔄', color: 'text-blue-400' },
 };
+
+// Ordered keys for display
+const TEMPLATE_KEY_ORDER = [
+    'credenciales_actualizadas',
+    'pre_vencimiento',
+    'vencimiento_hoy',
+    'vencimiento_vencido',
+    'venta_credenciales',
+];
 
 export function WhatsAppSettingsPanel() {
     const [tab, setTab] = useState<'connection' | 'templates' | 'logs'>('connection');
@@ -62,6 +74,7 @@ export function WhatsAppSettingsPanel() {
     const [instances, setInstances] = useState<Instance[]>([]);
     const [settings, setSettings] = useState<Settings | null>(null);
     const [templates, setTemplates] = useState<Template[]>([]);
+    const [rotations, setRotations] = useState<Record<string, number>>({});
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
     const [editMessage, setEditMessage] = useState('');
@@ -87,6 +100,7 @@ export function WhatsAppSettingsPanel() {
             setInstances(instData.instances || []);
             setSettings(settData.settings || null);
             setTemplates(tmplData.templates || []);
+            setRotations(tmplData.rotations || {});
         } catch {
             // ignore
         }
@@ -191,6 +205,17 @@ export function WhatsAppSettingsPanel() {
     };
 
     const phoneFromJid = (jid?: string) => jid?.replace('@s.whatsapp.net', '') || '';
+
+    // Group templates by key
+    const templatesByKey: Record<string, Template[]> = {};
+    for (const t of templates) {
+        if (!templatesByKey[t.key]) templatesByKey[t.key] = [];
+        templatesByKey[t.key].push(t);
+    }
+    // Sort variants within each key
+    for (const key of Object.keys(templatesByKey)) {
+        templatesByKey[key].sort((a, b) => a.variant - b.variant);
+    }
 
     if (loading) {
         return (
@@ -436,83 +461,148 @@ export function WhatsAppSettingsPanel() {
                     </div>
                 )}
 
-                {/* Templates Tab */}
+                {/* Templates Tab — Variant Cards */}
                 {tab === 'templates' && (
-                    <div className="space-y-3">
-                        {templates.length === 0 ? (
-                            <p className="text-center text-sm text-muted-foreground py-8">
-                                No hay templates configurados. Se crearán automáticamente al inicializar.
-                            </p>
-                        ) : (
-                            templates.map((tmpl) => {
-                                const meta = TEMPLATE_LABELS[tmpl.key] || { label: tmpl.name, icon: '📄', color: 'text-foreground' };
-                                const isEditing = editingTemplate === tmpl.id;
+                    <div className="space-y-4">
+                        {TEMPLATE_KEY_ORDER.map((templateKey) => {
+                            const variants = templatesByKey[templateKey] || [];
+                            if (variants.length === 0) return null;
+                            const meta = TEMPLATE_LABELS[templateKey] || { label: templateKey, icon: '📄', color: 'text-foreground' };
+                            const enabledCount = variants.filter(v => v.enabled).length;
+                            const rotationIdx = rotations[templateKey] ?? 0;
+                            // Find which variant number is "next" — map rotation index to enabled variants
+                            const enabledVariants = variants.filter(v => v.enabled);
+                            const nextVariant = enabledVariants.length > 0
+                                ? enabledVariants[(rotationIdx + 1) % enabledVariants.length]
+                                : null;
 
-                                return (
-                                    <div key={tmpl.id} className="rounded-lg border border-border p-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <span>{meta.icon}</span>
-                                                <span className={`text-sm font-medium ${meta.color}`}>{tmpl.name}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={() => handleToggleTemplate(tmpl.id, !tmpl.enabled)}
-                                                    className={`relative h-5 w-9 rounded-full transition-colors ${tmpl.enabled ? 'bg-green-400' : 'bg-muted'
-                                                        }`}
-                                                >
-                                                    <span
-                                                        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${tmpl.enabled ? 'translate-x-4' : ''
-                                                            }`}
-                                                    />
-                                                </button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        if (isEditing) {
-                                                            setEditingTemplate(null);
-                                                        } else {
-                                                            setEditingTemplate(tmpl.id);
-                                                            setEditMessage(tmpl.message);
-                                                        }
-                                                    }}
-                                                    className="h-7 w-7 p-0"
-                                                >
-                                                    {isEditing ? <Eye className="h-3.5 w-3.5" /> : <Edit3 className="h-3.5 w-3.5" />}
-                                                </Button>
-                                            </div>
+                            return (
+                                <div key={templateKey} className="rounded-xl border border-border bg-card overflow-hidden">
+                                    {/* Header row */}
+                                    <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-border">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-base">{meta.icon}</span>
+                                            <span className={`text-sm font-semibold ${meta.color}`}>{meta.label}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                                ({enabledCount}/{variants.length} activos)
+                                            </span>
                                         </div>
-
-                                        {isEditing ? (
-                                            <div className="space-y-2">
-                                                <textarea
-                                                    value={editMessage}
-                                                    onChange={(e) => setEditMessage(e.target.value)}
-                                                    rows={6}
-                                                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground font-mono placeholder:text-muted-foreground focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-400"
-                                                />
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Variables: {'{nombre}'} {'{plataforma}'} {'{email}'} {'{password}'} {'{perfil}'} {'{pin}'} {'{fecha_vencimiento}'} {'{dias_restantes}'} {'{precio}'}
-                                                    </p>
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={() => saveTemplate(tmpl.id)}
-                                                        className="bg-green-500 hover:bg-green-600"
-                                                    >
-                                                        <Check className="mr-1 h-3 w-3" /> Guardar
-                                                    </Button>
-                                                </div>
+                                        {nextVariant && (
+                                            <div className="flex items-center gap-1.5 rounded-full bg-green-400/10 px-2.5 py-1 text-xs font-medium text-green-400">
+                                                <ArrowLeftRight className="h-3 w-3" />
+                                                Siguiente: V{nextVariant.variant}
                                             </div>
-                                        ) : (
-                                            <pre className="whitespace-pre-wrap rounded bg-muted/30 p-2 text-xs text-muted-foreground font-mono">
-                                                {tmpl.message}
-                                            </pre>
                                         )}
                                     </div>
-                                );
-                            })
+
+                                    {/* Variant cards — horizontal scroll */}
+                                    <div className="overflow-x-auto">
+                                        <div className="flex gap-3 p-3" style={{ minWidth: 'max-content' }}>
+                                            {variants.map((tmpl) => {
+                                                const isEditing = editingTemplate === tmpl.id;
+                                                const isNext = nextVariant?.id === tmpl.id;
+
+                                                return (
+                                                    <div
+                                                        key={tmpl.id}
+                                                        className={`relative flex flex-col rounded-lg border p-3 transition-all ${
+                                                            isNext
+                                                                ? 'border-green-400/50 bg-green-400/5 ring-1 ring-green-400/20'
+                                                                : tmpl.enabled
+                                                                    ? 'border-border bg-background'
+                                                                    : 'border-border/50 bg-muted/20 opacity-60'
+                                                        }`}
+                                                        style={{ width: 280, minHeight: 200 }}
+                                                    >
+                                                        {/* Variant header */}
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                                                                    isNext
+                                                                        ? 'bg-green-400 text-black'
+                                                                        : tmpl.enabled
+                                                                            ? 'bg-muted text-foreground'
+                                                                            : 'bg-muted/50 text-muted-foreground'
+                                                                }`}>
+                                                                    {tmpl.variant}
+                                                                </span>
+                                                                {isNext && (
+                                                                    <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">
+                                                                        Siguiente
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    onClick={() => handleToggleTemplate(tmpl.id, !tmpl.enabled)}
+                                                                    className={`relative h-4 w-8 rounded-full transition-colors ${
+                                                                        tmpl.enabled ? 'bg-green-400' : 'bg-muted'
+                                                                    }`}
+                                                                >
+                                                                    <span
+                                                                        className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+                                                                            tmpl.enabled ? 'translate-x-4' : ''
+                                                                        }`}
+                                                                    />
+                                                                </button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        if (isEditing) {
+                                                                            setEditingTemplate(null);
+                                                                        } else {
+                                                                            setEditingTemplate(tmpl.id);
+                                                                            setEditMessage(tmpl.message);
+                                                                        }
+                                                                    }}
+                                                                    className="h-6 w-6 p-0"
+                                                                >
+                                                                    {isEditing ? <Eye className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Content */}
+                                                        {isEditing ? (
+                                                            <div className="flex flex-col flex-1 gap-2">
+                                                                <textarea
+                                                                    value={editMessage}
+                                                                    onChange={(e) => setEditMessage(e.target.value)}
+                                                                    rows={7}
+                                                                    className="flex-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground font-mono placeholder:text-muted-foreground focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-400 resize-none"
+                                                                />
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <p className="text-[9px] text-muted-foreground leading-tight">
+                                                                        {'{nombre}'} {'{plataforma}'} {'{email}'} {'{password}'} {'{perfil}'} {'{pin}'} {'{fecha_vencimiento}'} {'{dias_restantes}'} {'{precio}'}
+                                                                    </p>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        onClick={() => saveTemplate(tmpl.id)}
+                                                                        className="bg-green-500 hover:bg-green-600 h-6 text-[10px] px-2"
+                                                                    >
+                                                                        <Check className="mr-1 h-2.5 w-2.5" /> Guardar
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <pre className="flex-1 whitespace-pre-wrap rounded bg-muted/30 p-2 text-[10px] leading-relaxed text-muted-foreground font-mono overflow-y-auto max-h-48">
+                                                                {tmpl.message}
+                                                            </pre>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {Object.keys(templatesByKey).length === 0 && (
+                            <p className="text-center text-sm text-muted-foreground py-8">
+                                No hay templates configurados. Ejecute la migración SQL para inicializar.
+                            </p>
                         )}
                     </div>
                 )}

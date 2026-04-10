@@ -116,6 +116,7 @@ export interface WhatsAppTemplate {
     name: string;
     message: string;
     enabled: boolean;
+    variant: number;
 }
 
 export interface SendResult {
@@ -313,7 +314,8 @@ export async function getTemplates(): Promise<WhatsAppTemplate[]> {
         const { data } = await supabase
             .from('whatsapp_templates')
             .select('*')
-            .order('key');
+            .order('key')
+            .order('variant');
         return (data || []) as WhatsAppTemplate[];
     } catch {
         return [];
@@ -397,7 +399,55 @@ export function renderTemplate(template: string, variables: Record<string, strin
 }
 
 /**
- * Get a specific template by key and render it
+ * Get the next variant index for a template key via round-robin.
+ * Reads and increments the counter stored in app_config.
+ */
+async function getNextVariantIndex(templateKey: string, enabledCount: number): Promise<number> {
+    if (enabledCount <= 0) return 0;
+    const configKey = `template_rotation_${templateKey}`;
+    try {
+        const supabase = await waSupabase();
+        const { data } = await supabase
+            .from('app_config' as any)
+            .select('value')
+            .eq('key', configKey)
+            .single();
+
+        const lastIndex = parseInt(data?.value || '0', 10);
+        const nextIndex = (lastIndex + 1) % enabledCount;
+
+        // Upsert the counter
+        await supabase
+            .from('app_config' as any)
+            .upsert({ key: configKey, value: String(nextIndex), label: `Rotation: ${templateKey}` }, { onConflict: 'key' });
+
+        return nextIndex;
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * Get the current rotation index for a template key (read-only, for UI display).
+ */
+export async function getRotationIndex(templateKey: string): Promise<number> {
+    const configKey = `template_rotation_${templateKey}`;
+    try {
+        const supabase = await waSupabase();
+        const { data } = await supabase
+            .from('app_config' as any)
+            .select('value')
+            .eq('key', configKey)
+            .single();
+        return parseInt(data?.value || '0', 10);
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * Get a specific template by key, rotate among enabled variants, and render it.
+ * Uses round-robin rotation persisted in app_config.
  */
 export async function getRenderedTemplate(
     templateKey: string,
@@ -405,14 +455,24 @@ export async function getRenderedTemplate(
 ): Promise<string | null> {
     try {
         const supabase = await waSupabase();
+        // Fetch ALL enabled variants for this key, ordered by variant number
         const { data } = await supabase
             .from('whatsapp_templates')
             .select('*')
             .eq('key', templateKey)
             .eq('enabled', true)
-            .single();
-        if (!data) return null;
-        return renderTemplate(data.message, variables);
+            .order('variant');
+
+        const variants = data || [];
+        if (variants.length === 0) return null;
+
+        // Pick the next variant in rotation
+        const idx = await getNextVariantIndex(templateKey, variants.length);
+        const chosen = variants[idx] || variants[0];
+
+        console.log(`[WhatsApp] Template ${templateKey}: using variant ${chosen.variant} (index ${idx}/${variants.length})`);
+
+        return renderTemplate(chosen.message, variables);
     } catch {
         return null;
     }

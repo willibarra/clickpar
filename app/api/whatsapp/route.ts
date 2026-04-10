@@ -11,6 +11,7 @@ import {
     updateTemplate,
     toggleTemplate,
     sendText,
+    getRotationIndex,
 } from '@/lib/whatsapp';
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,13 @@ export async function GET(request: NextRequest) {
 
             case 'templates': {
                 const templates = await getTemplates();
-                return NextResponse.json({ templates });
+                // Fetch rotation indices for each unique key
+                const keys = [...new Set(templates.map(t => t.key))];
+                const rotations: Record<string, number> = {};
+                await Promise.all(keys.map(async (k) => {
+                    rotations[k] = await getRotationIndex(k);
+                }));
+                return NextResponse.json({ templates, rotations });
             }
 
             case 'logs': {
