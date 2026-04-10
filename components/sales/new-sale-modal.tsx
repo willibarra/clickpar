@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, Copy, Package, Users } from 'lucide-react';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, Copy, Package, Users, MessageCircle } from 'lucide-react';
 import { createQuickSale, createFullAccountSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
 import { SlotWithAccount } from '@/lib/utils/tetris-algorithm';
 import { normalizePhone, safeNormalizePhone } from '@/lib/utils/phone';
+import { getWhatsAppInstanceConfig, type WhatsAppInstanceConfig } from '@/lib/actions/whatsapp-config';
 
 /**
  * Returns the number of days from today until the same calendar day next month.
@@ -39,6 +40,7 @@ interface Customer {
     full_name: string;
     phone: string;
     customer_type?: string;
+    whatsapp_instance?: string | null;
 }
 
 
@@ -88,6 +90,10 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const [newCustomerPhone, setNewCustomerPhone] = useState('');
     const [creatingCustomer, setCreatingCustomer] = useState(false);
 
+    // WhatsApp instance state
+    const [waConfig, setWaConfig] = useState<WhatsAppInstanceConfig | null>(null);
+    const [selectedWaInstance, setSelectedWaInstance] = useState<string | null>(null);
+
     // Form state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
     const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
@@ -127,12 +133,17 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         }
     }, [open, preselectedPlatform]);
 
+    // Fetch WhatsApp instance config
+    useEffect(() => {
+        getWhatsAppInstanceConfig().then(setWaConfig);
+    }, []);
+
     useEffect(() => {
         if (open) {
             // Fetch customers
             supabase
                 .from('customers')
-                .select('id, full_name, phone, customer_type')
+                .select('id, full_name, phone, customer_type, whatsapp_instance')
                 .order('full_name', { ascending: true })
                 .then(({ data }) => setCustomers((data as Customer[]) || []));
 
@@ -293,13 +304,17 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             return;
         }
 
-        const { data, error: createError } = await (supabase
+        const insertData: any = {
+            full_name: newCustomerName.trim(),
+            phone: phone,
+        };
+        // Si se eligió una instancia de WhatsApp, asignar al crear
+        if (selectedWaInstance) insertData.whatsapp_instance = selectedWaInstance;
+
+        const { data: newCustomerData, error: createError } = await (supabase
             .from('customers') as any)
-            .insert({
-                full_name: newCustomerName.trim(),
-                phone: phone,
-            })
-            .select('id, full_name, phone')
+            .insert(insertData)
+            .select('id, full_name, phone, whatsapp_instance')
             .single();
 
         if (createError) {
@@ -308,8 +323,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             return;
         }
 
-        setCustomers(prev => [data, ...prev]);
-        setSelectedCustomer(data);
+        setCustomers(prev => [newCustomerData, ...prev]);
+        setSelectedCustomer(newCustomerData);
         setShowNewCustomerForm(false);
         setNewCustomerName('');
         setNewCustomerPhone('');
@@ -328,12 +343,15 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             setDuration('9999');
             setPriceOverridden(false);
         }
+        // Pre-setear instancia WhatsApp del cliente
+        setSelectedWaInstance(customer.whatsapp_instance || null);
     };
 
     const handleClearCustomer = () => {
         setSelectedCustomer(null);
         setCustomerSearch('');
         setIsCreadorCustomer(false);
+        setSelectedWaInstance(null);
         // Restaurar precio default
         if (selectedPlatform) {
             const plat = dbPlatforms.find(p => p.name === selectedPlatform);
@@ -400,6 +418,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                     familyAccessType: isFamilyPlatform ? familyAccessType : undefined,
                     clientEmail: isFamilyPlatform && clientEmail ? clientEmail : undefined,
                     clientPassword: isFamilyPlatform && familyAccessType === 'credentials' ? clientPassword : undefined,
+                    whatsappInstance: selectedWaInstance || undefined,
                 });
 
                 if (result.error) {
@@ -442,6 +461,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setIsCreadorCustomer(false);
         setSaleCredentials(null);
         setDuration(String(daysUntilSameDayNextMonth()));
+        setSelectedWaInstance(null);
     };
 
     const selectedFullAccount = fullAccounts.find(a => a.id === selectedFullAccountId);
@@ -621,6 +641,21 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                                             value={newCustomerPhone}
                                             onChange={(e) => setNewCustomerPhone(e.target.value)}
                                         />
+                                        {/* WhatsApp instance selector for new customers */}
+                                        {waConfig && (
+                                            <div className="flex items-center gap-2">
+                                                <MessageCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
+                                                <select
+                                                    value={selectedWaInstance || ''}
+                                                    onChange={(e) => setSelectedWaInstance(e.target.value || null)}
+                                                    className="flex-1 text-sm bg-card border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-green-400"
+                                                >
+                                                    <option value="">WhatsApp: Auto (rotación)</option>
+                                                    <option value={waConfig.instance1Name}>{waConfig.instance1Alias}</option>
+                                                    <option value={waConfig.instance2Name}>{waConfig.instance2Alias}</option>
+                                                </select>
+                                            </div>
+                                        )}
                                         <Button
                                             type="button"
                                             size="sm"
@@ -636,19 +671,36 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                                         </Button>
                                     </div>
                                 ) : selectedCustomer ? (
-                                    <div className="flex items-center justify-between p-3 rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5">
-                                        <div>
-                                            <p className="font-medium text-foreground">{selectedCustomer.full_name}</p>
-                                            <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
+                                    <div className="p-3 rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="font-medium text-foreground">{selectedCustomer.full_name}</p>
+                                                <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleClearCustomer}
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </Button>
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handleClearCustomer}
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </Button>
+                                        {/* WhatsApp instance — siempre editable */}
+                                        {waConfig && (
+                                            <div className="flex items-center gap-1.5">
+                                                <MessageCircle className="h-3 w-3 text-green-400" />
+                                                <select
+                                                    value={selectedWaInstance || ''}
+                                                    onChange={(e) => setSelectedWaInstance(e.target.value || null)}
+                                                    className="text-xs bg-transparent border border-border rounded px-1.5 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-green-400"
+                                                >
+                                                    <option value="">Auto (rotación)</option>
+                                                    <option value={waConfig.instance1Name}>{waConfig.instance1Alias}</option>
+                                                    <option value={waConfig.instance2Name}>{waConfig.instance2Alias}</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="relative">

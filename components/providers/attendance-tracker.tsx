@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { registerAttendance, getStaffSchedule } from '@/lib/actions/attendance';
 import { useRouter } from 'next/navigation';
 
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 export function AttendanceTracker() {
     const supabase = createClient();
@@ -78,7 +78,7 @@ export function AttendanceTracker() {
             if (now - lastActivityTime.current > INACTIVITY_TIMEOUT_MS) {
                 supabase.auth.signOut().then(() => {
                     toast.error('Sesión Expirada', {
-                        description: 'Tu sesión se cerró por inactividad prolongada (30 mins).',
+                        description: 'Tu sesión se cerró por inactividad prolongada (2 horas).',
                         duration: 10000,
                     });
                     router.push('/staff/login');

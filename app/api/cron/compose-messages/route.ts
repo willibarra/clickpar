@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('status', 'pending')
         .order('scheduled_at', { ascending: true })
-        .limit(50);
+        .limit(200);
 
     if (fetchErr) {
         return NextResponse.json({ error: fetchErr.message }, { status: 500 });
@@ -196,9 +196,9 @@ async function composeWhatsApp(
     } else if (msg.message_type === 'expiry_today') {
         body = `🔴 *Tu servicio vence HOY*\n\nHola ${name}, tu servicio de *${platform}* vence hoy (${expDate}).\n\n💰 Renovación: Gs. ${price}\n\nEscribinos ahora para renovar ✅`;
     } else if (msg.message_type === 'expired_yesterday') {
-        body = `⚠️ *Servicio vencido*\n\nHola ${name}, tu servicio de *${platform}* venció ayer.\n\nÚltima oportunidad para renovar antes de cancelar definitivamente.\n\n💰 Gs. ${price} | Escribinos 📲`;
+        body = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\n\nsi desea renovar nos decis con que metodo de pago.\nde lo contrario si ya no necesita ignorar este mensaje`;
     } else if (msg.message_type === 'manual_reminder') {
-        body = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\n\nEscribinos para renovar 📲`;
+        body = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\n\nsi desea renovar nos decis con que metodo de pago.\nde lo contrario si ya no necesita ignorar este mensaje`;
     } else {
         body = `Hola ${name}, hay una novedad con tu servicio de *${platform}*. Escribinos para más info.`;
     }

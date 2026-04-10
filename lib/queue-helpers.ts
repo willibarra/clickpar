@@ -158,11 +158,11 @@ export function buildKommoMessage(
             );
         case 'expired_yesterday':
             return (
-                `⚠️ *Servicio vencido*\n\n` +
-                `Hola ${name}, tu servicio de *${displayPlatform}* *venció ayer* (${dateStr}).\n\n` +
-                `Es tu última oportunidad para renovar antes de que se cancele definitivamente.\n\n` +
-                `💰 Renovación: Gs. ${price}\n` +
-                `Escribinos para renovar 📲`
+                `⚠️ *Recordatorio de Pago*\n\n` +
+                `Hola ${name}, te recordamos que el pago de tu servicio de *${displayPlatform}* se encuentra pendiente.\n\n` +
+                `💰 Renovación: Gs. ${price}\n\n` +
+                `si desea renovar nos decis con que metodo de pago.\n` +
+                `de lo contrario si ya no necesita ignorar este mensaje`
             );
         case 'cancelled':
             return (
@@ -174,8 +174,9 @@ export function buildKommoMessage(
             return (
                 `⚠️ *Recordatorio de Pago*\n\n` +
                 `Hola ${name}, te recordamos que el pago de tu servicio de *${displayPlatform}* se encuentra pendiente.\n\n` +
-                `💰 Renovación: Gs. ${price}\n` +
-                `Escribinos para renovar 📲`
+                `💰 Renovación: Gs. ${price}\n\n` +
+                `si desea renovar nos decis con que metodo de pago.\n` +
+                `de lo contrario si ya no necesita ignorar este mensaje`
             );
     }
 }

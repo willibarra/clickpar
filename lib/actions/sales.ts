@@ -30,6 +30,7 @@ interface QuickSaleData {
   familyAccessType?: "credentials" | "invite";
   clientEmail?: string;
   clientPassword?: string;
+  whatsappInstance?: string; // Override WhatsApp instance for this sale
 }
 
 export async function createQuickSale(data: QuickSaleData) {
@@ -93,6 +94,14 @@ export async function createQuickSale(data: QuickSaleData) {
         .eq("id", customerId)
         .single();
       customerWaInstance = custWa?.whatsapp_instance || null;
+    }
+
+    // Si el frontend pasó una instancia explícita, usarla y persistirla como nuevo predeterminado
+    if (data.whatsappInstance) {
+      customerWaInstance = data.whatsappInstance;
+      await (supabase.from("customers") as any)
+        .update({ whatsapp_instance: data.whatsappInstance })
+        .eq("id", customerId);
     }
 
     // 2. Encontrar slot

@@ -205,8 +205,9 @@ export async function bulkSendCrisisMessage(
     return { queued: true, total: sales.length };
 }
 
-// Background Processor 
+// Background Processor — uses centralized rate limiter (post-ban fix)
 async function processCrisisQueue(sales: any[], messageTemplate: string) {
+    const { waitForRandomDelay, checkHourlyLimit, checkDailyLimit } = await import('@/lib/rate-limiter');
     let successCount = 0;
     
     // Create an anonymous log entry factory for immediate fails
@@ -225,6 +226,20 @@ async function processCrisisQueue(sales: any[], messageTemplate: string) {
     };
 
     for (const sale of sales) {
+        // Check daily limit
+        const dailyCheck = await checkDailyLimit();
+        if (!dailyCheck.allowed) {
+            console.warn(`[Crisis] Daily limit reached (${dailyCheck.sent}/${dailyCheck.limit}). Stopping.`);
+            break;
+        }
+
+        // Check hourly limit
+        const hourlyCheck = await checkHourlyLimit();
+        if (!hourlyCheck.allowed) {
+            console.warn(`[Crisis] Hourly limit reached (${hourlyCheck.sent}/${hourlyCheck.limit}). Stopping.`);
+            break;
+        }
+
         if (!sale.customerPhone) {
             await logFailure('N/A', '❌ Cliente no tiene número de teléfono registrado', sale);
             continue;
@@ -238,7 +253,7 @@ async function processCrisisQueue(sales: any[], messageTemplate: string) {
             .replace(/{email_cliente}/g, sale.slotIdentifier || 'tu cuenta asignada')
             .replace(/{vencimiento}/g, formattedVencimiento);
 
-        // This internally generates its own whatsapp_send_log on success/fail
+        // sendText internally handles the anti-ban delay (30-45s)
         const result = await sendText(sale.customerPhone, renderedMessage, {
             customerId: sale.customerId,
             saleId: sale.id,
@@ -249,11 +264,7 @@ async function processCrisisQueue(sales: any[], messageTemplate: string) {
             successCount++;
         }
 
-        // Delay to avoid ban (every send has 2s delay, every 5 sends extra 2s)
-        await new Promise(r => setTimeout(r, 2000));
-        if (successCount % 5 === 0) {
-            await new Promise(r => setTimeout(r, 2000));
-        }
+        // No extra manual delay — sendText already handles 30-45s anti-ban delay
     }
 }
 

@@ -45,6 +45,11 @@ export async function createMotherAccount(formData: FormData) {
         invite_address: (formData.get('invite_address') as string) || null,
     };
 
+    // Validar proveedor obligatorio
+    if (!data.supplier_id) {
+        return { error: 'El proveedor es obligatorio.' };
+    }
+
     // Validar duplicado: misma plataforma + mismo email (solo cuentas activas, no eliminadas)
     if (data.email) {
         const emailNorm = data.email.trim().toLowerCase();
@@ -363,6 +368,11 @@ export async function updateMotherAccount(id: string, formData: FormData) {
 
     if (billingDay !== undefined) {
         data.target_billing_day = billingDay;
+    }
+
+    // Validar proveedor obligatorio
+    if (!data.supplier_id) {
+        return { error: 'El proveedor es obligatorio.' };
     }
 
     // Handle owned email upsert if checked

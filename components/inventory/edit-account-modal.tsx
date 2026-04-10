@@ -238,6 +238,13 @@ export function EditAccountModal({ account }: { account: Account }) {
         setLoading(true);
         setError(null);
 
+        // Validar proveedor obligatorio
+        if (!selectedSupplierId) {
+            setError('Debes seleccionar un proveedor.');
+            setLoading(false);
+            return;
+        }
+
         const formData = new FormData(e.currentTarget);
         // Inject state-managed fields not bound to named inputs
         formData.set('instructions', instructions || '');
@@ -707,7 +714,7 @@ export function EditAccountModal({ account }: { account: Account }) {
 
                             {/* Proveedor */}
                             <div className="border-t border-border/50 pt-4">
-                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Proveedor</p>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Proveedor <span className="text-red-500">*</span></p>
                                 {/* Hidden inputs so formData picks them up */}
                                 <input type="hidden" name="supplier_id" value={selectedSupplierId} />
                                 <input type="hidden" name="supplier_name" value={suppliers.find(s => s.id === selectedSupplierId)?.name || ''} />

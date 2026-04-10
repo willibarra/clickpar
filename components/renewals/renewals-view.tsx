@@ -544,7 +544,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         const name = customer?.full_name || 'Cliente';
         const platform = account?.platform || 'Servicio';
         const price = (sub.amount_gs || 0).toLocaleString();
-        const text = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\nEscribinos para renovar 📲`;
+        const text = `⚠️ *Recordatorio de Pago*\n\nHola ${name}, te recordamos que el pago de tu servicio de *${platform}* se encuentra pendiente.\n\n💰 Renovación: Gs. ${price}\n\nsi desea renovar nos decis con que metodo de pago.\nde lo contrario si ya no necesita ignorar este mensaje`;
         navigator.clipboard.writeText(text);
         setCopiedReminders(prev => new Set(prev).add(sub.id));
         toast.success('Recordatorio copiado 📋');

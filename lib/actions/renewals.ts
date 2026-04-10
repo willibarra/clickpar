@@ -723,9 +723,59 @@ export async function queueBulkRenewalNotices(clients: Array<{
 }>) {
     const supabase = await createAdminClient();
     const errors: string[] = [];
-    const timestamp = Date.now();
     let queued = 0;
 
+    // ── STEP 1: Load WhatsApp settings to get instance names ──
+    const { data: waSettings } = await (supabase.from('whatsapp_settings') as any)
+        .select('instance_1_name, instance_2_name')
+        .limit(1)
+        .single();
+    const inst1 = waSettings?.instance_1_name || 'clickpar-1';
+    const inst2 = waSettings?.instance_2_name || 'clickpar-2';
+
+    // ── STEP 2: Look up current whatsapp_instance for each client ──
+    const customerIds = clients.map(c => c.customer_id).filter(Boolean) as string[];
+    const instanceMap = new Map<string, string | null>();
+
+    if (customerIds.length > 0) {
+        for (let i = 0; i < customerIds.length; i += 200) {
+            const chunk = customerIds.slice(i, i + 200);
+            const { data: rows } = await (supabase.from('customers') as any)
+                .select('id, whatsapp_instance')
+                .in('id', chunk);
+            (rows || []).forEach((r: any) => instanceMap.set(r.id, r.whatsapp_instance || null));
+        }
+    }
+
+    // ── STEP 3: Count assigned instances and balance unassigned ──
+    let count1 = 0;
+    let count2 = 0;
+    const unassigned: string[] = [];
+
+    for (const client of clients) {
+        if (!client.customer_id) continue;
+        const inst = instanceMap.get(client.customer_id);
+        if (inst === inst1) count1++;
+        else if (inst === inst2) count2++;
+        else unassigned.push(client.customer_id);
+    }
+
+    // Assign unassigned clients to balance: give to whichever has fewer
+    for (const custId of unassigned) {
+        const assignTo = count1 <= count2 ? inst1 : inst2;
+        instanceMap.set(custId, assignTo);
+        if (assignTo === inst1) count1++;
+        else count2++;
+
+        // Save instance permanently to the customer record
+        await (supabase.from('customers') as any)
+            .update({ whatsapp_instance: assignTo })
+            .eq('id', custId);
+    }
+
+    console.log(`[BulkQueue] Instance balance: ${inst1}=${count1}, ${inst2}=${count2} (${unassigned.length} newly assigned)`);
+
+    // ── STEP 4: Insert into message_queue with instance pre-assigned ──
     for (const client of clients) {
         if (!client.phone) continue;
 
@@ -740,6 +790,10 @@ export async function queueBulkRenewalNotices(clients: Array<{
         const idempotencyDate = new Date().toISOString().split('T')[0];
         const idempotencyKey = `manual:${client.sale_id}:${messageType}:${idempotencyDate}`;
 
+        const instanceName = client.customer_id
+            ? (instanceMap.get(client.customer_id) || null)
+            : null;
+
         const { error } = await supabase.from('message_queue').upsert({
             customer_id: client.customer_id || null,
             sale_id: client.sale_id,
@@ -750,6 +804,7 @@ export async function queueBulkRenewalNotices(clients: Array<{
             platform: await getPlatformDisplayName(client.platform),
             template_key: templateKey,
             status: 'pending',
+            instance_name: instanceName,
             scheduled_at: new Date().toISOString(),
             retry_count: 0,
             max_retries: 3,
@@ -764,8 +819,6 @@ export async function queueBulkRenewalNotices(clients: Array<{
     }
 
     if (queued > 0) {
-        // Disparador fantasma: activa el cron instantáneamente
-        // En Next.js Node, un fetch sin await correrá asíncronamente
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
         fetch(`${baseUrl}/api/cron/trigger-pipeline?secret=clickpar-cron-2024`, { method: 'GET' })
             .catch(err => console.error('[BulkQueue] Fallo disparador fantasma:', err));
@@ -775,6 +828,7 @@ export async function queueBulkRenewalNotices(clients: Array<{
         return { success: false, error: `${errors.length} error(es) al encolar`, details: errors };
     }
 
-    return { success: true, queued, errors: errors.length > 0 ? errors : undefined };
+    return { success: true, queued, instanceBalance: { [inst1]: count1, [inst2]: count2 }, errors: errors.length > 0 ? errors : undefined };
 }
+
 

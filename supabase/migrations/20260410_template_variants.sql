@@ -183,54 +183,55 @@ No pierdas tu acceso, contactanos para renovar 🙌', true, 5);
 -- ============================================
 
 INSERT INTO whatsapp_templates (key, name, message, enabled, variant) VALUES
-('vencimiento_vencido', 'Servicio Vencido', 
-'Hola {nombre} 👋
+('vencimiento_vencido', 'Recordatorio de Pago', 
+'⚠️ *Recordatorio de Pago*
 
-Tu servicio de *{plataforma}* venció ayer.
+Hola {nombre}, te recordamos que el pago de tu servicio de *{plataforma}* se encuentra pendiente.
 
-Es tu última oportunidad antes de la cancelación definitiva.
+💰 Renovación: Gs. {precio}
 
-💰 Renovar: Gs. {precio}
+si desea renovar nos decis con que metodo de pago.
+de lo contrario si ya no necesita ignorar este mensaje', true, 1),
 
-Escribinos 📲', true, 1),
+('vencimiento_vencido', 'Recordatorio de Pago', 
+'⚠️ *Recordatorio de Pago*
 
-('vencimiento_vencido', 'Servicio Vencido', 
-'{nombre}, tu *{plataforma}* ya venció ⚠️
+Hola {nombre}, te avisamos que tu servicio de *{plataforma}* tiene el pago pendiente.
 
-Si querés mantener tu acceso, tenés que renovar lo antes posible.
+💰 Renovación: Gs. {precio}
 
-💵 Gs. {precio} para reactivar.
+si deseas renovar indicanos el metodo de pago.
+de lo contrario si ya no necesitas ignorar este mensaje', true, 2),
 
-Respondé para que lo activemos de inmediato ✅', true, 2),
+('vencimiento_vencido', 'Recordatorio de Pago', 
+'⚠️ *Recordatorio de Pago*
 
-('vencimiento_vencido', 'Servicio Vencido', 
-'Aviso urgente {nombre} 🔴
+Hola {nombre}, te informamos que el pago de tu *{plataforma}* aún no fue realizado.
 
-Tu servicio de *{plataforma}* está vencido. Tu acceso será cancelado pronto.
+💰 Renovación: Gs. {precio}
 
-💰 Renovar ahora: Gs. {precio}
+si desea renovar nos avisa con que metodo de pago.
+de lo contrario si ya no necesita ignorar este mensaje', true, 3),
 
-Escribinos y lo solucionamos al toque.', true, 3),
+('vencimiento_vencido', 'Recordatorio de Pago', 
+'⚠️ *Recordatorio de Pago*
 
-('vencimiento_vencido', 'Servicio Vencido', 
-'Hola {nombre}!
+Hola {nombre}, queremos recordarte que tu servicio de *{plataforma}* está pendiente de pago.
 
-Tu suscripción de *{plataforma}* venció.
+💰 Renovación: Gs. {precio}
 
-Si no renovás, perderás el acceso definitivamente.
+si desea renovar nos comenta con que metodo de pago.
+de lo contrario si ya no necesita ignorar este mensaje', true, 4),
 
-💵 Renovación: Gs. {precio}
+('vencimiento_vencido', 'Recordatorio de Pago', 
+'⚠️ *Recordatorio de Pago*
 
-Avisanos para renovar 📲', true, 4),
+Hola {nombre}, te escribimos para recordarte que el pago de *{plataforma}* se encuentra pendiente.
 
-('vencimiento_vencido', 'Servicio Vencido', 
-'{nombre}, tu *{plataforma}* ya no está activo ⏳
+💰 Renovación: Gs. {precio}
 
-Todavía estás a tiempo de renovar antes de la cancelación total.
-
-💰 Gs. {precio}
-
-Escribinos y lo reactivamos enseguida 🙌', true, 5);
+si deseas renovar decinos el metodo de pago.
+de lo contrario si ya no necesitas ignorar este mensaje', true, 5);
 
 -- ============================================
 -- CREDENCIALES DE VENTA (5 variantes)

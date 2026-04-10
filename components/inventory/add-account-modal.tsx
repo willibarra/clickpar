@@ -388,6 +388,13 @@ export function AddAccountModal() {
         setLoading(true);
         setError(null);
 
+        // Validar proveedor obligatorio
+        if (!selectedSupplierId) {
+            setError('Debes seleccionar un proveedor.');
+            setLoading(false);
+            return;
+        }
+
         if (bulkMode) {
             // --- BULK MODE ---
             if (bulkAccounts.length === 0) {
@@ -912,9 +919,9 @@ export function AddAccountModal() {
                             </div>
                         )}
 
-                        {/* Row 5: Supplier Select */}
+                        {/* Row 5: Supplier Select (REQUIRED) */}
                         <div className="space-y-2">
-                            <Label>Proveedor</Label>
+                            <Label>Proveedor <span className="text-red-500">*</span></Label>
                             {/* Hidden inputs carry supplier_id and supplier_name through formData */}
                             <input type="hidden" name="supplier_id" value={selectedSupplierId} />
                             <input type="hidden" name="supplier_name" value={supplierName} />
