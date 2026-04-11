@@ -436,6 +436,70 @@ export async function deleteMotherAccount(id: string) {
         .eq('id', id)
         .single();
 
+    // ── Guard: block if there are truly active clients ──
+    const { data: slots } = await (supabase.from('sale_slots') as any)
+        .select('id, status')
+        .eq('mother_account_id', id);
+
+    if (slots && slots.length > 0) {
+        const slotIds = slots.map((s: any) => s.id);
+
+        // Fetch all active sales for these slots
+        const { data: activeSales } = await (supabase.from('sales') as any)
+            .select('id, slot_id, end_date')
+            .in('slot_id', slotIds)
+            .eq('is_active', true);
+
+        if (activeSales && activeSales.length > 0) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Separate truly active (vigentes) from expired (vencidos)
+            const trulyActive = activeSales.filter((s: any) => {
+                const endDate = s.end_date ? new Date(s.end_date + 'T23:59:59') : null;
+                return !endDate || endDate >= today;
+            });
+            const expired = activeSales.filter((s: any) => {
+                const endDate = s.end_date ? new Date(s.end_date + 'T23:59:59') : null;
+                return endDate && endDate < today;
+            });
+
+            // Block deletion if any client is truly active (not expired)
+            if (trulyActive.length > 0) {
+                return {
+                    error: `No se puede eliminar: hay ${trulyActive.length} cliente${trulyActive.length > 1 ? 's' : ''} con suscripción vigente. Mové o cancelá las ventas primero.`
+                };
+            }
+
+            // Auto-deactivate expired sales (vencidos)
+            if (expired.length > 0) {
+                const expiredIds = expired.map((s: any) => s.id);
+                await (supabase.from('sales') as any)
+                    .update({ is_active: false })
+                    .in('id', expiredIds);
+
+                // Free the slots of expired sales
+                const expiredSlotIds = [...new Set(expired.map((s: any) => s.slot_id))] as string[];
+                // Only free slots that have no remaining active sales
+                const { data: remainingActive } = await (supabase.from('sales') as any)
+                    .select('slot_id')
+                    .in('slot_id', expiredSlotIds)
+                    .eq('is_active', true);
+
+                const slotsStillActive = new Set((remainingActive || []).map((s: any) => s.slot_id));
+                const slotsToFree = expiredSlotIds.filter(id => !slotsStillActive.has(id));
+
+                if (slotsToFree.length > 0) {
+                    await (supabase.from('sale_slots') as any)
+                        .update({ status: 'available' })
+                        .in('id', slotsToFree);
+                }
+
+                console.log(`[deleteMotherAccount] Auto-desactivadas ${expired.length} ventas vencidas para cuenta ${id}`);
+            }
+        }
+    }
+
     // Soft delete: mark as deleted instead of removing
     const { error } = await (supabase.from('mother_accounts') as any)
         .update({ deleted_at: new Date().toISOString() })

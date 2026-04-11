@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link, User, Key, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Pencil, Loader2, Trash2, AlertTriangle, RefreshCw, Link, User, Key, Copy, Check, Eye, EyeOff, ShoppingBag, Calendar, Users } from 'lucide-react';
 import { updateMotherAccount, deleteMotherAccount, syncSlots, updateSlot } from '@/lib/actions/inventory';
 import { createClient } from '@/lib/supabase/client';
 
@@ -78,6 +78,17 @@ export function EditAccountModal({ account }: { account: Account }) {
     const [deleting, setDeleting] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [precheckLoading, setPrecheckLoading] = useState(false);
+    const [precheckData, setPrecheckData] = useState<{
+        activeClients: { name: string; phone: string; slot: string; end_date: string }[];
+        expiredClients: { name: string; phone: string; slot: string; end_date: string }[];
+        soldSlotsCount: number;
+        totalSlotsCount: number;
+        isActive: boolean;
+        isNotExpired: boolean;
+        renewalDate: string | null;
+        isInStore: boolean;
+    } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [platforms, setPlatforms] = useState<Platform[]>([]);
@@ -272,6 +283,25 @@ export function EditAccountModal({ account }: { account: Account }) {
         }
     }
 
+    async function handlePrecheckDelete() {
+        setPrecheckLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/inventory/precheck-delete?id=${account.id}`);
+            const data = await res.json();
+            if (data.error) {
+                setError(data.error);
+                setPrecheckLoading(false);
+                return;
+            }
+            setPrecheckData(data);
+            setConfirmDelete(true);
+        } catch (e: any) {
+            setError(e.message || 'Error al verificar la cuenta');
+        }
+        setPrecheckLoading(false);
+    }
+
     async function handleDelete() {
         setDeleting(true);
         setError(null);
@@ -285,6 +315,7 @@ export function EditAccountModal({ account }: { account: Account }) {
             setOpen(false);
             setDeleting(false);
             setConfirmDelete(false);
+            setPrecheckData(null);
         }
     }
 
@@ -293,6 +324,7 @@ export function EditAccountModal({ account }: { account: Account }) {
         if (!newOpen) {
             setConfirmDelete(false);
             setError(null);
+            setPrecheckData(null);
         }
     }
 
@@ -349,51 +381,185 @@ export function EditAccountModal({ account }: { account: Account }) {
                 )}
 
                 {confirmDelete ? (
-                    // Confirmation View
-                    <div className="py-6">
-                        <div className="flex items-center gap-4 rounded-lg bg-red-500/10 p-4 mb-4">
-                            <AlertTriangle className="h-8 w-8 text-red-500 flex-shrink-0" />
+                    // Confirmation View with precheck warnings
+                    <div className="py-4 space-y-4">
+                        {/* Header warning */}
+                        <div className="flex items-center gap-3 rounded-lg bg-red-500/10 border border-red-500/20 p-4">
+                            <AlertTriangle className="h-7 w-7 text-red-500 flex-shrink-0" />
                             <div>
-                                <p className="font-medium text-red-500">Esta acción no se puede deshacer</p>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Se eliminarán todos los slots asociados a esta cuenta.
+                                <p className="font-semibold text-red-500">¿Eliminar esta cuenta?</p>
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                    La cuenta irá a la papelera. Revisa las advertencias:
                                 </p>
                             </div>
                         </div>
 
+                        {/* Warnings list */}
+                        {precheckData && (
+                            <div className="space-y-2.5">
+                                {/* Active clients warning — BLOCKS deletion */}
+                                {precheckData.activeClients.length > 0 && (
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Users className="h-4 w-4 text-red-500" />
+                                            <span className="text-sm font-semibold text-red-500">
+                                                🚫 {precheckData.activeClients.length} cliente{precheckData.activeClients.length > 1 ? 's' : ''} con suscripción vigente
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1.5 ml-6">
+                                            {precheckData.activeClients.map((c, i) => (
+                                                <div key={i} className="flex items-center gap-2 text-xs">
+                                                    <User className="h-3 w-3 text-red-400 flex-shrink-0" />
+                                                    <span className="text-foreground font-medium">{c.name}</span>
+                                                    {c.phone && <span className="text-muted-foreground">({c.phone})</span>}
+                                                    <span className="text-muted-foreground">— {c.slot}</span>
+                                                    {c.end_date && (
+                                                        <span className="text-muted-foreground ml-auto">
+                                                            Vence: {new Date(c.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-[11px] text-red-400/70 mt-2 ml-6">
+                                            Mové o cancelá estos clientes antes de eliminar la cuenta.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Expired clients info — will be auto-deactivated */}
+                                {precheckData.expiredClients.length > 0 && (
+                                    <div className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Users className="h-4 w-4 text-orange-500" />
+                                            <span className="text-sm font-semibold text-orange-500">
+                                                ⚠️ {precheckData.expiredClients.length} cliente{precheckData.expiredClients.length > 1 ? 's' : ''} vencido{precheckData.expiredClients.length > 1 ? 's' : ''}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1.5 ml-6">
+                                            {precheckData.expiredClients.map((c, i) => (
+                                                <div key={i} className="flex items-center gap-2 text-xs">
+                                                    <User className="h-3 w-3 text-orange-400 flex-shrink-0" />
+                                                    <span className="text-foreground font-medium">{c.name}</span>
+                                                    {c.phone && <span className="text-muted-foreground">({c.phone})</span>}
+                                                    <span className="text-muted-foreground">— {c.slot}</span>
+                                                    {c.end_date && (
+                                                        <span className="text-red-400/80 ml-auto">
+                                                            Venció: {new Date(c.end_date + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'short' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-[11px] text-orange-400/70 mt-2 ml-6">
+                                            Se desactivarán automáticamente al eliminar.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Account still active / not expired */}
+                                {precheckData.isNotExpired && (
+                                    <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="h-4 w-4 text-yellow-500" />
+                                            <span className="text-sm font-medium text-yellow-500">
+                                                ⏰ Cuenta aún vigente
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1 ml-6">
+                                            La renovación vence el{' '}
+                                            <span className="text-foreground font-medium">
+                                                {precheckData.renewalDate
+                                                    ? new Date(precheckData.renewalDate + 'T12:00:00').toLocaleDateString('es-PY', { day: '2-digit', month: 'long', year: 'numeric' })
+                                                    : '—'}
+                                            </span>. Todavía tiene tiempo de uso pagado.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Listed in store */}
+                                {precheckData.isInStore && (
+                                    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3">
+                                        <div className="flex items-center gap-2">
+                                            <ShoppingBag className="h-4 w-4 text-purple-500" />
+                                            <span className="text-sm font-medium text-purple-500">
+                                                🛒 Visible en la Tienda
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1 ml-6">
+                                            Esta cuenta está publicada en el catálogo. Al eliminarla, dejará de aparecer para los clientes.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* No warnings — safe to delete */}
+                                {precheckData.activeClients.length === 0 && precheckData.expiredClients.length === 0 && !precheckData.isNotExpired && !precheckData.isInStore && (
+                                    <div className="rounded-lg border border-[#86EFAC]/30 bg-[#86EFAC]/5 p-3">
+                                        <div className="flex items-center gap-2">
+                                            <Check className="h-4 w-4 text-[#86EFAC]" />
+                                            <span className="text-sm font-medium text-[#86EFAC]">Sin advertencias</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1 ml-6">
+                                            No tiene clientes activos, está vencida y no aparece en la tienda.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Summary */}
+                                <div className="rounded-lg bg-[#111] border border-border/30 px-3 py-2">
+                                    <p className="text-xs text-muted-foreground">
+                                        Slots: <span className="text-foreground font-medium">{precheckData.soldSlotsCount} vendidos</span> / {precheckData.totalSlotsCount} total
+                                        {precheckData.isActive && <span className="ml-2">· Estado: <span className="text-[#86EFAC] font-medium">Activa</span></span>}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         {error && (
-                            <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
+                            <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
                                 {error}
                             </div>
                         )}
 
-                        <DialogFooter className="flex gap-2">
+                        <DialogFooter className="flex gap-2 pt-2">
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setConfirmDelete(false)}
+                                onClick={() => { setConfirmDelete(false); setPrecheckData(null); }}
                                 disabled={deleting}
                             >
                                 Cancelar
                             </Button>
-                            <Button
-                                type="button"
-                                variant="destructive"
-                                onClick={handleDelete}
-                                disabled={deleting}
-                            >
-                                {deleting ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Eliminando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Sí, Eliminar
-                                    </>
-                                )}
-                            </Button>
+                            {precheckData && precheckData.activeClients.length > 0 ? (
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    disabled
+                                    className="opacity-50 cursor-not-allowed"
+                                >
+                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    Mové los clientes primero
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    onClick={handleDelete}
+                                    disabled={deleting}
+                                >
+                                    {deleting ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Eliminando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Sí, Eliminar
+                                        </>
+                                    )}
+                                </Button>
+                            )}
                         </DialogFooter>
                     </div>
                 ) : activeTab === 'perfiles' ? (
@@ -869,18 +1035,14 @@ export function EditAccountModal({ account }: { account: Account }) {
                             <Button
                                 type="button"
                                 variant="destructive"
-                                onClick={() => {
-                                    const hasOccupied = account.sale_slots?.some(s => s.status && s.status !== 'available');
-                                    if (hasOccupied) {
-                                        setError('No puedes eliminar una cuenta que tiene clientes asignados. Primero mueve, suspende o libera los perfiles ocupados.');
-                                        window.scrollTo(0, 0);
-                                        return;
-                                    }
-                                    setConfirmDelete(true);
-                                }}
-                                disabled={loading}
+                                onClick={handlePrecheckDelete}
+                                disabled={loading || precheckLoading}
                             >
-                                <Trash2 className="mr-2 h-4 w-4" />
+                                {precheckLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                )}
                                 Eliminar
                             </Button>
                             <div className="flex gap-2">

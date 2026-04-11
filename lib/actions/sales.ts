@@ -122,6 +122,24 @@ export async function createQuickSale(data: QuickSaleData) {
       if (slot.status !== "available")
         throw new Error("El slot seleccionado ya no está disponible");
 
+      // Validar que la cuenta madre no esté vencida ni eliminada
+      const { data: motherAcct } = await (supabase.from("mother_accounts") as any)
+        .select("renewal_date, status, deleted_at")
+        .eq("id", slot.mother_account_id)
+        .single();
+      if (motherAcct) {
+        if (motherAcct.deleted_at) {
+          throw new Error("No se puede vender: la cuenta madre fue eliminada (está en la papelera).");
+        }
+        const today = new Date().toISOString().split("T")[0];
+        if (motherAcct.renewal_date && motherAcct.renewal_date < today) {
+          throw new Error("No se puede vender: la cuenta madre está vencida. Renová primero.");
+        }
+        if (motherAcct.status !== "active") {
+          throw new Error(`No se puede vender: la cuenta madre está en estado "${motherAcct.status}".`);
+        }
+      }
+
       slotToSell = { slot_id: slot.id, slot_price_gs: data.price };
     } else {
       // Caso: Asignación Automática - buscar slot de la cuenta madre más nueva
@@ -137,7 +155,9 @@ export async function createQuickSale(data: QuickSaleData) {
                         platform,
                         email,
                         renewal_date,
-                        created_at
+                        created_at,
+                        status,
+                        deleted_at
                     )
                 `,
         )
@@ -147,9 +167,20 @@ export async function createQuickSale(data: QuickSaleData) {
         return { error: `Error buscando slots: ${slotError.message}` };
       }
 
-      // Filtrar por plataforma
+      // Filtrar por plataforma y excluir cuentas vencidas/eliminadas/inactivas
+      const today = new Date().toISOString().split("T")[0];
       const platformSlots = (availableSlots || []).filter(
-        (s: any) => s.mother_accounts?.platform === data.platform,
+        (s: any) => {
+          const acct = s.mother_accounts;
+          if (acct?.platform !== data.platform) return false;
+          // Excluir cuentas madre eliminadas
+          if (acct?.deleted_at) return false;
+          // Excluir cuentas madre no activas
+          if (acct?.status !== "active") return false;
+          // Excluir cuentas madre vencidas
+          if (acct?.renewal_date && acct.renewal_date < today) return false;
+          return true;
+        },
       );
 
       if (platformSlots.length === 0) {
@@ -603,10 +634,25 @@ export async function swapService(data: SwapServiceData) {
       newSlotId = data.newSlotId;
       const { data: newSlot } = await supabase
         .from("sale_slots")
-        .select("id, mother_accounts:mother_account_id(platform)")
+        .select("id, mother_accounts:mother_account_id(platform, renewal_date, status, deleted_at)")
         .eq("id", data.newSlotId)
         .single();
-      newPlatform = (newSlot as any)?.mother_accounts?.platform || "";
+      const newSlotAcct = (newSlot as any)?.mother_accounts;
+      newPlatform = newSlotAcct?.platform || "";
+
+      // Validar que la cuenta madre destino no esté eliminada, vencida o inactiva
+      if (newSlotAcct) {
+        if (newSlotAcct.deleted_at) {
+          throw new Error("No se puede intercambiar: la cuenta destino fue eliminada (está en la papelera).");
+        }
+        const today = new Date().toISOString().split("T")[0];
+        if (newSlotAcct.renewal_date && newSlotAcct.renewal_date < today) {
+          throw new Error("No se puede intercambiar: la cuenta destino está vencida. Renová primero.");
+        }
+        if (newSlotAcct.status !== "active") {
+          throw new Error(`No se puede intercambiar: la cuenta destino está en estado "${newSlotAcct.status}".`);
+        }
+      }
     } else if (data.targetPlatform) {
       const { data: availableSlots } = await (
         supabase.from("sale_slots") as any

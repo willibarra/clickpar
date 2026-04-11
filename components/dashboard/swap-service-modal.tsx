@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Repeat, Loader2, Monitor, ChevronDown, UserCircle, AlertTriangle, Trash2, Shield, ArrowRight, Check, X, Copy } from 'lucide-react';
+import { Repeat, Loader2, Monitor, ChevronDown, UserCircle, AlertTriangle, Trash2, Shield, ArrowRight, Check, X, Copy, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { swapService, getAccountSiblings, bulkSwapAccountClients } from '@/lib/actions/sales';
 import { quarantineAccount, deleteMotherAccount } from '@/lib/actions/inventory';
@@ -99,7 +99,14 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         fetch('/api/search/available-slots')
             .then(res => res.json())
             .then(data => {
-                setAvailableSlots(data.slots || []);
+                const slots = data.slots || [];
+                setAvailableSlots(slots);
+                // Auto-select first slot matching the current platform filter
+                const platformFilter = service.platform || 'all';
+                const matching = platformFilter === 'all' ? slots : slots.filter((s: AvailableSlot) => s.platform === platformFilter);
+                if (matching.length > 0) {
+                    setSelectedSlotId(matching[0].id);
+                }
             })
             .catch(err => {
                 console.error('Error fetching slots:', err);
@@ -188,8 +195,8 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         setIsDeleting(false);
     };
 
-    const handleFinish = () => {
-        onSwapped(newAccountEmail || undefined);
+    const handleFinish = (navigateToNew: boolean) => {
+        onSwapped(navigateToNew ? (newAccountEmail || undefined) : undefined);
         onClose();
     };
 
@@ -211,7 +218,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && (step === 'post_swap' ? handleFinish() : onClose())}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && (step === 'post_swap' ? handleFinish(false) : onClose())}>
             <div className="w-full max-w-xl rounded-xl border border-border bg-[#0d0d0d] shadow-2xl max-h-[85vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-border p-5">
@@ -226,7 +233,7 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                             <p className="text-sm text-muted-foreground">{customerName}</p>
                         </div>
                     </div>
-                    <button onClick={step === 'post_swap' ? handleFinish : onClose} className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-[#222] transition-colors">
+                    <button onClick={step === 'post_swap' ? () => handleFinish(false) : onClose} className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-[#222] transition-colors">
                         ✕
                     </button>
                 </div>
@@ -254,7 +261,10 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Nuevo servicio — seleccioná un slot disponible</p>
                             <div className="flex gap-1.5 flex-wrap">
                                 <button
-                                    onClick={() => setFilterPlatform('all')}
+                                    onClick={() => {
+                                        setFilterPlatform('all');
+                                        if (availableSlots.length > 0) setSelectedSlotId(availableSlots[0].id);
+                                    }}
                                     className={`rounded-md px-3 py-1 text-xs transition-colors ${filterPlatform === 'all' ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'text-muted-foreground hover:text-foreground hover:bg-[#222]'}`}
                                 >
                                     Todas ({availableSlots.length})
@@ -264,7 +274,11 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                                     return (
                                         <button
                                             key={p}
-                                            onClick={() => setFilterPlatform(p)}
+                                            onClick={() => {
+                                                setFilterPlatform(p);
+                                                const matching = availableSlots.filter(s => s.platform === p);
+                                                if (matching.length > 0) setSelectedSlotId(matching[0].id);
+                                            }}
                                             className={`rounded-md px-3 py-1 text-xs transition-colors ${filterPlatform === p ? 'bg-[#86EFAC]/20 text-[#86EFAC]' : 'text-muted-foreground hover:text-foreground hover:bg-[#222]'}`}
                                         >
                                             {p} ({count})
@@ -514,13 +528,24 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                 {copied ? '¡Copiado!' : 'Copiar Datos'}
                             </button>
-                            <button
-                                onClick={handleFinish}
-                                className="flex items-center gap-2 rounded-lg bg-[#86EFAC]/10 px-5 py-2 text-sm font-medium text-[#86EFAC] hover:bg-[#86EFAC]/20 transition-colors"
-                            >
-                                <Check className="h-4 w-4" />
-                                Listo
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleFinish(false)}
+                                    className="flex items-center gap-2 rounded-lg bg-[#222] px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#333] transition-colors"
+                                >
+                                    <Check className="h-4 w-4" />
+                                    Quedarme aquí
+                                </button>
+                                {newAccountEmail && (
+                                    <button
+                                        onClick={() => handleFinish(true)}
+                                        className="flex items-center gap-2 rounded-lg bg-[#86EFAC]/10 px-5 py-2 text-sm font-medium text-[#86EFAC] hover:bg-[#86EFAC]/20 transition-colors"
+                                    >
+                                        <ExternalLink className="h-4 w-4" />
+                                        Ir al cliente
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </>
                 )}

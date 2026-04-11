@@ -124,7 +124,7 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
         return `/customers?${params.toString()}`;
     }
 
-    const hasSoldCustomer = !!customer?.id && slot.status === 'sold';
+    const hasSoldCustomer = !!customer?.id && (slot.status === 'sold' || !!activeSale?.id);
     const isExpired = activeSale?.end_date ? new Date(activeSale.end_date + 'T12:00:00') <= new Date() : false;
 
     async function handleSendReminder() {
