@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3
+    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3, ShieldCheck
 } from 'lucide-react';
 import { EditCustomerModal } from '@/components/customers/edit-customer-modal';
 import { WalletTopupModal } from '@/components/customers/wallet-topup-modal';
@@ -107,7 +107,7 @@ function getInitials(name: string) {
 
 type SortField = 'name' | 'status' | 'nextExpiry' | 'totalSpent';
 type SortDirection = 'asc' | 'desc';
-type StatusFilter = 'all' | 'active' | 'expired' | 'inactive' | 'creador';
+type StatusFilter = 'all' | 'active' | 'expired' | 'inactive' | 'creador' | 'portal';
 
 const statusOrder = { active: 1, expired: 2, inactive: 3 };
 
@@ -144,8 +144,8 @@ export function CustomersView({ customers }: CustomersViewProps) {
 
     // Derive counts
     const counts = useMemo(() => {
-        const c = { all: customers.length, active: 0, expired: 0, inactive: 0, creador: 0 };
-        customers.forEach(cu => { c[cu.status]++; if (cu.customer_type === 'creador') c.creador++; });
+        const c = { all: customers.length, active: 0, expired: 0, inactive: 0, creador: 0, portal: 0 };
+        customers.forEach(cu => { c[cu.status]++; if (cu.customer_type === 'creador') c.creador++; if (cu.portal_user_id) c.portal++; });
         return c;
     }, [customers]);
 
@@ -154,6 +154,8 @@ export function CustomersView({ customers }: CustomersViewProps) {
         let result = customers;
         if (statusFilter === 'creador') {
             result = result.filter(c => c.customer_type === 'creador');
+        } else if (statusFilter === 'portal') {
+            result = result.filter(c => !!c.portal_user_id);
         } else if (statusFilter !== 'all') {
             result = result.filter(c => c.status === statusFilter);
         }
@@ -231,6 +233,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                         { key: 'active' as StatusFilter, label: '🟢 Activos', color: '#86EFAC' },
                         { key: 'expired' as StatusFilter, label: '🔴 Vencidos', color: '#EF4444' },
                         { key: 'inactive' as StatusFilter, label: '⚪ Sin Servicio', color: '#6B7280' },
+                        { key: 'portal' as StatusFilter, label: '🛡️ Portal', color: '#38BDF8' },
                         { key: 'creador' as StatusFilter, label: '🎬 Creadores', color: '#818CF8' },
                     ]).map(f => (
                         <button
@@ -291,6 +294,11 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-2 mb-0.5">
                                             <h3 className="font-semibold text-foreground text-sm truncate">{customer.full_name || 'Sin nombre'}</h3>
+                                            {customer.portal_user_id && (
+                                                <span className="flex-shrink-0 inline-flex items-center gap-0.5 rounded bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-400 border border-sky-400/20" title="Tiene acceso al portal">
+                                                    <ShieldCheck className="h-2.5 w-2.5" /> PORTAL
+                                                </span>
+                                            )}
                                             {customer.customer_type === 'creador' && (
                                                 <span className="flex-shrink-0 inline-flex items-center rounded bg-[#818CF8]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#818CF8]">🎬 CREADOR</span>
                                             )}

@@ -57,6 +57,7 @@ interface Account {
     invite_address?: string | null;
     sale_type?: string | null;
     show_in_store?: boolean;
+    last_provider_payment_at?: string | null;
 }
 
 interface InventoryViewProps {
@@ -66,7 +67,7 @@ interface InventoryViewProps {
     initialSearch?: string;
 }
 
-type SortField = 'platform' | 'email' | 'available' | 'renewal_date' | 'created_at';
+type SortField = 'platform' | 'email' | 'available' | 'renewal_date' | 'last_provider_payment_at';
 type SortDirection = 'asc' | 'desc';
 
 // ── Date helpers ─────────────────────────────────
@@ -411,8 +412,8 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                 }
                 case 'renewal_date':
                     comparison = new Date(a.renewal_date + 'T12:00:00').getTime() - new Date(b.renewal_date + 'T12:00:00').getTime(); break;
-                case 'created_at':
-                    comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); break;
+                case 'last_provider_payment_at':
+                    comparison = new Date(a.last_provider_payment_at || a.created_at).getTime() - new Date(b.last_provider_payment_at || b.created_at).getTime(); break;
             }
             return sortDirection === 'asc' ? comparison : -comparison;
         });
@@ -730,7 +731,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                 <option value="platform">Plataforma (A–Z)</option>
                                 <option value="email">Cuenta (email)</option>
                                 <option value="renewal_date">Fecha de vencimiento</option>
-                                <option value="created_at">Fecha de alta</option>
+                                <option value="last_provider_payment_at">Último pago proveedor</option>
                                 <option value="available">Slots libres</option>
                             </select>
                             <button
@@ -949,8 +950,8 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort('email')}>
                                         <div className="flex items-center gap-1">Cuenta <SortIcon field="email" /></div>
                                     </th>
-                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort('created_at')}>
-                                        <div className="flex items-center gap-1">Ult Pago <SortIcon field="created_at" /></div>
+                                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort('last_provider_payment_at')}>
+                                        <div className="flex items-center gap-1">Ult Pago <SortIcon field="last_provider_payment_at" /></div>
                                     </th>
                                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors border-r border-border/50" onClick={() => handleSort('renewal_date')}>
                                         <div className="flex items-center gap-1">Vencimiento <SortIcon field="renewal_date" /></div>
@@ -1004,7 +1005,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                     </div>
                                                 </td>
                                                 <td className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
-                                                    {account.created_at ? formatRelativeOnly(account.created_at.split('T')[0], 'past') : '—'}
+                                                    {account.last_provider_payment_at ? formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past') : '—'}
                                                 </td>
                                                 <td className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
                                                     {account.is_autopay
@@ -1092,7 +1093,7 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     </div>
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
-                                                                    {account.created_at ? formatRelativeOnly(account.created_at.split('T')[0], 'past') : '—'}
+                                                                    {account.last_provider_payment_at ? formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past') : '—'}
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
                                                                     {account.is_autopay

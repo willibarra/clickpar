@@ -58,6 +58,7 @@ export async function createRenewal(formData: FormData) {
                 .update({
                     renewal_date: newRenewalDate.toISOString().split('T')[0],
                     purchase_cost_gs: purchaseCostGs,
+                    last_provider_payment_at: new Date().toISOString(),
                 })
                 .eq('id', accountId);
 
@@ -258,6 +259,7 @@ export async function bulkRenewAccounts(
             renewal_date: newRenewalDate,
             target_billing_day: newBillingDay,
             purchase_cost_gs: costPerAccountGs,
+            last_provider_payment_at: new Date().toISOString(),
         };
         if (costPerAccountUsdt != null) {
             updatePayload.purchase_cost_usdt = costPerAccountUsdt;

@@ -44,7 +44,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     // Step 1: Fetch mother accounts with slots
     const { data: accounts } = await supabase
         .from('mother_accounts')
-        .select(`*, show_in_store, sale_slots (id, status, slot_identifier, pin_code)`)
+        .select(`*, show_in_store, last_provider_payment_at, sale_slots (id, status, slot_identifier, pin_code)`)
         .is('deleted_at', null)
         .order('platform');
 
