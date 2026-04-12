@@ -1604,17 +1604,25 @@ export async function createFullAccountSale({
   const supabase = await createAdminClient();
 
   try {
-    // 1. Get the mother account with all available slots
-    const { data: account, error: accountError } = await (
-      supabase.from("mother_accounts") as any
-    )
-      .select(
-        "id, platform, email, password, renewal_date, sale_slots (id, slot_identifier, status)",
-      )
-      .eq("id", motherAccountId)
-      .single();
+    // 1 & 2. Fetch cuenta madre y cliente en paralelo para reducir latencia
+    const [accountResult, customerResult] = await Promise.all([
+      (supabase.from("mother_accounts") as any)
+        .select("id, platform, email, password, renewal_date, sale_slots (id, slot_identifier, status)")
+        .eq("id", motherAccountId)
+        .single(),
+      (supabase.from("customers") as any)
+        .select("id, full_name, phone, whatsapp_instance")
+        .eq("id", customerId)
+        .single(),
+    ]);
 
-    if (accountError || !account) throw new Error("Cuenta madre no encontrada");
+    if (accountResult.error || !accountResult.data)
+      throw new Error("Cuenta madre no encontrada");
+    if (!customerResult.data)
+      throw new Error("Cliente no encontrado");
+
+    const account = accountResult.data;
+    const customer = customerResult.data;
 
     const availableSlots = (account.sale_slots || []).filter(
       (s: any) => s.status === "available",
@@ -1623,18 +1631,10 @@ export async function createFullAccountSale({
     if (availableSlots.length === 0)
       throw new Error("No hay slots disponibles en esta cuenta");
 
-    // 2. Get customer info (including preferred WhatsApp instance)
-    const { data: customer } = await (supabase.from("customers") as any)
-      .select("id, full_name, phone, whatsapp_instance")
-      .eq("id", customerId)
-      .single();
-
-    if (!customer) throw new Error("Cliente no encontrado");
-
     // 3. Calculate start date
     const startDate = new Date().toISOString().split("T")[0];
 
-    // 4. Create one sale per slot
+    // 4. Create one sale per slot (batch insert — single round-trip)
     const salesInsert = availableSlots.map((slot: any) => ({
       customer_id: customerId,
       slot_id: slot.id,
@@ -1643,54 +1643,65 @@ export async function createFullAccountSale({
       is_active: true,
     }));
 
-    const { error: salesError } = await (supabase.from("sales") as any).insert(
-      salesInsert,
-    );
+    const { error: salesError } = await (supabase.from("sales") as any).insert(salesInsert);
     if (salesError)
       throw new Error(`Error creando ventas: ${salesError.message}`);
 
-    // 5. Mark all slots as sold
+    // 5. Mark all slots as sold (single batch update — single round-trip)
     const slotIds = availableSlots.map((s: any) => s.id);
-    await (supabase.from("sale_slots") as any)
+    const { error: slotsError } = await (supabase.from("sale_slots") as any)
       .update({ status: "sold" })
       .in("id", slotIds);
+    if (slotsError)
+      throw new Error(`Error actualizando slots: ${slotsError.message}`);
 
-    // 6. Send WhatsApp credentials using customer's preferred instance
-    if (customer.phone) {
+    // 6 & 7. WhatsApp + audit log en background (fire-and-forget) — NO bloqueantes
+    // Capturamos valores del closure antes de lanzar el fire-and-forget
+    const waPhone = customer.phone ? normalizePhone(customer.phone) : null;
+    const waName = customer.full_name || customer.phone;
+    const waInstance = customer.whatsapp_instance || undefined;
+    const platformName = account.platform;
+    const accountEmail = account.email;
+    const accountPassword = account.password;
+    const slotsCount = availableSlots.length;
+
+    ;(async () => {
       try {
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + durationDays);
-        const credResult = await sendSaleCredentials({
-          customerPhone: normalizePhone(customer.phone),
-          customerName: customer.full_name || customer.phone,
-          platform: account.platform,
-          email: account.email,
-          password: account.password,
-          profile: `Cuenta Completa (${availableSlots.length} perfiles)`,
-          expirationDate: endDate.toLocaleDateString("es-PY"),
-          customerId,
-          instanceName: customer.whatsapp_instance || undefined,
-        });
-        // Auto-assign WA instance if customer didn't have one
-        if (!customer.whatsapp_instance && credResult?.instanceUsed) {
-          await (supabase.from("customers") as any)
-            .update({ whatsapp_instance: credResult.instanceUsed })
-            .eq("id", customerId);
+        if (waPhone) {
+          const endDate = new Date();
+          endDate.setDate(endDate.getDate() + durationDays);
+          const credResult = await sendSaleCredentials({
+            customerPhone: waPhone,
+            customerName: waName,
+            platform: platformName,
+            email: accountEmail,
+            password: accountPassword,
+            profile: `Cuenta Completa (${slotsCount} perfiles)`,
+            expirationDate: endDate.toLocaleDateString("es-PY"),
+            customerId,
+            instanceName: waInstance,
+          });
+          // Auto-assign WA instance if customer didn't have one
+          if (!waInstance && credResult?.instanceUsed) {
+            await (supabase.from("customers") as any)
+              .update({ whatsapp_instance: credResult.instanceUsed })
+              .eq("id", customerId);
+          }
         }
       } catch (waErr) {
-        console.warn("WhatsApp send failed (non-critical):", waErr);
+        console.warn("[createFullAccountSale] WhatsApp send failed (non-critical):", waErr);
       }
-    }
 
-    // 7. Audit log
-    await logAction(
-      "create_full_account_sale",
-      "mother_account",
-      motherAccountId,
-      {
-        message: `vendió cuenta completa de ${account.platform} a ${customer.full_name || customer.phone} (${availableSlots.length} perfiles)`,
-      },
-    );
+      try {
+        await logAction("create_full_account_sale", "mother_account", motherAccountId, {
+          message: `vendió cuenta completa de ${platformName} a ${waName} (${slotsCount} perfiles)`,
+        });
+      } catch (logErr) {
+        console.warn("[createFullAccountSale] logAction failed (non-critical):", logErr);
+      }
+    })().catch((err) => {
+      console.error("[createFullAccountSale] Background task error:", err);
+    });
 
     revalidatePath("/");
     revalidatePath("/sales");
