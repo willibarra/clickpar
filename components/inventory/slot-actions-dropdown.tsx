@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing } from 'lucide-react';
+import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing, Shield, Send, ExternalLink } from 'lucide-react';
 import { extendSale, cancelSubscription, enqueueManualReminder, logReminderCopied } from '@/lib/actions/sales';
 import { swapSlotCustomer, freezeMotherAccount, updateSlot } from '@/lib/actions/inventory';
 import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
@@ -35,6 +35,7 @@ interface SlotActionsDropdownProps {
         id: string;
         full_name: string | null;
         phone: string | null;
+        portal_user_id?: string | null;
     } | null;
     activeSale: {
         id?: string;
@@ -53,7 +54,7 @@ interface CustomerResult {
     phone: string | null;
 }
 
-type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze' | 'edit_customer' | 'edit_slot';
+type ModalMode = null | 'extend' | 'swap' | 'swap_account' | 'suspend' | 'freeze' | 'edit_customer' | 'edit_slot' | 'create_portal';
 
 export function SlotActionsDropdown({ slot, account, customer, activeSale, accountEmail, motherAccountId }: SlotActionsDropdownProps) {
     const router = useRouter();
@@ -227,6 +228,17 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                         </DropdownMenuItem>
                     )}
 
+                    {/* Crear Portal — solo si el cliente tiene venta activa y NO tiene portal */}
+                    {hasSoldCustomer && !customer?.portal_user_id && (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => setModalMode('create_portal')} className="flex items-center gap-2 cursor-pointer">
+                                <Shield className="h-3.5 w-3.5 text-sky-400" />
+                                <span className="text-sky-400">Crear Portal</span>
+                            </DropdownMenuItem>
+                        </>
+                    )}
+
                     {/* Suspender */}
                     <DropdownMenuItem
                         onClick={() => hasSoldCustomer && setModalMode('suspend')}
@@ -291,7 +303,14 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                         if (newAccountEmail) {
                             router.push(`/inventory?q=${encodeURIComponent(newAccountEmail)}`);
                         } else {
-                            router.refresh();
+                            // "Quedarme aquí": navigate to the current account email
+                            // so the search shows THIS account, not the customer's new account
+                            const currentEmail = accountEmail || account.email;
+                            if (currentEmail) {
+                                router.push(`/inventory?q=${encodeURIComponent(currentEmail)}`);
+                            } else {
+                                router.refresh();
+                            }
                         }
                     }}
                 />
@@ -336,6 +355,18 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 initialPin={slot.pin_code || ''}
                 onEdited={() => { setModalMode(null); router.refresh(); }}
             />
+
+            {/* Create Portal Modal */}
+            {modalMode === 'create_portal' && customer?.id && (
+                <CreatePortalModal
+                    open={true}
+                    onClose={() => setModalMode(null)}
+                    customerId={customer.id}
+                    customerName={customer.full_name}
+                    customerPhone={customer.phone}
+                    platform={account.platform}
+                />
+            )}
         </>
     );
 }
@@ -920,6 +951,230 @@ function FreezeModal({ open, onClose, motherAccountId, platform, email, onFrozen
                         {loading && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
                         ❄️ Congelar cuenta
                     </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ── Create Portal Modal ──────────────────────────────────────────────────────
+
+interface CreatePortalModalProps {
+    open: boolean;
+    onClose: () => void;
+    customerId: string;
+    customerName: string | null;
+    customerPhone: string | null;
+    platform: string;
+}
+
+function CreatePortalModal({ open, onClose, customerId, customerName, customerPhone, platform }: CreatePortalModalProps) {
+    const router = useRouter();
+    const [loading, setLoading] = useState(false);
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [password, setPassword] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
+    const [sent, setSent] = useState(false);
+
+    useEffect(() => {
+        if (!open) {
+            setError(null);
+            setPassword(null);
+            setCopied(false);
+            setSent(false);
+        }
+    }, [open]);
+
+    async function handleCreate() {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/admin/regenerate-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                setError(data.error || 'Error al crear portal');
+            } else {
+                setPassword(data.password);
+            }
+        } catch (e: any) {
+            setError(e.message || 'Error inesperado');
+        }
+        setLoading(false);
+    }
+
+    function getPortalMessage() {
+        const name = customerName || 'Cliente';
+        const phone = customerPhone || '';
+        return `🛡️ *Tu Portal ClickPar está listo*
+
+Hola ${name}, ya podés acceder a tu portal de cliente para ver tus servicios, renovar y más.
+
+🔗 *Link:* https://clickpar.net/cliente/login
+📱 *Usuario:* ${phone}
+🔑 *Contraseña:* ${password}
+
+_Ingresá con estos datos para gestionar tus servicios._`;
+    }
+
+    function handleCopy() {
+        if (!password) return;
+        navigator.clipboard.writeText(getPortalMessage());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+    }
+
+    async function handleSendWhatsApp() {
+        if (!password || !customerPhone) return;
+        setSending(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/admin/send-portal-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerId,
+                    phone: customerPhone,
+                    message: getPortalMessage(),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                setError(data.error || 'Error al enviar');
+            } else {
+                setSent(true);
+                setTimeout(() => {
+                    onClose();
+                    router.refresh();
+                }, 2000);
+            }
+        } catch (e: any) {
+            setError(e.message || 'Error al enviar');
+        }
+        setSending(false);
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="sm:max-w-[440px] bg-card border-border">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-sky-400">
+                        <Shield className="h-4 w-4" />
+                        Crear Portal de Cliente
+                    </DialogTitle>
+                    <DialogDescription>
+                        {customerName || '(sin nombre)'} · {platform}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                    {/* Step 1: Create */}
+                    {!password && (
+                        <>
+                            <div className="rounded-lg bg-sky-500/10 border border-sky-500/20 px-4 py-3 flex items-start gap-3">
+                                <Shield className="h-4 w-4 text-sky-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-sm text-sky-200 space-y-1">
+                                    <p>Se creará una cuenta de portal para que el cliente pueda:</p>
+                                    <ul className="text-xs text-sky-300/70 list-disc list-inside space-y-0.5">
+                                        <li>Ver sus servicios activos</li>
+                                        <li>Renovar desde el portal</li>
+                                        <li>Consultar historial de pagos</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            {!customerPhone && (
+                                <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-2 text-xs text-yellow-300">
+                                    ⚠️ Este cliente no tiene teléfono registrado. Agregá un número primero.
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Step 2: Success — show credentials + actions */}
+                    {password && (
+                        <>
+                            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 space-y-2">
+                                <p className="text-sm font-medium text-emerald-400 flex items-center gap-1.5">
+                                    <Check className="h-4 w-4" />
+                                    ¡Portal creado exitosamente!
+                                </p>
+                                <div className="bg-black/30 rounded-lg px-3 py-2.5 space-y-1.5 font-mono text-xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Link:</span>
+                                        <a href="https://clickpar.net/cliente/login" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline flex items-center gap-1">
+                                            clickpar.net/cliente/login
+                                            <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Usuario:</span>
+                                        <span className="text-foreground">{customerPhone}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Contraseña:</span>
+                                        <span className="text-foreground font-bold">{password}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="flex gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleCopy}
+                                    className="flex-1 gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10"
+                                >
+                                    {copied
+                                        ? <><Check className="h-3.5 w-3.5" /> ¡Copiado!</>
+                                        : <><Copy className="h-3.5 w-3.5" /> Copiar mensaje</>
+                                    }
+                                </Button>
+                                {customerPhone && (
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSendWhatsApp}
+                                        disabled={sending || sent}
+                                        className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white"
+                                    >
+                                        {sent
+                                            ? <><Check className="h-3.5 w-3.5" /> ¡Enviado!</>
+                                            : sending
+                                                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando...</>
+                                                : <><Send className="h-3.5 w-3.5" /> Enviar por WhatsApp</>
+                                        }
+                                    </Button>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {error && <p className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1">{error}</p>}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                    {!password ? (
+                        <>
+                            <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+                            <Button
+                                size="sm"
+                                onClick={handleCreate}
+                                disabled={loading || !customerPhone}
+                                className="bg-sky-600 hover:bg-sky-500 text-white gap-1.5"
+                            >
+                                {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                🛡️ Crear Portal
+                            </Button>
+                        </>
+                    ) : (
+                        <Button variant="ghost" size="sm" onClick={() => { onClose(); router.refresh(); }}>
+                            Cerrar
+                        </Button>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

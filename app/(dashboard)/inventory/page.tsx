@@ -96,8 +96,8 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     // Step 3: Fetch all customers as a lookup map (simpler and reliable vs .in with 1000+ IDs)
     const { data: allCustomers } = await supabase
         .from('customers')
-        .select('id, full_name, phone');
-    const customerMap: Record<string, { id: string; full_name: string | null; phone: string | null }> =
+        .select('id, full_name, phone, portal_user_id');
+    const customerMap: Record<string, { id: string; full_name: string | null; phone: string | null; portal_user_id: string | null }> =
         Object.fromEntries((allCustomers || []).map((c: any) => [c.id, c]));
 
     // Build sale lookup map by slot_id for O(1) merge

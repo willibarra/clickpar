@@ -1350,6 +1350,7 @@ function SortBar({ sortField, sortDir, onSort, pageSize, onPageSize }: {
    ═══════════════════════════════════════════════════════════════ */
 
 export function SearchResults({ query }: { query: string }) {
+    const router = useRouter();
     const [results, setResults] = useState<SearchResult[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [pageSize, setPageSize] = useState(10);
@@ -1593,7 +1594,15 @@ export function SearchResults({ query }: { query: string }) {
                     }}
                     customerId={swapCustId}
                     customerName={swapCustName}
-                    onSwapped={fetchResults}
+                    onSwapped={(newAccountEmail) => {
+                        if (newAccountEmail) {
+                            // "Ir al cliente": navigate to the new account
+                            router.push(`/inventory?q=${encodeURIComponent(newAccountEmail)}`);
+                        } else {
+                            // "Quedarme aquí": just refresh current search results
+                            fetchResults();
+                        }
+                    }}
                 />
             )}
         </div>

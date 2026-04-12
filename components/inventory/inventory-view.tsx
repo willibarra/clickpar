@@ -32,7 +32,7 @@ interface Slot {
         created_at?: string;
         reminders_sent?: number;
         notification_status?: { triggered_by: string; sent_at: string } | null;
-        customers: { id: string; full_name: string | null; phone: string | null } | null;
+        customers: { id: string; full_name: string | null; phone: string | null; portal_user_id?: string | null } | null;
     }>;
 }
 
@@ -1136,9 +1136,9 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                             return (
                                                                 <>
                                                         <td className={`px-4 py-2.5 ${rightBg} ${matchBg} ${slotBorder}`}>
-                                                            <span className={customer?.full_name ? 'text-sm text-foreground/80' : 'text-xs text-muted-foreground/40 italic'}>
+                                                            <span className={customer?.full_name ? 'text-sm text-foreground/80 inline-flex items-center gap-1.5' : 'text-xs text-muted-foreground/40 italic'}>
                                                                 {customer?.full_name ? (
-                                                                    <HighlightMatch text={customer.full_name} query={activeQ} />
+                                                                    <><HighlightMatch text={customer.full_name} query={activeQ} />{customer.portal_user_id && <span className="flex-shrink-0 text-sky-400" title="Portal activo">🛡️</span>}</>
                                                                 ) : 'libre'}
                                                             </span>
                                                         </td>
