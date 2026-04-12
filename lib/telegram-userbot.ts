@@ -330,7 +330,7 @@ export function buildAutocodeStreamFlow(
             delayMs: 500,
         },
         {
-            clickButtonText: 'Soy administrador',
+            clickButtonText: 'Soy cliente',
             waitForPattern: /usuario|perfil|dime tu/i,
             delayMs: 1500,
         },
