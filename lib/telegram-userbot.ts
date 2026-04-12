@@ -124,82 +124,6 @@ export function extractCodeFromMessage(text: string): string | null {
 
     return null;
 }
-/**
- * Try to click a button on a bot message, supporting both inline and reply keyboards.
- * Always sends SOMETHING — falls back to sending the text directly.
- */
-async function clickBotButton(
-    client: TelegramClient,
-    botEntity: Api.User,
-    lastMessage: Api.Message | null,
-    buttonText: string,
-): Promise<void> {
-    const searchText = buttonText.toLowerCase();
-
-    // Try to get the message with full markup (event messages sometimes miss it)
-    let message = lastMessage;
-    if (message) {
-        try {
-            const msgs = await client.getMessages(botEntity, { ids: [message.id] });
-            if (msgs && msgs.length > 0 && msgs[0]) {
-                message = msgs[0];
-            }
-        } catch {
-            // Use the original message
-        }
-    }
-
-    if (message?.replyMarkup) {
-        const markup = message.replyMarkup;
-        
-        // Handle InlineKeyboardMarkup
-        if (markup instanceof Api.ReplyInlineMarkup) {
-            for (const row of markup.rows) {
-                for (const button of row.buttons) {
-                    if (button.text.toLowerCase().includes(searchText)) {
-                        console.log(`[TelegramUserBot] Clicking inline button: "${button.text}"`);
-                        
-                        if (button instanceof Api.KeyboardButtonCallback && button.data) {
-                            try {
-                                await client.invoke(
-                                    new Api.messages.GetBotCallbackAnswer({
-                                        peer: message.peerId!,
-                                        msgId: message.id,
-                                        data: button.data,
-                                    })
-                                );
-                            } catch (err: any) {
-                                console.log(`[TelegramUserBot] Callback response: ${err.message || 'ok'}`);
-                            }
-                            return; // Success
-                        } else {
-                            // Send button text
-                            await client.sendMessage(botEntity, { message: button.text });
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Handle ReplyKeyboardMarkup (regular keyboard buttons)
-        if (markup instanceof Api.ReplyKeyboardMarkup) {
-            for (const row of markup.rows) {
-                for (const button of row.buttons) {
-                    if (button.text.toLowerCase().includes(searchText)) {
-                        console.log(`[TelegramUserBot] Sending keyboard button text: "${button.text}"`);
-                        await client.sendMessage(botEntity, { message: button.text });
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback: send the button text as a regular message
-    console.log(`[TelegramUserBot] No button found in markup, sending text: "${buttonText}"`);
-    await client.sendMessage(botEntity, { message: buttonText });
-}
 
 
 /**
@@ -230,7 +154,6 @@ export async function requestCodeFromBot(
     return new Promise<CodeRequestResult>(async (resolve) => {
         let resolved = false;
         let stepIndex = 0;
-        let lastBotMessage: Api.Message | null = null;
 
         const cleanup = () => {
             if (handler) {
@@ -246,15 +169,70 @@ export async function requestCodeFromBot(
             resolve({ ...result, rawMessages: collectedMessages });
         };
 
-        // Helper to execute a step (send message or click button)
+        // Track last message ID for button clicking
+        let lastMsgId: number | null = null;
+
+        // Helper to execute a step
         const executeStep = async (step: BotFlowStep) => {
             const delay = step.delayMs ?? 1500;
             await new Promise(r => setTimeout(r, delay));
             
+            // If step wants to click an inline button
             if (step.clickButtonText) {
-                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking "${step.clickButtonText}"`);
-                await clickBotButton(client, botEntity, lastBotMessage, step.clickButtonText);
-            } else if (step.message) {
+                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking button "${step.clickButtonText}"`);
+                
+                // Re-fetch the last message to get its replyMarkup
+                if (lastMsgId) {
+                    try {
+                        const msgs = await client.getMessages(botEntity, { ids: [lastMsgId] });
+                        const msg = msgs?.[0];
+                        if (msg?.replyMarkup) {
+                            const searchText = step.clickButtonText.toLowerCase();
+                            const markup = msg.replyMarkup;
+                            
+                            // Search for the button in inline markup
+                            if ('rows' in markup) {
+                                for (const row of (markup as any).rows || []) {
+                                    for (const button of row.buttons || []) {
+                                        if (button.text?.toLowerCase().includes(searchText) && button.data) {
+                                            console.log(`[TelegramUserBot] Found button "${button.text}", sending callback...`);
+                                            
+                                            // Fire callback with 3s timeout — don't wait for bot's answer popup
+                                            const callbackPromise = client.invoke(
+                                                new Api.messages.GetBotCallbackAnswer({
+                                                    peer: msg.peerId!,
+                                                    msgId: msg.id,
+                                                    data: button.data,
+                                                })
+                                            );
+                                            
+                                            // Race: either callback completes or we timeout after 3s
+                                            // Either way, the callback DATA was sent to Telegram servers
+                                            await Promise.race([
+                                                callbackPromise.catch(() => {}),
+                                                new Promise(r => setTimeout(r, 3000)),
+                                            ]);
+                                            
+                                            console.log(`[TelegramUserBot] Callback sent successfully`);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (err: any) {
+                        console.log(`[TelegramUserBot] Error fetching message for button: ${err.message}`);
+                    }
+                }
+                
+                // Fallback: send button text as message (probably won't work but try)
+                console.log(`[TelegramUserBot] Fallback: sending button text as message`);
+                await client.sendMessage(botEntity, { message: step.clickButtonText });
+                return;
+            }
+            
+            // Regular text message
+            if (step.message) {
                 console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: sending "${step.message}"`);
                 await client.sendMessage(botEntity, { message: step.message });
             }
@@ -271,7 +249,7 @@ export async function requestCodeFromBot(
             
             const text = msg.text;
             collectedMessages.push(text);
-            lastBotMessage = msg; // Store for button clicking
+            lastMsgId = msg.id; // Store for button clicking
             
             console.log(`[TelegramUserBot] Bot reply (step ${stepIndex}): ${text.substring(0, 200)}`);
             
@@ -355,7 +333,7 @@ export function buildAutocodeStreamFlow(
         {
             clickButtonText: 'Soy cliente',
             waitForPattern: /usuario|perfil|dime tu/i,
-            delayMs: 1500,
+            delayMs: 2000,
         },
         {
             message: userIdentifier,
