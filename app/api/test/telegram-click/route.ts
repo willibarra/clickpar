@@ -72,7 +72,8 @@ export async function POST() {
             log(`  - Has replyMarkup: ${!!msg.replyMarkup}`);
             
             if (msg.replyMarkup) {
-                const markupType = msg.replyMarkup.className || msg.replyMarkup.constructor?.name || typeof msg.replyMarkup;
+                const rm = msg.replyMarkup as any;
+                const markupType = rm.className || rm.constructor?.name || typeof rm;
                 log(`  - Markup type: ${markupType}`);
                 
                 if ('rows' in msg.replyMarkup) {
