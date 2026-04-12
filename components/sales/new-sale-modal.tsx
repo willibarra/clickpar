@@ -161,13 +161,21 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                     id, slot_identifier, status,
                     mother_accounts:mother_account_id (
                         id, platform, email, renewal_date, 
-                        target_billing_day, max_slots
+                        target_billing_day, max_slots, status, deleted_at
                     )
                 `)
                 .eq('status', 'available')
                 .then(({ data }) => {
                     const slots = (data || []) as any[];
-                    const slotsWithPrice = slots.map((slot: any) => ({
+                    // Filter out slots whose mother account is deleted or not active
+                    const validSlots = slots.filter((slot: any) => {
+                        const acct = slot.mother_accounts;
+                        if (!acct) return false;
+                        if (acct.deleted_at) return false;
+                        if (acct.status !== 'active') return false;
+                        return true;
+                    });
+                    const slotsWithPrice = validSlots.map((slot: any) => ({
                         ...slot,
                         mother_accounts: slot.mother_accounts ? {
                             ...slot.mother_accounts,
@@ -178,7 +186,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
 
                     // Extract unique platforms that have available slots
                     const platformsWithStock = [...new Set(
-                        slots
+                        validSlots
                             .map((s: any) => s.mother_accounts?.platform)
                             .filter(Boolean) as string[]
                     )];
@@ -188,8 +196,9 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             // Fetch full accounts (all slots available)
             supabase
                 .from('mother_accounts' as any)
-                .select('id, platform, email, max_slots, renewal_date, sale_slots (id, status)')
+                .select('id, platform, email, max_slots, renewal_date, deleted_at, sale_slots (id, status)')
                 .eq('status', 'active')
+                .is('deleted_at', null)
                 .then(({ data }) => {
                     const full = ((data || []) as any[]).filter((acct: any) => {
                         const slots = acct.sale_slots || [];
