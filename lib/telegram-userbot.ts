@@ -124,60 +124,83 @@ export function extractCodeFromMessage(text: string): string | null {
 
     return null;
 }
-
 /**
- * Click an inline keyboard button on a message.
- * Searches for a button whose text matches (case-insensitive partial match).
+ * Try to click a button on a bot message, supporting both inline and reply keyboards.
+ * Always sends SOMETHING — falls back to sending the text directly.
  */
-async function clickInlineButton(
+async function clickBotButton(
     client: TelegramClient,
-    message: Api.Message,
+    botEntity: Api.User,
+    lastMessage: Api.Message | null,
     buttonText: string,
-): Promise<boolean> {
-    const replyMarkup = message.replyMarkup;
-    if (!replyMarkup || !(replyMarkup instanceof Api.ReplyInlineMarkup)) {
-        return false;
+): Promise<void> {
+    const searchText = buttonText.toLowerCase();
+
+    // Try to get the message with full markup (event messages sometimes miss it)
+    let message = lastMessage;
+    if (message) {
+        try {
+            const msgs = await client.getMessages(botEntity, { ids: [message.id] });
+            if (msgs && msgs.length > 0 && msgs[0]) {
+                message = msgs[0];
+            }
+        } catch {
+            // Use the original message
+        }
     }
 
-    const searchText = buttonText.toLowerCase();
-    
-    for (const row of replyMarkup.rows) {
-        for (const button of row.buttons) {
-            if (button.text.toLowerCase().includes(searchText)) {
-                console.log(`[TelegramUserBot] Clicking button: "${button.text}"`);
-                
-                if (button instanceof Api.KeyboardButtonCallback && button.data) {
-                    // Inline callback button — use GetBotCallbackAnswer
-                    try {
-                        await client.invoke(
-                            new Api.messages.GetBotCallbackAnswer({
-                                peer: message.peerId!,
-                                msgId: message.id,
-                                data: button.data,
-                            })
-                        );
-                    } catch (err: any) {
-                        // Some bots don't return an answer but still process the callback
-                        console.log(`[TelegramUserBot] Button callback response: ${err.message || 'ok'}`);
+    if (message?.replyMarkup) {
+        const markup = message.replyMarkup;
+        
+        // Handle InlineKeyboardMarkup
+        if (markup instanceof Api.ReplyInlineMarkup) {
+            for (const row of markup.rows) {
+                for (const button of row.buttons) {
+                    if (button.text.toLowerCase().includes(searchText)) {
+                        console.log(`[TelegramUserBot] Clicking inline button: "${button.text}"`);
+                        
+                        if (button instanceof Api.KeyboardButtonCallback && button.data) {
+                            try {
+                                await client.invoke(
+                                    new Api.messages.GetBotCallbackAnswer({
+                                        peer: message.peerId!,
+                                        msgId: message.id,
+                                        data: button.data,
+                                    })
+                                );
+                            } catch (err: any) {
+                                console.log(`[TelegramUserBot] Callback response: ${err.message || 'ok'}`);
+                            }
+                            return; // Success
+                        } else {
+                            // Send button text
+                            await client.sendMessage(botEntity, { message: button.text });
+                            return;
+                        }
                     }
-                    return true;
-                } else if (button instanceof Api.KeyboardButtonUrl) {
-                    // URL button — can't click, skip
-                    continue;
-                } else {
-                    // Regular keyboard button or other — send text
-                    await client.sendMessage(message.peerId!, { message: button.text });
-                    return true;
+                }
+            }
+        }
+
+        // Handle ReplyKeyboardMarkup (regular keyboard buttons)
+        if (markup instanceof Api.ReplyKeyboardMarkup) {
+            for (const row of markup.rows) {
+                for (const button of row.buttons) {
+                    if (button.text.toLowerCase().includes(searchText)) {
+                        console.log(`[TelegramUserBot] Sending keyboard button text: "${button.text}"`);
+                        await client.sendMessage(botEntity, { message: button.text });
+                        return;
+                    }
                 }
             }
         }
     }
 
     // Fallback: send the button text as a regular message
-    console.log(`[TelegramUserBot] No inline button found, sending text: "${buttonText}"`);
-    await client.sendMessage(message.peerId!, { message: buttonText });
-    return true;
+    console.log(`[TelegramUserBot] No button found in markup, sending text: "${buttonText}"`);
+    await client.sendMessage(botEntity, { message: buttonText });
 }
+
 
 /**
  * Send a sequence of messages to a Telegram bot and wait for the verification code.
@@ -228,9 +251,9 @@ export async function requestCodeFromBot(
             const delay = step.delayMs ?? 1500;
             await new Promise(r => setTimeout(r, delay));
             
-            if (step.clickButtonText && lastBotMessage) {
+            if (step.clickButtonText) {
                 console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking "${step.clickButtonText}"`);
-                await clickInlineButton(client, lastBotMessage, step.clickButtonText);
+                await clickBotButton(client, botEntity, lastBotMessage, step.clickButtonText);
             } else if (step.message) {
                 console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: sending "${step.message}"`);
                 await client.sendMessage(botEntity, { message: step.message });
