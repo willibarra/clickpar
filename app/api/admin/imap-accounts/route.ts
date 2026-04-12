@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
-import { detectImapConfig } from '@/lib/imap-client';
+import { testImapConnection } from '@/lib/imap-reader';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,34 +62,39 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { email, password, imap_host, imap_port, imap_secure, label } = body;
+
+    // action=test: just test IMAP connection
+    if (body.action === 'test') {
+        const { email: testEmail, password: testPassword } = body;
+        if (!testEmail || !testPassword) {
+            return NextResponse.json({ success: false, error: 'email y password requeridos' }, { status: 400 });
+        }
+        const result = await testImapConnection({ email: testEmail, password: testPassword });
+        return NextResponse.json(result);
+    }
+
+    const {
+        email, password, imap_host, imap_port, imap_secure, label,
+        platform, supplier_name, subject_filter, sender_filter, lookback_minutes,
+    } = body;
 
     if (!email || !password) {
         return NextResponse.json({ error: 'Email y contraseña son requeridos' }, { status: 400 });
-    }
-
-    // Auto-detect IMAP settings if not provided
-    let host = imap_host;
-    let port = imap_port;
-    let secure = imap_secure;
-
-    if (!host) {
-        const detected = detectImapConfig(email);
-        if (detected) {
-            host = detected.host;
-            port = detected.port;
-            secure = detected.secure;
-        }
     }
 
     const { data, error } = await (admin.from('imap_email_accounts') as any)
         .insert({
             email,
             password,
-            imap_host: host || 'outlook.office365.com',
-            imap_port: port || 993,
-            imap_secure: secure ?? true,
+            imap_host: imap_host || 'outlook.office365.com',
+            imap_port: imap_port || 993,
+            imap_secure: imap_secure ?? true,
             label: label || email,
+            platform: platform || null,
+            supplier_name: supplier_name || null,
+            subject_filter: subject_filter || null,
+            sender_filter: sender_filter || null,
+            lookback_minutes: lookback_minutes || 15,
         })
         .select()
         .single();
@@ -121,12 +126,17 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const updates: any = { updated_at: new Date().toISOString() };
     if (body.email !== undefined) updates.email = body.email;
-    if (body.password !== undefined) updates.password = body.password;
+    if (body.password !== undefined && body.password) updates.password = body.password;
     if (body.imap_host !== undefined) updates.imap_host = body.imap_host;
     if (body.imap_port !== undefined) updates.imap_port = body.imap_port;
     if (body.imap_secure !== undefined) updates.imap_secure = body.imap_secure;
     if (body.label !== undefined) updates.label = body.label;
     if (body.is_active !== undefined) updates.is_active = body.is_active;
+    if (body.platform !== undefined) updates.platform = body.platform;
+    if (body.supplier_name !== undefined) updates.supplier_name = body.supplier_name;
+    if (body.subject_filter !== undefined) updates.subject_filter = body.subject_filter;
+    if (body.sender_filter !== undefined) updates.sender_filter = body.sender_filter;
+    if (body.lookback_minutes !== undefined) updates.lookback_minutes = body.lookback_minutes;
 
     const { error } = await (admin.from('imap_email_accounts') as any)
         .update(updates)

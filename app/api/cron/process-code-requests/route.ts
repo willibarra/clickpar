@@ -8,10 +8,9 @@ import {
     type TelegramSessionConfig,
 } from '@/lib/telegram-userbot';
 import {
-    searchImapForCode,
-    searchMultipleImapForCode,
+    fetchCodeFromImap,
     type ImapAccountConfig,
-} from '@/lib/imap-client';
+} from '@/lib/imap-reader';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // Allow up to 2 minutes for this endpoint
@@ -139,7 +138,7 @@ export async function POST(req: Request) {
                     continue;
                 }
 
-                // Load IMAP account details
+                // Load IMAP account details (including subject/sender filters)
                 const { data: imapAccounts } = await (admin.from('imap_email_accounts') as any)
                     .select('*')
                     .in('id', imapAccountIds)
@@ -153,47 +152,62 @@ export async function POST(req: Request) {
                     continue;
                 }
 
-                const configs: ImapAccountConfig[] = imapAccounts.map((a: any) => ({
-                    email: a.email,
-                    password: a.password,
-                    host: a.imap_host,
-                    port: a.imap_port,
-                    secure: a.imap_secure,
-                }));
+                // Try each IMAP account until we find the code
+                let found = false;
+                for (const account of imapAccounts) {
+                    const config: ImapAccountConfig = {
+                        email: account.email,
+                        password: account.password,
+                        host: account.imap_host,
+                        port: account.imap_port,
+                        secure: account.imap_secure,
+                    };
 
-                // Search for the code
-                const result = await searchMultipleImapForCode(
-                    configs,
-                    req.account_email,
-                    req.platform,
-                    15, // Search last 15 minutes
-                );
+                    const result = await fetchCodeFromImap(config, {
+                        subjectFilter: account.subject_filter || req.platform || '',
+                        senderFilter: account.sender_filter || undefined,
+                        lookbackMinutes: account.lookback_minutes || 15,
+                    });
 
-                if (result.success && result.code) {
-                    await (admin.from('code_requests') as any)
-                        .update({
-                            status: 'completed',
-                            code: result.code,
-                            resolved_at: new Date().toISOString(),
-                            auto_source: 'imap',
-                            notes: `Auto-resuelto via IMAP. Subject: ${result.subject || 'N/A'}`,
-                            updated_at: new Date().toISOString(),
-                        })
-                        .eq('id', req.id);
+                    if (result.success && result.code) {
+                        await (admin.from('imap_email_accounts') as any)
+                            .update({ last_checked_at: new Date().toISOString(), last_error: null })
+                            .eq('id', account.id);
 
-                    console.log(`[ProcessCodeRequests] ✅ IMAP Code ${result.code} for request ${req.id}`);
-                    results.push({ id: req.id, source: 'imap', success: true, code: result.code });
-                } else {
+                        await (admin.from('code_requests') as any)
+                            .update({
+                                status: 'completed',
+                                code: result.code,
+                                resolved_at: new Date().toISOString(),
+                                auto_source: 'imap',
+                                notes: `Auto-resuelto via IMAP. Asunto: ${result.subject || 'N/A'}`,
+                                updated_at: new Date().toISOString(),
+                            })
+                            .eq('id', req.id);
+
+                        console.log(`[ProcessCodeRequests] ✅ IMAP Code ${result.code} for request ${req.id}`);
+                        results.push({ id: req.id, source: 'imap', success: true, code: result.code });
+                        found = true;
+                        break;
+                    } else {
+                        // Update last_error for this account
+                        await (admin.from('imap_email_accounts') as any)
+                            .update({ last_checked_at: new Date().toISOString(), last_error: result.error })
+                            .eq('id', account.id);
+                    }
+                }
+
+                if (!found) {
                     await (admin.from('code_requests') as any)
                         .update({
                             status: 'pending',
-                            notes: `IMAP búsqueda sin resultado: ${result.error}`,
+                            notes: `IMAP: No se encontró código en ${imapAccounts.length} cuenta(s)`,
                             updated_at: new Date().toISOString(),
                         })
                         .eq('id', req.id);
 
-                    console.warn(`[ProcessCodeRequests] ❌ IMAP Failed for ${req.id}: ${result.error}`);
-                    results.push({ id: req.id, source: 'imap', success: false, error: result.error });
+                    console.warn(`[ProcessCodeRequests] ❌ IMAP: no code found for ${req.id}`);
+                    results.push({ id: req.id, source: 'imap', success: false, error: 'No code found in any IMAP account' });
                 }
             } catch (err: any) {
                 console.error(`[ProcessCodeRequests] IMAP error for ${req.id}:`, err);

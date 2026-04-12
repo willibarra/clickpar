@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,6 +103,10 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const [duration, setDuration] = useState<string>(String(daysUntilSameDayNextMonth()));
     const [priceOverridden, setPriceOverridden] = useState(false);
     const [isCreadorCustomer, setIsCreadorCustomer] = useState(false);
+
+    // Ref para evitar stale closure en handleSlotSelect
+    const priceOverriddenRef = useRef(false);
+    const isCreadorRef = useRef(false);
 
     // Family account fields
     const [familyAccessType, setFamilyAccessType] = useState<'credentials' | 'invite'>('credentials');
@@ -251,36 +255,40 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     useEffect(() => {
         setSelectedSlotId(null);
         setSelectedFullAccountId('');
-        setPriceOverridden(false);
+        // Solo resetear precio si el cliente NO es Creador
+        if (!isCreadorRef.current) {
+            setPriceOverridden(false);
+            priceOverriddenRef.current = false;
+            if (selectedPlatform) {
+                const plat = dbPlatforms.find(p => p.name === selectedPlatform);
+                const price = plat?.default_slot_price_gs || 30000;
+                setDefaultPrice(price);
+                setSalePrice(price.toString());
+            } else {
+                setDefaultPrice(null);
+                setSalePrice('');
+            }
+        }
         setClientEmail('');
         setClientPassword('');
         setFamilyAccessType('credentials');
-        if (selectedPlatform) {
-            const plat = dbPlatforms.find(p => p.name === selectedPlatform);
-            const price = plat?.default_slot_price_gs || 30000;
-            setDefaultPrice(price);
-            setSalePrice(price.toString());
-        } else {
-            setDefaultPrice(null);
-            setSalePrice('');
-        }
     }, [selectedPlatform, saleMode, dbPlatforms]);
 
     const handleSlotSelect = useCallback((slotId: string, slotDefaultPrice: number | null) => {
         setSelectedSlotId(slotId);
-        if (slotDefaultPrice && !priceOverridden) {
+        // Usar ref para evitar stale closure: si el cliente es Creador no tocamos el precio
+        if (!isCreadorRef.current && slotDefaultPrice && !priceOverriddenRef.current) {
             setDefaultPrice(slotDefaultPrice);
             setSalePrice(slotDefaultPrice.toString());
         }
-    }, [priceOverridden]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);  // Sin dependencias: usa refs para acceder a valores actuales
 
     const handlePriceChange = (value: string) => {
         setSalePrice(value);
-        if (defaultPrice && parseInt(value) !== defaultPrice) {
-            setPriceOverridden(true);
-        } else {
-            setPriceOverridden(false);
-        }
+        const overridden = !!(defaultPrice && parseInt(value) !== defaultPrice);
+        setPriceOverridden(overridden);
+        priceOverriddenRef.current = overridden;
     };
 
     // Create new customer — nombre y teléfono obligatorios
@@ -347,10 +355,15 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         // Si es creador, auto-setear precio 0 y duración infinita (canje)
         const esCreador = customer.customer_type === 'creador';
         setIsCreadorCustomer(esCreador);
+        isCreadorRef.current = esCreador;
         if (esCreador) {
             setSalePrice('0');
             setDuration('9999');
             setPriceOverridden(false);
+            priceOverriddenRef.current = false;
+        } else {
+            // Restaurar indicadores de precio normal al elegir cliente no-creador
+            priceOverriddenRef.current = false;
         }
         // Pre-setear instancia WhatsApp del cliente
         setSelectedWaInstance(customer.whatsapp_instance || null);
@@ -360,7 +373,10 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setSelectedCustomer(null);
         setCustomerSearch('');
         setIsCreadorCustomer(false);
+        isCreadorRef.current = false;
         setSelectedWaInstance(null);
+        setPriceOverridden(false);
+        priceOverriddenRef.current = false;
         // Restaurar precio default
         if (selectedPlatform) {
             const plat = dbPlatforms.find(p => p.name === selectedPlatform);
