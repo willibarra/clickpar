@@ -22,8 +22,13 @@ export interface TelegramSessionConfig {
 }
 
 export interface BotFlowStep {
-    /** Message to send to the bot */
-    message: string;
+    /** Message to send to the bot (ignored if clickButtonText is set) */
+    message?: string;
+    /** 
+     * If set, instead of sending a text message, click the inline button
+     * whose text contains this string (case-insensitive partial match).
+     */
+    clickButtonText?: string;
     /** 
      * Pattern to match in the bot's reply before advancing to the next step.
      * If a message doesn't match, it's treated as an intermediate message and skipped.
@@ -99,16 +104,9 @@ export async function disconnectClient(): Promise<void> {
 
 /**
  * Extract a numeric verification code from a message text.
- * Looks for 4-8 digit numbers that look like verification codes.
  */
 export function extractCodeFromMessage(text: string): string | null {
     if (!text) return null;
-
-    // Common patterns for verification codes:
-    // "Tu código de verificación es: 301423"
-    // "🔐 Tu código es: 301423"
-    // "Código: 301423"  
-    // Just a standalone 4-8 digit number on its own line
     
     const patterns = [
         /c[oó]digo[^:]*:\s*(\d{4,8})/i,
@@ -116,30 +114,76 @@ export function extractCodeFromMessage(text: string): string | null {
         /verification[^:]*:\s*(\d{4,8})/i,
         /verificaci[oó]n[^:]*:\s*(\d{4,8})/i,
         /🔐[^0-9]*(\d{4,8})/,
-        /^\s*(\d{4,8})\s*$/m,  // standalone number on a line
+        /^\s*(\d{4,8})\s*$/m,
     ];
 
     for (const pattern of patterns) {
         const match = text.match(pattern);
-        if (match?.[1]) {
-            return match[1];
-        }
+        if (match?.[1]) return match[1];
     }
 
     return null;
 }
 
 /**
+ * Click an inline keyboard button on a message.
+ * Searches for a button whose text matches (case-insensitive partial match).
+ */
+async function clickInlineButton(
+    client: TelegramClient,
+    message: Api.Message,
+    buttonText: string,
+): Promise<boolean> {
+    const replyMarkup = message.replyMarkup;
+    if (!replyMarkup || !(replyMarkup instanceof Api.ReplyInlineMarkup)) {
+        return false;
+    }
+
+    const searchText = buttonText.toLowerCase();
+    
+    for (const row of replyMarkup.rows) {
+        for (const button of row.buttons) {
+            if (button.text.toLowerCase().includes(searchText)) {
+                console.log(`[TelegramUserBot] Clicking button: "${button.text}"`);
+                
+                if (button instanceof Api.KeyboardButtonCallback && button.data) {
+                    // Inline callback button — use GetBotCallbackAnswer
+                    try {
+                        await client.invoke(
+                            new Api.messages.GetBotCallbackAnswer({
+                                peer: message.peerId!,
+                                msgId: message.id,
+                                data: button.data,
+                            })
+                        );
+                    } catch (err: any) {
+                        // Some bots don't return an answer but still process the callback
+                        console.log(`[TelegramUserBot] Button callback response: ${err.message || 'ok'}`);
+                    }
+                    return true;
+                } else if (button instanceof Api.KeyboardButtonUrl) {
+                    // URL button — can't click, skip
+                    continue;
+                } else {
+                    // Regular keyboard button or other — send text
+                    await client.sendMessage(message.peerId!, { message: button.text });
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Fallback: send the button text as a regular message
+    console.log(`[TelegramUserBot] No inline button found, sending text: "${buttonText}"`);
+    await client.sendMessage(message.peerId!, { message: buttonText });
+    return true;
+}
+
+/**
  * Send a sequence of messages to a Telegram bot and wait for the verification code.
  * 
- * This implements a conversational flow where each step waits for a specific
- * bot reply pattern before sending the next message. This handles bots that
- * send multiple messages per interaction (e.g. warnings + prompts).
- * 
- * @param client - Connected TelegramClient
- * @param botUsername - Bot to interact with (e.g. "autocodestream_bot")
- * @param steps - Sequence of messages to send
- * @param timeoutMs - Max time to wait for code (default: 3 min)
+ * Supports both text messages and inline button clicks via `clickButtonText`.
+ * Uses `waitForPattern` to handle bots that send multiple messages per step.
  */
 export async function requestCodeFromBot(
     client: TelegramClient,
@@ -149,7 +193,6 @@ export async function requestCodeFromBot(
 ): Promise<CodeRequestResult> {
     const collectedMessages: string[] = [];
     
-    // Resolve the bot entity
     let botEntity: Api.User;
     try {
         const entity = await client.getEntity(botUsername);
@@ -163,10 +206,8 @@ export async function requestCodeFromBot(
 
     return new Promise<CodeRequestResult>(async (resolve) => {
         let resolved = false;
-        // stepIndex tracks which step's REPLY we're waiting for.
-        // We've already sent steps[stepIndex] and are waiting for a reply that matches
-        // the waitForPattern before sending steps[stepIndex + 1].
         let stepIndex = 0;
+        let lastBotMessage: Api.Message | null = null;
 
         const cleanup = () => {
             if (handler) {
@@ -182,7 +223,20 @@ export async function requestCodeFromBot(
             resolve({ ...result, rawMessages: collectedMessages });
         };
 
-        // Set up message listener
+        // Helper to execute a step (send message or click button)
+        const executeStep = async (step: BotFlowStep) => {
+            const delay = step.delayMs ?? 1500;
+            await new Promise(r => setTimeout(r, delay));
+            
+            if (step.clickButtonText && lastBotMessage) {
+                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking "${step.clickButtonText}"`);
+                await clickInlineButton(client, lastBotMessage, step.clickButtonText);
+            } else if (step.message) {
+                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: sending "${step.message}"`);
+                await client.sendMessage(botEntity, { message: step.message });
+            }
+        };
+
         const event = new NewMessage({
             chats: [botEntity],
             incoming: true,
@@ -194,10 +248,11 @@ export async function requestCodeFromBot(
             
             const text = msg.text;
             collectedMessages.push(text);
+            lastBotMessage = msg; // Store for button clicking
             
             console.log(`[TelegramUserBot] Bot reply (step ${stepIndex}): ${text.substring(0, 200)}`);
             
-            // Always try to extract code from every message
+            // Always try to extract code
             const code = extractCodeFromMessage(text);
             if (code) {
                 console.log(`[TelegramUserBot] ✅ Code found: ${code}`);
@@ -205,45 +260,35 @@ export async function requestCodeFromBot(
                 return;
             }
 
-            // Check for error messages
+            // Check for error messages (but not "Importante" warnings)
             if (/error|denied|acceso denegado|no autorizado|failed|bloqueado/i.test(text) &&
                 !/importante|antes de/i.test(text)) {
                 done({ success: false, error: `Bot respondió con error: ${text.substring(0, 200)}` });
                 return;
             }
 
-            // Check if this message matches the waitForPattern of the current step.
-            // Only when it matches do we advance and send the next step.
+            // Check waitForPattern
             const currentStep = steps[stepIndex];
             if (currentStep?.waitForPattern) {
                 if (!currentStep.waitForPattern.test(text)) {
-                    // This message doesn't match the pattern we're waiting for.
-                    // It's probably an intermediate message (warning, etc.) — skip.
                     console.log(`[TelegramUserBot] Intermediate message, waiting for pattern...`);
                     return;
                 }
             }
             
-            // Pattern matched (or no pattern specified) — advance to next step
+            // Pattern matched — advance and execute next step
             stepIndex++;
             if (stepIndex < steps.length) {
-                const nextStep = steps[stepIndex];
-                const delay = nextStep.delayMs ?? 1500;
-                setTimeout(async () => {
-                    try {
-                        console.log(`[TelegramUserBot] Sending step ${stepIndex + 1}/${steps.length}: ${nextStep.message}`);
-                        await client.sendMessage(botEntity, { message: nextStep.message });
-                    } catch (err: any) {
-                        done({ success: false, error: `Error al enviar mensaje: ${err.message}` });
-                    }
-                }, delay);
+                try {
+                    await executeStep(steps[stepIndex]);
+                } catch (err: any) {
+                    done({ success: false, error: `Error en paso ${stepIndex + 1}: ${err.message}` });
+                }
             }
-            // If stepIndex >= steps.length, we've sent all steps — just wait for the code
         };
 
         client.addEventHandler(handler, event);
 
-        // Timeout
         const timeoutHandle = setTimeout(() => {
             done({
                 success: false,
@@ -253,15 +298,9 @@ export async function requestCodeFromBot(
 
         // Send the first step
         try {
-            const firstStep = steps[0];
-            const firstDelay = firstStep.delayMs ?? 500;
-            
-            await new Promise(r => setTimeout(r, firstDelay));
-            
-            console.log(`[TelegramUserBot] Sending step 1/${steps.length}: ${firstStep.message}`);
-            await client.sendMessage(botEntity, { message: firstStep.message });
+            await executeStep(steps[0]);
         } catch (err: any) {
-            done({ success: false, error: `Error al iniciar comunicación con bot: ${err.message}` });
+            done({ success: false, error: `Error al iniciar: ${err.message}` });
         }
     });
 }
@@ -273,15 +312,12 @@ export async function requestCodeFromBot(
 /**
  * Build the flow for @autocodestream_bot
  * 
- * Real flow observed:
- * 1. User sends /start
- * 2. Bot replies with buttons: "Soy cliente" / "Soy administrador"
- * 3. User sends "🔐 Soy administrador"  
- * 4. Bot sends warning + "dime tu usuario o perfil"
- * 5. User sends username (e.g. "will")
- * 6. Bot confirms user, asks for email
- * 7. User sends email
- * 8. Bot searches and sends the verification code
+ * Real flow:
+ * 1. Send /start
+ * 2. Bot shows buttons → click "Soy administrador"
+ * 3. Bot sends warning + "dime tu usuario" → send username
+ * 4. Bot confirms → asks for email → send email
+ * 5. Bot sends the code
  */
 export function buildAutocodeStreamFlow(
     userIdentifier: string,
@@ -290,26 +326,21 @@ export function buildAutocodeStreamFlow(
     return [
         {
             message: '/start',
-            // Wait for the greeting with buttons
             waitForPattern: /continuar|asistente|verificaci[oó]n|hola/i,
             delayMs: 500,
         },
         {
-            message: '🔐 Soy administrador',
-            // Wait for "dime tu usuario o perfil" (skip warning messages)
+            clickButtonText: 'Soy administrador',
             waitForPattern: /usuario|perfil|dime tu/i,
             delayMs: 1500,
         },
         {
             message: userIdentifier,
-            // Wait for "dime el correo" or "confirmado"
             waitForPattern: /correo|email|confirmad/i,
             delayMs: 1500,
         },
         {
             message: accountEmail,
-            // After sending email, the bot will look up and send the code.
-            // The handler will catch it via extractCodeFromMessage.
             waitForPattern: /verificad|esperando|c[oó]digo|listo/i,
             delayMs: 1500,
         },
@@ -317,9 +348,7 @@ export function buildAutocodeStreamFlow(
 }
 
 /**
- * Generic flow builder that works for most bots with the 
- * standard /start → identifier → email pattern.
- * Less strict pattern matching — advances on any reply.
+ * Generic flow builder for bots with /start → identifier → email pattern.
  */
 export function buildGenericBotFlow(
     userIdentifier: string,
@@ -331,4 +360,5 @@ export function buildGenericBotFlow(
         { message: accountEmail, delayMs: 2500 },
     ];
 }
+
 
