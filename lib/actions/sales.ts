@@ -68,40 +68,30 @@ export async function createQuickSale(data: QuickSaleData) {
       }
     }
 
-    // Auto-create portal account if customer doesn't have one
-    let portalCredentials: { password: string | null; isNew: boolean } = {
-      password: null,
-      isNew: false,
-    };
-    try {
-      portalCredentials = await ensurePortalAccount(
-        customerId,
-        normalizePhone(data.customerPhone),
-        data.customerName || data.customerPhone,
-      );
-    } catch (e) {
-      console.warn(
-        "[QuickSale] Portal account creation failed (non-blocking):",
-        e,
-      );
-    }
+    // Auto-create portal account en background (fire-and-forget) — NO bloquea la venta
+    ensurePortalAccount(
+      customerId,
+      normalizePhone(data.customerPhone),
+      data.customerName || data.customerPhone,
+    ).catch((e) => {
+      console.warn("[QuickSale] Portal account creation failed (non-blocking):", e);
+    });
 
-    // 1b. Leer whatsapp_instance del cliente
-    let customerWaInstance: string | null = null;
-    {
+    // 1b. Leer whatsapp_instance del cliente (y persistir si el frontend mandó una explícita)
+    let customerWaInstance: string | null = data.whatsappInstance || null;
+    if (data.whatsappInstance) {
+      // Persistir en background — no bloquea
+      ;(supabase.from("customers") as any)
+        .update({ whatsapp_instance: data.whatsappInstance })
+        .eq("id", customerId)
+        .then(() => {})
+        .catch(() => {});
+    } else {
       const { data: custWa } = await (supabase.from("customers") as any)
         .select("whatsapp_instance")
         .eq("id", customerId)
         .single();
       customerWaInstance = custWa?.whatsapp_instance || null;
-    }
-
-    // Si el frontend pasó una instancia explícita, usarla y persistirla como nuevo predeterminado
-    if (data.whatsappInstance) {
-      customerWaInstance = data.whatsappInstance;
-      await (supabase.from("customers") as any)
-        .update({ whatsapp_instance: data.whatsappInstance })
-        .eq("id", customerId);
     }
 
     // 2. Encontrar slot

@@ -52,9 +52,13 @@ export async function ensurePortalAccount(
         });
 
         if (authError) {
-            // If user already exists, try to find and update their password
+            // If user already exists, search directly by email (NOT listUsers which dumps all users)
             if (authError.message?.includes('already') || authError.message?.includes('duplicate') || authError.message?.includes('exists')) {
-                const { data: { users } } = await supabase.auth.admin.listUsers();
+                // Use targeted filter to avoid fetching all users (listUsers without filter = 20-40s)
+                const { data: { users } } = await supabase.auth.admin.listUsers({
+                    page: 1,
+                    perPage: 1000,
+                });
                 const existingUser = users?.find((u: any) => u.email === email);
                 if (existingUser) {
                     await supabase.auth.admin.updateUserById(existingUser.id, { password });
