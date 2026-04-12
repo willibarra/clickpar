@@ -9,7 +9,6 @@
 
 import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions';
-import { NewMessage } from 'telegram/events';
 
 // ==========================================
 // Types
@@ -125,12 +124,11 @@ export function extractCodeFromMessage(text: string): string | null {
     return null;
 }
 
-
 /**
- * Send a sequence of messages to a Telegram bot and wait for the verification code.
+ * Send a sequence of messages/clicks to a Telegram bot and wait for the verification code.
  * 
- * Supports both text messages and inline button clicks via `clickButtonText`.
- * Uses `waitForPattern` to handle bots that send multiple messages per step.
+ * Uses a simple sequential approach with fixed delays between steps,
+ * then polls for the code message at the end.
  */
 export async function requestCodeFromBot(
     client: TelegramClient,
@@ -151,148 +149,91 @@ export async function requestCodeFromBot(
         return { success: false, error: `No se pudo encontrar al bot ${botUsername}: ${err.message}` };
     }
 
-    return new Promise<CodeRequestResult>(async (resolve) => {
-        let resolved = false;
-        let stepIndex = 0;
-
-        const cleanup = () => {
-            if (handler) {
-                try { client.removeEventHandler(handler, event); } catch {}
-            }
-            if (timeoutHandle) clearTimeout(timeoutHandle);
-        };
-
-        const done = (result: CodeRequestResult) => {
-            if (resolved) return;
-            resolved = true;
-            cleanup();
-            resolve({ ...result, rawMessages: collectedMessages });
-        };
-
-        // Helper to execute a step
-        const executeStep = async (step: BotFlowStep) => {
-            const delay = step.delayMs ?? 1500;
-            await new Promise(r => setTimeout(r, delay));
-            
-            // If step wants to click an inline button
-            if (step.clickButtonText) {
-                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking button "${step.clickButtonText}"`);
-                
-                try {
-                    // Get the last few messages from this chat to find the one with buttons
-                    const messages = await client.getMessages(botEntity, { limit: 5 });
-                    const searchText = step.clickButtonText.toLowerCase();
-                    
-                    for (const msg of messages) {
-                        if (!msg?.replyMarkup || !('rows' in msg.replyMarkup)) continue;
-                        
-                        // Search buttons in this message
-                        const rows = (msg.replyMarkup as any).rows || [];
-                        for (let i = 0; i < rows.length; i++) {
-                            const buttons = rows[i].buttons || [];
-                            for (let j = 0; j < buttons.length; j++) {
-                                if (buttons[j].text?.toLowerCase().includes(searchText)) {
-                                    console.log(`[TelegramUserBot] Found button "${buttons[j].text}" at [${i},${j}], clicking via message.click()...`);
-                                    
-                                    // Use GramJS native .click() method with timeout
-                                    const clickPromise = (msg as any).click(i, j);
-                                    await Promise.race([
-                                        clickPromise.catch((e: any) => {
-                                            console.log(`[TelegramUserBot] Click result: ${e?.message || 'ok'}`);
-                                        }),
-                                        new Promise(r => setTimeout(r, 5000)),
-                                    ]);
-                                    
-                                    console.log(`[TelegramUserBot] Button click completed`);
-                                    return;
-                                }
-                            }
-                        }
+    // Helper: click an inline button in recent messages
+    const clickButton = async (buttonText: string): Promise<boolean> => {
+        const messages = await client.getMessages(botEntity, { limit: 5 });
+        const searchText = buttonText.toLowerCase();
+        
+        for (const msg of messages) {
+            if (!msg?.replyMarkup || !('rows' in msg.replyMarkup)) continue;
+            const rows = (msg.replyMarkup as any).rows || [];
+            for (let i = 0; i < rows.length; i++) {
+                const buttons = rows[i].buttons || [];
+                for (let j = 0; j < buttons.length; j++) {
+                    if (buttons[j].text?.toLowerCase().includes(searchText)) {
+                        console.log(`[TelegramUserBot] Clicking "${buttons[j].text}" [${i},${j}]`);
+                        await Promise.race([
+                            (msg as any).click(i, j).catch((e: any) => {
+                                console.log(`[TelegramUserBot] click() result: ${e?.message || 'ok'}`);
+                            }),
+                            new Promise(r => setTimeout(r, 5000)),
+                        ]);
+                        return true;
                     }
-                    
-                    console.log(`[TelegramUserBot] No button matching "${step.clickButtonText}" found in recent messages`);
-                } catch (err: any) {
-                    console.log(`[TelegramUserBot] Button click error: ${err.message}`);
                 }
-                
-                // Fallback: send button text
-                console.log(`[TelegramUserBot] Fallback: sending text "${step.clickButtonText}"`);
+            }
+        }
+        return false;
+    };
+
+    // Helper: get the latest bot message text
+    const getLatestBotMessage = async (): Promise<string | null> => {
+        const messages = await client.getMessages(botEntity, { limit: 3 });
+        for (const msg of messages) {
+            if (msg && !msg.out && msg.text) return msg.text;
+        }
+        return null;
+    };
+
+    // Execute each step sequentially
+    for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const delay = step.delayMs ?? 1500;
+        await new Promise(r => setTimeout(r, delay));
+
+        if (step.clickButtonText) {
+            console.log(`[TelegramUserBot] Step ${i + 1}/${steps.length}: clicking "${step.clickButtonText}"`);
+            const clicked = await clickButton(step.clickButtonText);
+            if (!clicked) {
+                console.log(`[TelegramUserBot] Button not found, sending text as fallback`);
                 await client.sendMessage(botEntity, { message: step.clickButtonText });
-                return;
             }
-            
-            // Regular text message
-            if (step.message) {
-                console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: sending "${step.message}"`);
-                await client.sendMessage(botEntity, { message: step.message });
-            }
-        };
+        } else if (step.message) {
+            console.log(`[TelegramUserBot] Step ${i + 1}/${steps.length}: sending "${step.message}"`);
+            await client.sendMessage(botEntity, { message: step.message });
+        }
+    }
 
-        const event = new NewMessage({
-            chats: [botEntity],
-            incoming: true,
-        });
+    // After all steps are sent, poll for the verification code
+    console.log(`[TelegramUserBot] All steps sent — polling for code...`);
+    const pollStart = Date.now();
+    const pollInterval = 3000;
+    
+    while (Date.now() - pollStart < timeoutMs) {
+        await new Promise(r => setTimeout(r, pollInterval));
 
-        const handler = async (eventData: any) => {
-            const msg = eventData.message;
-            if (!msg?.text) return;
-            
+        // Get last few messages from bot
+        const messages = await client.getMessages(botEntity, { limit: 5 });
+        for (const msg of messages) {
+            if (!msg || msg.out || !msg.text) continue;
             const text = msg.text;
-            collectedMessages.push(text);
-            
-            console.log(`[TelegramUserBot] Bot reply (step ${stepIndex}): ${text.substring(0, 200)}`);
-            
-            // Always try to extract code
+            if (!collectedMessages.includes(text)) {
+                collectedMessages.push(text);
+            }
             const code = extractCodeFromMessage(text);
             if (code) {
                 console.log(`[TelegramUserBot] ✅ Code found: ${code}`);
-                done({ success: true, code });
-                return;
+                return { success: true, code, rawMessages: collectedMessages };
             }
-
-            // Check for error messages (but not "Importante" warnings)
-            if (/error|denied|acceso denegado|no autorizado|failed|bloqueado/i.test(text) &&
-                !/importante|antes de/i.test(text)) {
-                done({ success: false, error: `Bot respondió con error: ${text.substring(0, 200)}` });
-                return;
-            }
-
-            // Check waitForPattern
-            const currentStep = steps[stepIndex];
-            if (currentStep?.waitForPattern) {
-                if (!currentStep.waitForPattern.test(text)) {
-                    console.log(`[TelegramUserBot] Intermediate message, waiting for pattern...`);
-                    return;
-                }
-            }
-            
-            // Pattern matched — advance and execute next step
-            stepIndex++;
-            if (stepIndex < steps.length) {
-                try {
-                    await executeStep(steps[stepIndex]);
-                } catch (err: any) {
-                    done({ success: false, error: `Error en paso ${stepIndex + 1}: ${err.message}` });
-                }
-            }
-        };
-
-        client.addEventHandler(handler, event);
-
-        const timeoutHandle = setTimeout(() => {
-            done({
-                success: false,
-                error: `Timeout: no se recibió código después de ${Math.round(timeoutMs / 1000)}s`,
-            });
-        }, timeoutMs);
-
-        // Send the first step
-        try {
-            await executeStep(steps[0]);
-        } catch (err: any) {
-            done({ success: false, error: `Error al iniciar: ${err.message}` });
         }
-    });
+    }
+
+    const lastMsg = await getLatestBotMessage();
+    return {
+        success: false,
+        error: `Timeout sin código. Último mensaje del bot: "${lastMsg?.substring(0, 200) || 'ninguno'}"`,
+        rawMessages: collectedMessages,
+    };
 }
 
 // ==========================================
