@@ -34,6 +34,7 @@ interface Platform {
     default_slot_price_gs: number;
     slot_label: string;
     nicknames?: string[];
+    store_alias?: string | null;
 }
 
 type ModalView = 'list' | 'form';
@@ -52,6 +53,7 @@ export function AddPlatformModal() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [formName, setFormName] = useState('');
+    const [storeAlias, setStoreAlias] = useState('');
     const [nicknames, setNicknames] = useState<string[]>([]);
     const [nicknameInput, setNicknameInput] = useState('');
 
@@ -81,6 +83,7 @@ export function AddPlatformModal() {
     function openCreateForm() {
         setEditingPlatform(null);
         setFormName('');
+        setStoreAlias('');
         setNicknames([]);
         setNicknameInput('');
         setSelectedColor(defaultColors[0]);
@@ -92,6 +95,7 @@ export function AddPlatformModal() {
     function openEditForm(platform: Platform) {
         setEditingPlatform(platform);
         setFormName(platform.name);
+        setStoreAlias(platform.store_alias || '');
         setNicknames(platform.nicknames || []);
         setNicknameInput('');
         setSelectedColor(platform.icon_color || defaultColors[0]);
@@ -138,6 +142,7 @@ export function AddPlatformModal() {
         formData.set('default_slot_price_gs', '30000');
         formData.set('slot_label', businessType === 'family_account' ? 'Miembro' : 'Perfil');
         formData.set('nicknames', JSON.stringify(finalNicknames));
+        formData.set('store_alias', storeAlias.trim());
 
         let result;
         if (editingPlatform) {
@@ -329,6 +334,22 @@ export function AddPlatformModal() {
                                         value={formName}
                                         onChange={(e) => setFormName(e.target.value)}
                                         required
+                                    />
+                                </div>
+
+                                {/* Store Alias */}
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1.5">
+                                        <Tag className="h-3.5 w-3.5" />
+                                        Alias de Tienda (Portal)
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground -mt-1">
+                                        Nombre alternativo mostrado en la tienda del portal de clientes
+                                    </p>
+                                    <Input
+                                        placeholder="Ej: Netflix Premium, Spotify Family"
+                                        value={storeAlias}
+                                        onChange={(e) => setStoreAlias(e.target.value)}
                                     />
                                 </div>
 

@@ -43,6 +43,9 @@ export async function POST(request: NextRequest) {
             faq_items = [],
             needs_code = false,
             code_url = null,
+            code_source = 'manual',
+            telegram_bot_username = null,
+            telegram_user_identifier = null,
         } = body;
 
         if (!platform || !supplier_name) {
@@ -63,6 +66,9 @@ export async function POST(request: NextRequest) {
                 faq_items,
                 needs_code,
                 code_url,
+                code_source,
+                telegram_bot_username,
+                telegram_user_identifier,
             })
             .select()
             .single();
@@ -99,6 +105,9 @@ export async function PUT(request: NextRequest) {
             faq_items,
             needs_code,
             code_url,
+            code_source,
+            telegram_bot_username,
+            telegram_user_identifier,
         } = body;
 
         const supabase = await getSupabase();
@@ -112,6 +121,9 @@ export async function PUT(request: NextRequest) {
                 ...(faq_items !== undefined && { faq_items }),
                 ...(needs_code !== undefined && { needs_code }),
                 ...(code_url !== undefined && { code_url }),
+                ...(code_source !== undefined && { code_source }),
+                ...(telegram_bot_username !== undefined && { telegram_bot_username }),
+                ...(telegram_user_identifier !== undefined && { telegram_user_identifier }),
             })
             .eq('id', id)
             .select()

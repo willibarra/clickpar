@@ -71,7 +71,7 @@ export function PortalNav() {
     const pathname = usePathname();
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 backdrop-blur-xl sm:static sm:border-t-0 sm:border-b sm:border-border/50 sm:bg-transparent sm:backdrop-blur-none">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/95 backdrop-blur-xl sm:sticky sm:top-16 sm:border-t-0 sm:border-b sm:border-border/50 sm:bg-background/80 sm:backdrop-blur-xl">
             <div className="mx-auto flex max-w-2xl items-center justify-around px-4 sm:justify-start sm:gap-1">
                 {navItems.map((item) => {
                     const isActive = item.href === '/cliente'

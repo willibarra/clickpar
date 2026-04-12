@@ -159,7 +159,7 @@ export default function ExtractoPage() {
                                 : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
                                 }`}
                         >
-                            {new Intl.NumberFormat('es-PY').format(amt / 1000)}k
+                            {new Intl.NumberFormat('es-PY').format(amt)}
                         </button>
                     ))}
                 </div>
@@ -200,7 +200,7 @@ export default function ExtractoPage() {
                     >
                         <MessageCircle className="h-4 w-4 flex-shrink-0" />
                         <span className="leading-tight text-center">
-                            Pagar con<br /><span className="text-xs font-bold">Transferencia</span>
+                            Pagar con<br /><span className="text-xs font-bold">Alias (WhatsApp)</span>
                         </span>
                     </a>
 

@@ -7,6 +7,7 @@ import { Loader2, Tv, AlertTriangle, ShieldCheck, Copy, Check, Zap, Lock, Histor
 interface Service {
     saleId: string;
     platform: string;
+    platformNicknames: string[];
     email: string;
     password: string;
     pin: string | null;
@@ -215,23 +216,38 @@ export default function PortalDashboard() {
             {/* Services grid */}
             {services.length > 0 ? (
                 <div className="space-y-4">
-                    {services.map((service) => (
-                        <ServiceCard
-                            key={service.saleId}
-                            saleId={service.saleId}
-                            platform={service.platform}
-                            email={service.email}
-                            password={service.password}
-                            pin={service.pin}
-                            profile={service.profile}
-                            expiresAt={service.expiresAt}
-                            supplierName={service.supplierName}
-                            needsCode={service.needsCode}
-                            codeUrl={service.codeUrl}
-                            codeSource={service.codeSource}
-                            isCanje={service.isCanje}
-                        />
-                    ))}
+                    {(() => {
+                        // Build alternating alias counter per platform
+                        const aliasCounters = new Map<string, number>();
+                        return services.map((service) => {
+                            let displayName: string | undefined;
+                            if (service.platformNicknames && service.platformNicknames.length > 0) {
+                                const nicknames = service.platformNicknames;
+                                const counter = aliasCounters.get(service.platform) || 0;
+                                displayName = nicknames[counter % nicknames.length];
+                                aliasCounters.set(service.platform, counter + 1);
+                            }
+                            return (
+                                <ServiceCard
+                                    key={service.saleId}
+                                    saleId={service.saleId}
+                                    platform={service.platform}
+                                    displayName={displayName}
+                                    email={service.email}
+                                    password={service.password}
+                                    pin={service.pin}
+                                    profile={service.profile}
+                                    expiresAt={service.expiresAt}
+                                    amount={service.amount}
+                                    supplierName={service.supplierName}
+                                    needsCode={service.needsCode}
+                                    codeUrl={service.codeUrl}
+                                    codeSource={service.codeSource}
+                                    isCanje={service.isCanje}
+                                />
+                            );
+                        });
+                    })()}
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/50 bg-card py-16 text-center">

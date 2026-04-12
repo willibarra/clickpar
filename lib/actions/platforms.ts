@@ -50,6 +50,10 @@ export async function createPlatform(formData: FormData) {
         } catch { data.nicknames = []; }
     }
 
+    // Store alias
+    const storeAlias = formData.get('store_alias') as string;
+    data.store_alias = storeAlias || null;
+
     // Check if there's an inactive platform with the same name (previously deleted)
     const { data: existing } = await (supabase.from('platforms') as any)
         .select('id')
@@ -117,6 +121,12 @@ export async function updatePlatform(id: string, formData: FormData) {
         try {
             data.nicknames = JSON.parse(nicknamesStr);
         } catch { data.nicknames = []; }
+    }
+
+    // Store alias
+    const storeAlias = formData.get('store_alias') as string;
+    if (storeAlias !== undefined && storeAlias !== null) {
+        data.store_alias = storeAlias || null;
     }
 
     const { error } = await (supabase.from('platforms') as any)

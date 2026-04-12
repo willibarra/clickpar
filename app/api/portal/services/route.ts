@@ -112,10 +112,26 @@ export async function GET() {
                 (accounts || []).forEach((a: any) => accountMap.set(a.id, a));
             }
 
+            // Fetch platform nicknames for alias display
+            const uniquePlatforms = [...new Set([...accountMap.values()].map((a: any) => a.platform).filter(Boolean))];
+            const platformNicknamesMap = new Map<string, string[]>();
+            if (uniquePlatforms.length > 0) {
+                const { data: platformRows } = await (admin.from('platforms') as any)
+                    .select('name, nicknames')
+                    .in('name', uniquePlatforms);
+                (platformRows || []).forEach((p: any) => {
+                    if (p.nicknames && Array.isArray(p.nicknames) && p.nicknames.length > 0) {
+                        platformNicknamesMap.set(p.name, p.nicknames);
+                    }
+                });
+            }
+
             slots.forEach((s: any) => {
+                const acct = accountMap.get(s.mother_account_id) || null;
                 slotMap.set(s.id, {
                     ...s,
-                    mother_account: accountMap.get(s.mother_account_id) || null,
+                    mother_account: acct,
+                    platform_nicknames: acct ? (platformNicknamesMap.get(acct.platform) || []) : [],
                 });
             });
         }
@@ -132,7 +148,7 @@ export async function GET() {
     }
     if (configKeys.size > 0) {
         const { data: configs } = await (admin.from('provider_support_config') as any)
-            .select('platform, supplier_name, code_url, needs_code, support_instructions');
+            .select('platform, supplier_name, code_url, needs_code, support_instructions, code_source');
         if (configs) {
             configs.forEach((c: any) => {
                 providerConfigs.set(`${c.platform}||${c.supplier_name}`, c);
@@ -149,6 +165,7 @@ export async function GET() {
         return {
             saleId: sale.id,
             platform: account?.platform || 'Desconocido',
+            platformNicknames: slot?.platform_nicknames || [],
             email: account?.email || '',
             password: account?.password || '',
             pin: slot?.pin_code || null,

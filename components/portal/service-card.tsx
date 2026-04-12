@@ -1,19 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink, Send } from 'lucide-react';
+import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink, Send, Wallet } from 'lucide-react';
 import { CodeIframeModal } from './code-iframe-modal';
 import { CodeRequestModal } from './code-request-modal';
 
 interface ServiceCardProps {
     saleId?: string;
     platform: string;
+    displayName?: string;
     email: string;
     password: string;
     pin?: string | null;
     profile?: string | null;
     expiresAt: string | null;
     renewalDate?: string | null;
+    amount?: number;
     supplierName?: string | null;
     needsCode?: boolean;
     codeUrl?: string | null;
@@ -116,25 +118,30 @@ function TelegramCodeButton({ saleId, platform }: { saleId: string; platform: st
     );
 }
 
-function RenewButton({ saleId }: { saleId: string }) {
+function RenewWithBalanceButton({ saleId, amount }: { saleId: string; amount?: number }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState(false);
 
     const handleRenew = async () => {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/pagopar/crear-pago', {
+            const res = await fetch('/api/portal/renew', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sale_id: saleId }),
             });
             const data = await res.json();
-            if (data.success && data.paymentUrl) {
-                // Open PagoPar payment page in new tab
-                window.open(data.paymentUrl, '_blank', 'noopener,noreferrer');
+            if (data.success) {
+                setSuccess(true);
+                // Reload to update card info
+                setTimeout(() => window.location.reload(), 1500);
+            } else if (data.code === 'INSUFFICIENT_BALANCE') {
+                // Redirect to wallet recharge
+                window.location.href = '/cliente/extracto';
             } else {
-                setError(data.error || 'Error al generar el pago');
+                setError(data.error || 'Error al renovar');
             }
         } catch {
             setError('Error de conexión');
@@ -142,6 +149,15 @@ function RenewButton({ saleId }: { saleId: string }) {
             setLoading(false);
         }
     };
+
+    if (success) {
+        return (
+            <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 py-2.5 text-sm font-medium text-emerald-400">
+                <Check className="h-4 w-4" />
+                ¡Renovado con éxito!
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-2">
@@ -153,9 +169,9 @@ function RenewButton({ saleId }: { saleId: string }) {
                 {loading ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
                 ) : (
-                    <ExternalLink className="h-4 w-4" />
+                    <Wallet className="h-4 w-4" />
                 )}
-                {loading ? 'Generando pago…' : 'Renovar ahora'}
+                {loading ? 'Renovando…' : `Renovar con Saldo${amount ? ` (Gs. ${amount.toLocaleString('es-PY')})` : ''}`}
             </button>
             {error && (
                 <p className="text-center text-xs text-red-400">{error}</p>
@@ -164,7 +180,7 @@ function RenewButton({ saleId }: { saleId: string }) {
     );
 }
 
-export function ServiceCard({ saleId, platform, email, password, pin, profile, expiresAt, supplierName, needsCode, codeUrl, codeSource, isCanje }: ServiceCardProps) {
+export function ServiceCard({ saleId, platform, displayName, email, password, pin, profile, expiresAt, amount, supplierName, needsCode, codeUrl, codeSource, isCanje }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
     const platformInfo = PLATFORM_ICONS[platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
     const expiryBadge = getExpiryBadge(expiresAt, isCanje);
@@ -195,6 +211,9 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
             ? new Date(expiresAt).toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
             : null;
 
+    // Use displayName (alias) if provided, otherwise fall back to platform name
+    const shownName = displayName || platform;
+
     return (
         <div className="overflow-hidden rounded-2xl border border-border/50 bg-card transition-all hover:border-border">
             {/* Platform header */}
@@ -203,13 +222,20 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                     <div className="flex items-center gap-3">
                         <span className="text-2xl">{platformInfo.emoji}</span>
                         <div>
-                            <h3 className="text-lg font-bold text-white">{platform}</h3>
+                            <h3 className="text-lg font-bold text-white">{shownName}</h3>
                             {profile && <p className="text-xs text-white/70">Perfil: {profile}</p>}
                         </div>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${expiryBadge.color}`}>
-                        {expiryBadge.label}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${expiryBadge.color}`}>
+                            {expiryBadge.label}
+                        </span>
+                        {formattedDate && (
+                            <span className="text-[10px] text-white/60">
+                                Vence: {formattedDate}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -250,7 +276,7 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                 {pin && (
                     <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            PIN / Código
+                            PIN
                         </label>
                         <div className="flex items-center rounded-lg bg-muted/50 px-3 py-2">
                             <span className="flex-1 text-sm font-mono text-foreground">{pin}</span>
@@ -265,16 +291,8 @@ export function ServiceCard({ saleId, platform, email, password, pin, profile, e
                 {/* Telegram code request button */}
                 {showTelegramCode && <TelegramCodeButton saleId={saleId!} platform={platform} />}
 
-                {/* Expiry date */}
-                {formattedDate && (
-                    <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                        <span>Vence el</span>
-                        <span className="font-medium text-foreground">{formattedDate}</span>
-                    </div>
-                )}
-
                 {/* Renovar button — only when <= 7 days or expired */}
-                {showRenovar && <RenewButton saleId={saleId!} />}
+                {showRenovar && <RenewWithBalanceButton saleId={saleId!} amount={amount} />}
             </div>
         </div>
     );

@@ -51,7 +51,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     // Step 2: Fetch active sales (plain — PostgREST FK not registered for customers join)
     const { data: activeSales } = await supabase
         .from('sales')
-        .select('id, slot_id, customer_id, start_date, end_date, amount_gs')
+        .select('id, slot_id, customer_id, start_date, end_date, amount_gs, created_at')
         .eq('is_active', true);
 
     // Fetch manual reminder counts

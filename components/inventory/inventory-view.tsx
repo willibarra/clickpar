@@ -29,6 +29,7 @@ interface Slot {
         end_date: string | null;
         is_active: boolean;
         amount_gs?: number;
+        created_at?: string;
         reminders_sent?: number;
         notification_status?: { triggered_by: string; sent_at: string } | null;
         customers: { id: string; full_name: string | null; phone: string | null } | null;
@@ -1005,7 +1006,12 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                     </div>
                                                 </td>
                                                 <td className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
-                                                    {account.last_provider_payment_at ? formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past') : '—'}
+                                                    {account.last_provider_payment_at ? (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-xs text-muted-foreground">{formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past')}</span>
+                                                            <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(account.last_provider_payment_at.split('T')[0])}</span>
+                                                        </div>
+                                                    ) : '—'}
                                                 </td>
                                                 <td className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
                                                     {account.is_autopay
@@ -1093,7 +1099,12 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                     </div>
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle text-xs text-muted-foreground ${leftBg}`}>
-                                                                    {account.last_provider_payment_at ? formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past') : '—'}
+                                                                    {account.last_provider_payment_at ? (
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="text-xs text-muted-foreground">{formatRelativeOnly(account.last_provider_payment_at.split('T')[0], 'past')}</span>
+                                                                            <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(account.last_provider_payment_at.split('T')[0])}</span>
+                                                                        </div>
+                                                                    ) : '—'}
                                                                 </td>
                                                                 <td rowSpan={rowCount} className={`px-4 py-3 align-middle border-r border-border/50 ${leftBg}`}>
                                                                     {account.is_autopay
@@ -1150,8 +1161,11 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                             );
                                                         })()}
                                                         <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
-                                                            {activeSale?.start_date ? (
-                                                                <span className="text-xs text-muted-foreground">{formatRelativeOnly(activeSale.start_date, 'past')}</span>
+                                                            {activeSale?.created_at ? (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <span className="text-xs text-muted-foreground">{formatRelativeOnly(activeSale.created_at.split('T')[0], 'past')}</span>
+                                                                    <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(activeSale.created_at.split('T')[0])}</span>
+                                                                </div>
                                                             ) : (
                                                                 <span className="text-xs text-muted-foreground/30">—</span>
                                                             )}
@@ -1161,20 +1175,26 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                                 <div className="flex flex-col gap-0.5">
                                                                     <div className="flex items-center gap-1">
                                                                         <span className={`text-xs font-medium ${expiryColor(endDate)}`}>{formatRelativeOnly(endDate, 'future')}</span>
-                                                                        {activeSale?.notification_status && (
+                                                                        {(() => {
+                                                                            // Only show notification icon if within 7 days of expiry or expired
+                                                                            const now = new Date(); now.setHours(0,0,0,0);
+                                                                            const end = new Date(endDate + 'T12:00:00');
+                                                                            const daysLeft = Math.round((end.getTime() - now.getTime()) / (1000*60*60*24));
+                                                                            return activeSale?.notification_status && daysLeft <= 7;
+                                                                        })() && (
                                                                             <span
                                                                                 className="text-[10px] cursor-default"
                                                                                 title={
-                                                                                    activeSale.notification_status.triggered_by === 'copied'
+                                                                                    activeSale!.notification_status!.triggered_by === 'copied'
                                                                                         ? 'Recordatorio copiado'
-                                                                                        : activeSale.notification_status.triggered_by === 'manual'
+                                                                                        : activeSale!.notification_status!.triggered_by === 'manual'
                                                                                         ? 'Recordatorio enviado manualmente'
                                                                                         : 'Recordatorio automático'
                                                                                 }
                                                                             >
-                                                                                {activeSale.notification_status.triggered_by === 'copied'
+                                                                                {activeSale!.notification_status!.triggered_by === 'copied'
                                                                                     ? '📋'
-                                                                                    : activeSale.notification_status.triggered_by === 'manual'
+                                                                                    : activeSale!.notification_status!.triggered_by === 'manual'
                                                                                     ? '👤'
                                                                                     : '🤖'}
                                                                             </span>

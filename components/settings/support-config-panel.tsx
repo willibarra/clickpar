@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-    Plus, Pencil, Trash2, Loader2, Check, X, ChevronDown, ChevronUp,
+    Plus, Pencil, Trash2, Loader2, Check, X, ChevronDown, ChevronRight,
     HelpCircle, ListChecks, Link, ToggleLeft, ToggleRight, Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PlatformIcon } from '@/components/ui/platform-icon';
+import { createBrowserClient } from '@supabase/ssr';
 
 interface FaqItem {
     q: string;
@@ -23,6 +25,8 @@ interface SupportConfig {
     needs_code: boolean;
     code_url: string | null;
     code_source: string;
+    telegram_bot_username: string | null;
+    telegram_user_identifier: string | null;
 }
 
 const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
@@ -34,6 +38,8 @@ const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
     needs_code: false,
     code_url: null,
     code_source: 'manual',
+    telegram_bot_username: null,
+    telegram_user_identifier: null,
 };
 
 // ─── Step List Editor ──────────────────────────────────────────────────────
@@ -135,58 +141,139 @@ function FaqListEditor({
     );
 }
 
-// ─── Config Row ────────────────────────────────────────────────────────────
+// ─── Supplier Card (expandable details within a platform) ──────────────────
 
-function ConfigRow({
+function SupplierCard({
     config,
+    isExpanded,
+    onToggle,
     onEdit,
     onDelete,
 }: {
     config: SupportConfig;
+    isExpanded: boolean;
+    onToggle: () => void;
     onEdit: (c: SupportConfig) => void;
     onDelete: (id: string) => void;
 }) {
     const [deleting, setDeleting] = useState(false);
 
     return (
-        <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 px-4 py-3 gap-3">
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-foreground text-sm">{config.platform}</span>
-                    <span className="text-muted-foreground text-xs">·</span>
-                    <span className="text-xs text-muted-foreground">{config.supplier_name}</span>
+        <div className="rounded-lg border border-border/30 bg-muted/5 overflow-hidden transition-all">
+            {/* Supplier header */}
+            <button
+                onClick={onToggle}
+                className="flex w-full items-center justify-between px-4 py-3 hover:bg-muted/10 transition-colors"
+            >
+                <div className="flex items-center gap-2.5">
+                    {isExpanded
+                        ? <ChevronDown className="h-3.5 w-3.5 text-[#86EFAC]" />
+                        : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    }
+                    <span className="text-sm font-medium text-foreground">{config.supplier_name}</span>
                     {config.needs_code && (
                         <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-400">
                             Necesita código
                         </span>
                     )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {config.help_steps.length} pasos · {config.faq_items.length} FAQs
-                </p>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                    onClick={() => onEdit(config)}
-                    className="rounded-md p-1.5 text-muted-foreground hover:text-[#86EFAC] hover:bg-[#86EFAC]/10 transition-colors"
-                    title="Editar"
-                >
-                    <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    onClick={async () => {
-                        if (!confirm(`¿Eliminar ${config.platform} - ${config.supplier_name}?`)) return;
-                        setDeleting(true);
-                        await onDelete(config.id);
-                        setDeleting(false);
-                    }}
-                    disabled={deleting}
-                    className="rounded-md p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title="Eliminar"
-                >
-                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                </button>
-            </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{config.help_steps.length} pasos</span>
+                    <span>·</span>
+                    <span>{config.faq_items.length} FAQs</span>
+                </div>
+            </button>
+
+            {/* Expanded details */}
+            {isExpanded && (
+                <div className="px-4 pb-4 pt-1 border-t border-border/20 space-y-4">
+                    {/* Instructions */}
+                    {config.support_instructions && (
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Instrucciones</p>
+                            <p className="text-sm text-foreground/80 bg-muted/10 rounded-lg px-3 py-2 border border-border/20 whitespace-pre-wrap">
+                                {config.support_instructions}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Steps */}
+                    {config.help_steps.length > 0 && (
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Pasos de ayuda</p>
+                            <div className="space-y-1.5">
+                                {config.help_steps.map((step, i) => (
+                                    <div key={i} className="flex items-start gap-2 text-sm text-foreground/80">
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/15 text-[10px] font-bold text-[#86EFAC] mt-0.5">
+                                            {i + 1}
+                                        </span>
+                                        <span>{step}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FAQs */}
+                    {config.faq_items.length > 0 && (
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Preguntas frecuentes</p>
+                            <div className="space-y-2">
+                                {config.faq_items.map((faq, i) => (
+                                    <div key={i} className="bg-muted/10 rounded-lg px-3 py-2 border border-border/20">
+                                        <p className="text-sm font-medium text-foreground/90">❓ {faq.q}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{faq.a}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Code source */}
+                    {config.needs_code && (
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Fuente de código</p>
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-xs font-medium text-blue-400">
+                                {config.code_source === 'manual' ? '🤝 Manual' :
+                                 config.code_source === 'iframe' ? '🌐 iFrame' :
+                                 config.code_source === 'telegram_bot' ? '🤖 Telegram Bot' :
+                                 config.code_source === 'imap' ? '📨 IMAP' : config.code_source}
+                            </span>
+                            {config.code_url && (
+                                <p className="text-xs text-muted-foreground mt-1 font-mono truncate">{config.code_url}</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-border/20">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEdit(config)}
+                            className="text-xs h-7 gap-1.5"
+                        >
+                            <Pencil className="h-3 w-3" />
+                            Editar
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                                if (!confirm(`¿Eliminar ${config.platform} - ${config.supplier_name}?`)) return;
+                                setDeleting(true);
+                                await onDelete(config.id);
+                                setDeleting(false);
+                            }}
+                            disabled={deleting}
+                            className="text-xs h-7 gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/30"
+                        >
+                            {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            Eliminar
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -208,6 +295,45 @@ function EditModal({
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [openSection, setOpenSection] = useState<'instructions' | 'steps' | 'faqs' | 'code' | null>('instructions');
+    const [platformOptions, setPlatformOptions] = useState<string[]>([]);
+    const [supplierOptions, setSupplierOptions] = useState<string[]>([]);
+    const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+
+    // Load active platforms on mount
+    useEffect(() => {
+        if (!isNew) return;
+        const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+        supabase.from('platforms').select('name').eq('is_active', true).order('name').then(({ data }) => {
+            setPlatformOptions((data || []).map((p: any) => p.name));
+        });
+    }, [isNew]);
+
+    // Load suppliers when platform changes
+    useEffect(() => {
+        if (!isNew || !draft.platform) {
+            setSupplierOptions([]);
+            return;
+        }
+        setLoadingSuppliers(true);
+        const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+        supabase
+            .from('mother_accounts')
+            .select('supplier_name')
+            .eq('platform', draft.platform)
+            .is('deleted_at', null)
+            .then(({ data }) => {
+                // Get unique supplier names
+                const unique = [...new Set((data || []).map((r: any) => r.supplier_name).filter(Boolean))].sort();
+                setSupplierOptions(unique as string[]);
+                setLoadingSuppliers(false);
+            });
+    }, [isNew, draft.platform]);
 
     const set = (field: keyof SupportConfig, value: unknown) =>
         setDraft((d) => ({ ...d, [field]: value }));
@@ -235,8 +361,8 @@ function EditModal({
                 <span>{label}</span>
             </div>
             {openSection === id
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />
+                ? <ChevronDown className="h-4 w-4" />
+                : <ChevronRight className="h-4 w-4" />
             }
         </button>
     );
@@ -269,21 +395,40 @@ function EditModal({
                         <div className="grid grid-cols-2 gap-3 pb-3 border-b border-border/40">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Plataforma</label>
-                                <Input
+                                <select
                                     value={draft.platform || ''}
-                                    onChange={(e) => set('platform', e.target.value)}
-                                    placeholder="Netflix"
-                                    className="h-8 text-sm"
-                                />
+                                    onChange={(e) => {
+                                        setDraft(d => ({ ...d, platform: e.target.value, supplier_name: '' }));
+                                    }}
+                                    className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                                >
+                                    <option value="" disabled>Seleccionar...</option>
+                                    {platformOptions.map(p => (
+                                        <option key={p} value={p}>{p}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-muted-foreground">Proveedor</label>
-                                <Input
+                                <select
                                     value={draft.supplier_name || ''}
                                     onChange={(e) => set('supplier_name', e.target.value)}
-                                    placeholder="POP PREMIUM"
-                                    className="h-8 text-sm"
-                                />
+                                    disabled={!draft.platform || loadingSuppliers}
+                                    className={`w-full h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer ${!draft.platform ? 'opacity-50' : ''}`}
+                                >
+                                    <option value="" disabled>
+                                        {!draft.platform
+                                            ? 'Elegí plataforma primero'
+                                            : loadingSuppliers
+                                            ? 'Cargando...'
+                                            : supplierOptions.length === 0
+                                            ? 'Sin proveedores'
+                                            : 'Seleccionar...'}
+                                    </option>
+                                    {supplierOptions.map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     )}
@@ -394,11 +539,31 @@ function EditModal({
                                             </p>
                                         )}
 
-                                        {/* Telegram hint */}
+                                        {/* Telegram bot config */}
                                         {draft.code_source === 'telegram_bot' && (
-                                            <p className="text-xs text-[#818CF8]/80 bg-[#818CF8]/5 border border-[#818CF8]/15 rounded-lg px-3 py-2">
-                                                🤖 Se usará el UserBot de Telegram configurado en Ajustes → Telegram UserBot para pedir el código al proveedor.
-                                            </p>
+                                            <div className="space-y-3">
+                                                <p className="text-xs text-[#818CF8]/80 bg-[#818CF8]/5 border border-[#818CF8]/15 rounded-lg px-3 py-2">
+                                                    🤖 Se usará el UserBot de Telegram para pedir el código automáticamente al bot del proveedor.
+                                                </p>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-muted-foreground">Username del Bot del proveedor</label>
+                                                    <Input
+                                                        value={draft.telegram_bot_username || ''}
+                                                        onChange={(e) => set('telegram_bot_username', e.target.value || null)}
+                                                        placeholder="@autocodestream_bot"
+                                                        className="h-8 text-sm font-mono"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-muted-foreground">Tu usuario registrado en ese bot</label>
+                                                    <Input
+                                                        value={draft.telegram_user_identifier || ''}
+                                                        onChange={(e) => set('telegram_user_identifier', e.target.value || null)}
+                                                        placeholder="will"
+                                                        className="h-8 text-sm"
+                                                    />
+                                                </div>
+                                            </div>
                                         )}
                                     </>
                                 )}
@@ -441,6 +606,10 @@ export function SupportConfigPanel() {
     const [editTarget, setEditTarget] = useState<Partial<SupportConfig> | null>(null);
     const [isNew, setIsNew] = useState(false);
 
+    // Accordion state: only one platform open, only one supplier open
+    const [openPlatform, setOpenPlatform] = useState<string | null>(null);
+    const [openSupplier, setOpenSupplier] = useState<string | null>(null);
+
     const load = async () => {
         setLoading(true);
         try {
@@ -454,6 +623,7 @@ export function SupportConfigPanel() {
 
     useEffect(() => { load(); }, []);
 
+    // Filter configs by search
     const filtered = configs.filter((c) => {
         const q = search.toLowerCase();
         return (
@@ -461,6 +631,18 @@ export function SupportConfigPanel() {
             c.supplier_name.toLowerCase().includes(q)
         );
     });
+
+    // Group by platform
+    const grouped = useMemo(() => {
+        const map = new Map<string, SupportConfig[]>();
+        for (const c of filtered) {
+            const list = map.get(c.platform) || [];
+            list.push(c);
+            map.set(c.platform, list);
+        }
+        // Sort platforms alphabetically
+        return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+    }, [filtered]);
 
     const handleSave = async (draft: Partial<SupportConfig>) => {
         if (isNew) {
@@ -482,6 +664,20 @@ export function SupportConfigPanel() {
     const handleDelete = async (id: string) => {
         await fetch(`/api/admin/support-config?id=${id}`, { method: 'DELETE' });
         await load();
+    };
+
+    const togglePlatform = (platform: string) => {
+        if (openPlatform === platform) {
+            setOpenPlatform(null);
+            setOpenSupplier(null);
+        } else {
+            setOpenPlatform(platform);
+            setOpenSupplier(null);
+        }
+    };
+
+    const toggleSupplier = (supplierId: string) => {
+        setOpenSupplier(prev => prev === supplierId ? null : supplierId);
     };
 
     return (
@@ -507,27 +703,71 @@ export function SupportConfigPanel() {
                 </Button>
             </div>
 
-            {/* List */}
+            {/* Accordion List */}
             {loading ? (
                 <div className="flex justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-[#86EFAC]" />
                 </div>
-            ) : filtered.length === 0 ? (
+            ) : grouped.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">
                     {search ? 'Sin resultados para esa búsqueda' : 'No hay configuraciones de soporte'}
                 </p>
             ) : (
                 <div className="space-y-2">
-                    {filtered.map((c) => (
-                        <ConfigRow
-                            key={c.id}
-                            config={c}
-                            onEdit={(cfg) => { setIsNew(false); setEditTarget(cfg); }}
-                            onDelete={handleDelete}
-                        />
-                    ))}
+                    {grouped.map(([platform, platformConfigs]) => {
+                        const isOpen = openPlatform === platform;
+                        const supplierCount = platformConfigs.length;
+
+                        return (
+                            <div
+                                key={platform}
+                                className={`rounded-xl border transition-all ${
+                                    isOpen
+                                        ? 'border-[#86EFAC]/30 bg-[#86EFAC]/[0.03]'
+                                        : 'border-border/40 bg-card hover:border-border/60'
+                                }`}
+                            >
+                                {/* Platform header */}
+                                <button
+                                    onClick={() => togglePlatform(platform)}
+                                    className="flex w-full items-center justify-between px-4 py-3 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {isOpen
+                                            ? <ChevronDown className="h-4 w-4 text-[#86EFAC]" />
+                                            : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                        }
+                                        <PlatformIcon platform={platform} size={24} />
+                                        <span className={`font-semibold text-sm ${isOpen ? 'text-[#86EFAC]' : 'text-foreground'}`}>
+                                            {platform}
+                                        </span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground bg-muted/30 rounded-full px-2.5 py-0.5">
+                                        {supplierCount} proveedor{supplierCount !== 1 ? 'es' : ''}
+                                    </span>
+                                </button>
+
+                                {/* Supplier list (expanded) */}
+                                {isOpen && (
+                                    <div className="px-4 pb-3 space-y-2">
+                                        {platformConfigs.map((config) => (
+                                            <SupplierCard
+                                                key={config.id}
+                                                config={config}
+                                                isExpanded={openSupplier === config.id}
+                                                onToggle={() => toggleSupplier(config.id)}
+                                                onEdit={(cfg) => { setIsNew(false); setEditTarget(cfg); }}
+                                                onDelete={handleDelete}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
                     <p className="text-xs text-muted-foreground text-right pt-1">
-                        {filtered.length} configuración{filtered.length !== 1 ? 'es' : ''}
+                        {filtered.length} configuración{filtered.length !== 1 ? 'es' : ''} en {grouped.length} plataforma{grouped.length !== 1 ? 's' : ''}
                     </p>
                 </div>
             )}

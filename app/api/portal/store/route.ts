@@ -34,12 +34,25 @@ export async function GET() {
         return NextResponse.json({ error: 'Error al obtener productos' }, { status: 500 });
     }
 
+    // Fetch store_alias from platforms table
+    const platformNames = [...new Set((accounts || []).map((a: any) => a.platform).filter(Boolean))];
+    const storeAliasMap = new Map<string, string>();
+    if (platformNames.length > 0) {
+        const { data: platformRows } = await (admin.from('platforms') as any)
+            .select('name, store_alias')
+            .in('name', platformNames);
+        (platformRows || []).forEach((p: any) => {
+            if (p.store_alias) storeAliasMap.set(p.name, p.store_alias);
+        });
+    }
+
     const productsMap = new Map<string, any>();
     
     for (const acc of (accounts || [])) {
         const availableSlots = acc.sale_slots?.filter((s: any) => s.status === 'available').length || 0;
         const saleType = acc.sale_type === 'family' ? 'family' : 'profile';
         const basePrice = Number(acc.slot_price_gs ?? 25000);
+        const storeAlias = storeAliasMap.get(acc.platform) || null;
         
         // 1. Group regular accounts (Por Perfiles / Familia)
         const regularKey = `${acc.platform}_${saleType}`;
@@ -47,6 +60,7 @@ export async function GET() {
             productsMap.set(regularKey, {
                 id: acc.id, // we keep one representative account_id
                 platform: acc.platform,
+                storeAlias,
                 sale_type: saleType,
                 is_full_account: false,
                 priceGs: basePrice,
@@ -65,6 +79,7 @@ export async function GET() {
                 productsMap.set(fullKey, {
                     id: acc.id,
                     platform: acc.platform,
+                    storeAlias,
                     sale_type: 'full_account',
                     is_full_account: true,
                     priceGs: fullPrice,

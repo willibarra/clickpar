@@ -354,7 +354,8 @@ export default function SoportePage() {
                 </div>
             )}
 
-            {/* ── REPORTAR UN PROBLEMA ── */}
+            {/* ── REPORTAR UN PROBLEMA ── (Temporalmente oculto) */}
+            {false && (
             <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
                 <div className="flex items-center gap-2 border-b border-border/30 bg-muted/30 px-5 py-3.5">
                     <TicketCheck className="h-4 w-4 text-[#86EFAC]" />
@@ -426,6 +427,7 @@ export default function SoportePage() {
                     </button>
                 </form>
             </div>
+            )}
 
             {/* ── MIS TICKETS ── */}
             {(ticketsLoading || tickets.length > 0) && (

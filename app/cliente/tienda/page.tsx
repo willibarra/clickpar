@@ -10,6 +10,7 @@ import { useWallet } from '@/contexts/wallet-context';
 interface Product {
     id: string;
     platform: string;
+    storeAlias: string | null;
     sale_type: string;
     is_full_account: boolean;
     priceGs: number;
@@ -31,11 +32,12 @@ const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
 };
 
 function getProductTitle(product: Product) {
+    const name = product.storeAlias || product.platform;
     let typeLab = '';
     if (product.is_full_account) typeLab = '(Cuenta Completa)';
     else if (product.sale_type === 'family') typeLab = '(Tipo Familia)';
     else typeLab = '(Por Perfiles)';
-    return `${product.platform} ${typeLab}`;
+    return `${name} ${typeLab}`;
 }
 
 interface ConfirmModalProps {
