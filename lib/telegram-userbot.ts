@@ -169,9 +169,6 @@ export async function requestCodeFromBot(
             resolve({ ...result, rawMessages: collectedMessages });
         };
 
-        // Track last message ID for button clicking
-        let lastMsgId: number | null = null;
-
         // Helper to execute a step
         const executeStep = async (step: BotFlowStep) => {
             const delay = step.delayMs ?? 1500;
@@ -181,52 +178,45 @@ export async function requestCodeFromBot(
             if (step.clickButtonText) {
                 console.log(`[TelegramUserBot] Step ${stepIndex + 1}/${steps.length}: clicking button "${step.clickButtonText}"`);
                 
-                // Re-fetch the last message to get its replyMarkup
-                if (lastMsgId) {
-                    try {
-                        const msgs = await client.getMessages(botEntity, { ids: [lastMsgId] });
-                        const msg = msgs?.[0];
-                        if (msg?.replyMarkup) {
-                            const searchText = step.clickButtonText.toLowerCase();
-                            const markup = msg.replyMarkup;
-                            
-                            // Search for the button in inline markup
-                            if ('rows' in markup) {
-                                for (const row of (markup as any).rows || []) {
-                                    for (const button of row.buttons || []) {
-                                        if (button.text?.toLowerCase().includes(searchText) && button.data) {
-                                            console.log(`[TelegramUserBot] Found button "${button.text}", sending callback...`);
-                                            
-                                            // Fire callback with 3s timeout — don't wait for bot's answer popup
-                                            const callbackPromise = client.invoke(
-                                                new Api.messages.GetBotCallbackAnswer({
-                                                    peer: msg.peerId!,
-                                                    msgId: msg.id,
-                                                    data: button.data,
-                                                })
-                                            );
-                                            
-                                            // Race: either callback completes or we timeout after 3s
-                                            // Either way, the callback DATA was sent to Telegram servers
-                                            await Promise.race([
-                                                callbackPromise.catch(() => {}),
-                                                new Promise(r => setTimeout(r, 3000)),
-                                            ]);
-                                            
-                                            console.log(`[TelegramUserBot] Callback sent successfully`);
-                                            return;
-                                        }
-                                    }
+                try {
+                    // Get the last few messages from this chat to find the one with buttons
+                    const messages = await client.getMessages(botEntity, { limit: 5 });
+                    const searchText = step.clickButtonText.toLowerCase();
+                    
+                    for (const msg of messages) {
+                        if (!msg?.replyMarkup || !('rows' in msg.replyMarkup)) continue;
+                        
+                        // Search buttons in this message
+                        const rows = (msg.replyMarkup as any).rows || [];
+                        for (let i = 0; i < rows.length; i++) {
+                            const buttons = rows[i].buttons || [];
+                            for (let j = 0; j < buttons.length; j++) {
+                                if (buttons[j].text?.toLowerCase().includes(searchText)) {
+                                    console.log(`[TelegramUserBot] Found button "${buttons[j].text}" at [${i},${j}], clicking via message.click()...`);
+                                    
+                                    // Use GramJS native .click() method with timeout
+                                    const clickPromise = (msg as any).click(i, j);
+                                    await Promise.race([
+                                        clickPromise.catch((e: any) => {
+                                            console.log(`[TelegramUserBot] Click result: ${e?.message || 'ok'}`);
+                                        }),
+                                        new Promise(r => setTimeout(r, 5000)),
+                                    ]);
+                                    
+                                    console.log(`[TelegramUserBot] Button click completed`);
+                                    return;
                                 }
                             }
                         }
-                    } catch (err: any) {
-                        console.log(`[TelegramUserBot] Error fetching message for button: ${err.message}`);
                     }
+                    
+                    console.log(`[TelegramUserBot] No button matching "${step.clickButtonText}" found in recent messages`);
+                } catch (err: any) {
+                    console.log(`[TelegramUserBot] Button click error: ${err.message}`);
                 }
                 
-                // Fallback: send button text as message (probably won't work but try)
-                console.log(`[TelegramUserBot] Fallback: sending button text as message`);
+                // Fallback: send button text
+                console.log(`[TelegramUserBot] Fallback: sending text "${step.clickButtonText}"`);
                 await client.sendMessage(botEntity, { message: step.clickButtonText });
                 return;
             }
@@ -249,7 +239,6 @@ export async function requestCodeFromBot(
             
             const text = msg.text;
             collectedMessages.push(text);
-            lastMsgId = msg.id; // Store for button clicking
             
             console.log(`[TelegramUserBot] Bot reply (step ${stepIndex}): ${text.substring(0, 200)}`);
             
