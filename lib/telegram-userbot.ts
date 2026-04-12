@@ -25,10 +25,11 @@ export interface BotFlowStep {
     /** Message to send to the bot */
     message: string;
     /** 
-     * Pattern to match in the bot's reply to know the step succeeded.
-     * If null, any reply is accepted.
+     * Pattern to match in the bot's reply before advancing to the next step.
+     * If a message doesn't match, it's treated as an intermediate message and skipped.
+     * If null/undefined, the step advances on any reply.
      */
-    expectedPattern?: RegExp | null;
+    waitForPattern?: RegExp | null;
     /** Delay (ms) before sending this step. Default: 1500 */
     delayMs?: number;
 }
@@ -96,10 +97,6 @@ export async function disconnectClient(): Promise<void> {
     }
 }
 
-// ==========================================
-// Code Request Flow
-// ==========================================
-
 /**
  * Extract a numeric verification code from a message text.
  * Looks for 4-8 digit numbers that look like verification codes.
@@ -135,11 +132,9 @@ export function extractCodeFromMessage(text: string): string | null {
 /**
  * Send a sequence of messages to a Telegram bot and wait for the verification code.
  * 
- * This implements the typical flow:
- * 1. /start
- * 2. username (e.g. "will")
- * 3. email
- * 4. Wait for the code message
+ * This implements a conversational flow where each step waits for a specific
+ * bot reply pattern before sending the next message. This handles bots that
+ * send multiple messages per interaction (e.g. warnings + prompts).
  * 
  * @param client - Connected TelegramClient
  * @param botUsername - Bot to interact with (e.g. "autocodestream_bot")
@@ -166,10 +161,11 @@ export async function requestCodeFromBot(
         return { success: false, error: `No se pudo encontrar al bot ${botUsername}: ${err.message}` };
     }
 
-    const botId = botEntity.id.toString();
-
     return new Promise<CodeRequestResult>(async (resolve) => {
         let resolved = false;
+        // stepIndex tracks which step's REPLY we're waiting for.
+        // We've already sent steps[stepIndex] and are waiting for a reply that matches
+        // the waitForPattern before sending steps[stepIndex + 1].
         let stepIndex = 0;
 
         const cleanup = () => {
@@ -199,9 +195,9 @@ export async function requestCodeFromBot(
             const text = msg.text;
             collectedMessages.push(text);
             
-            console.log(`[TelegramUserBot] Bot reply: ${text.substring(0, 200)}`);
+            console.log(`[TelegramUserBot] Bot reply (step ${stepIndex}): ${text.substring(0, 200)}`);
             
-            // Try to extract code from every message
+            // Always try to extract code from every message
             const code = extractCodeFromMessage(text);
             if (code) {
                 console.log(`[TelegramUserBot] ✅ Code found: ${code}`);
@@ -209,35 +205,40 @@ export async function requestCodeFromBot(
                 return;
             }
 
-            // If we're still in the step sequence, check if the current step's expected pattern matches
-            if (stepIndex < steps.length) {
-                const currentStep = steps[stepIndex];
-                if (currentStep.expectedPattern) {
-                    if (!currentStep.expectedPattern.test(text)) {
-                        // Unexpected response — could be an error from the bot
-                        if (/error|denied|acceso denegado|no autorizado|failed/i.test(text)) {
-                            done({ success: false, error: `Bot respondió con error: ${text.substring(0, 200)}` });
-                            return;
-                        }
-                    }
-                }
-                
-                // Send next step
-                stepIndex++;
-                if (stepIndex < steps.length) {
-                    const nextStep = steps[stepIndex];
-                    const delay = nextStep.delayMs ?? 1500;
-                    setTimeout(async () => {
-                        try {
-                            console.log(`[TelegramUserBot] Sending step ${stepIndex + 1}: ${nextStep.message}`);
-                            await client.sendMessage(botEntity, { message: nextStep.message });
-                        } catch (err: any) {
-                            done({ success: false, error: `Error al enviar mensaje: ${err.message}` });
-                        }
-                    }, delay);
-                }
-                // If stepIndex >= steps.length, we've sent all steps — just wait for the code
+            // Check for error messages
+            if (/error|denied|acceso denegado|no autorizado|failed|bloqueado/i.test(text) &&
+                !/importante|antes de/i.test(text)) {
+                done({ success: false, error: `Bot respondió con error: ${text.substring(0, 200)}` });
+                return;
             }
+
+            // Check if this message matches the waitForPattern of the current step.
+            // Only when it matches do we advance and send the next step.
+            const currentStep = steps[stepIndex];
+            if (currentStep?.waitForPattern) {
+                if (!currentStep.waitForPattern.test(text)) {
+                    // This message doesn't match the pattern we're waiting for.
+                    // It's probably an intermediate message (warning, etc.) — skip.
+                    console.log(`[TelegramUserBot] Intermediate message, waiting for pattern...`);
+                    return;
+                }
+            }
+            
+            // Pattern matched (or no pattern specified) — advance to next step
+            stepIndex++;
+            if (stepIndex < steps.length) {
+                const nextStep = steps[stepIndex];
+                const delay = nextStep.delayMs ?? 1500;
+                setTimeout(async () => {
+                    try {
+                        console.log(`[TelegramUserBot] Sending step ${stepIndex + 1}/${steps.length}: ${nextStep.message}`);
+                        await client.sendMessage(botEntity, { message: nextStep.message });
+                    } catch (err: any) {
+                        done({ success: false, error: `Error al enviar mensaje: ${err.message}` });
+                    }
+                }, delay);
+            }
+            // If stepIndex >= steps.length, we've sent all steps — just wait for the code
         };
 
         client.addEventHandler(handler, event);
@@ -257,7 +258,7 @@ export async function requestCodeFromBot(
             
             await new Promise(r => setTimeout(r, firstDelay));
             
-            console.log(`[TelegramUserBot] Sending step 1: ${firstStep.message}`);
+            console.log(`[TelegramUserBot] Sending step 1/${steps.length}: ${firstStep.message}`);
             await client.sendMessage(botEntity, { message: firstStep.message });
         } catch (err: any) {
             done({ success: false, error: `Error al iniciar comunicación con bot: ${err.message}` });
@@ -266,12 +267,21 @@ export async function requestCodeFromBot(
 }
 
 // ==========================================
-// High-Level: Process a Code Request
+// Flow Builders
 // ==========================================
 
 /**
- * Build the standard flow steps for @autocodestream_bot
- * Flow: /start → user → email → wait for code
+ * Build the flow for @autocodestream_bot
+ * 
+ * Real flow observed:
+ * 1. User sends /start
+ * 2. Bot replies with buttons: "Soy cliente" / "Soy administrador"
+ * 3. User sends "🔐 Soy administrador"  
+ * 4. Bot sends warning + "dime tu usuario o perfil"
+ * 5. User sends username (e.g. "will")
+ * 6. Bot confirms user, asks for email
+ * 7. User sends email
+ * 8. Bot searches and sends the verification code
  */
 export function buildAutocodeStreamFlow(
     userIdentifier: string,
@@ -280,27 +290,36 @@ export function buildAutocodeStreamFlow(
     return [
         {
             message: '/start',
-            expectedPattern: /hola|bienvenid|asistente|comenzar|verificaci/i,
+            // Wait for the greeting with buttons
+            waitForPattern: /continuar|asistente|verificaci[oó]n|hola/i,
             delayMs: 500,
         },
         {
+            message: '🔐 Soy administrador',
+            // Wait for "dime tu usuario o perfil" (skip warning messages)
+            waitForPattern: /usuario|perfil|dime tu/i,
+            delayMs: 1500,
+        },
+        {
             message: userIdentifier,
-            expectedPattern: /confirmad|verificad|usuario/i,
-            delayMs: 2000,
+            // Wait for "dime el correo" or "confirmado"
+            waitForPattern: /correo|email|confirmad/i,
+            delayMs: 1500,
         },
         {
             message: accountEmail,
-            expectedPattern: /verificad|esperando|código|code/i,
-            delayMs: 2000,
+            // After sending email, the bot will look up and send the code.
+            // The handler will catch it via extractCodeFromMessage.
+            waitForPattern: /verificad|esperando|c[oó]digo|listo/i,
+            delayMs: 1500,
         },
-        // After sending email, the bot will respond and then eventually send the code.
-        // The handler will catch it via extractCodeFromMessage.
     ];
 }
 
 /**
  * Generic flow builder that works for most bots with the 
- * standard /start → identifier → email pattern
+ * standard /start → identifier → email pattern.
+ * Less strict pattern matching — advances on any reply.
  */
 export function buildGenericBotFlow(
     userIdentifier: string,
@@ -312,3 +331,4 @@ export function buildGenericBotFlow(
         { message: accountEmail, delayMs: 2500 },
     ];
 }
+

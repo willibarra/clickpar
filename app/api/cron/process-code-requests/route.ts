@@ -4,6 +4,7 @@ import {
     getClient,
     requestCodeFromBot,
     buildGenericBotFlow,
+    buildAutocodeStreamFlow,
     type TelegramSessionConfig,
 } from '@/lib/telegram-userbot';
 import {
@@ -269,10 +270,15 @@ export async function POST(req: Request) {
                     }
 
                     try {
-                        const steps = buildGenericBotFlow(userIdentifier, req.account_email);
+                        // Use the specific flow for autocodestream_bot, generic for others
+                        const cleanBotUsername = botUsername.replace('@', '').toLowerCase();
+                        const steps = cleanBotUsername === 'autocodestream_bot'
+                            ? buildAutocodeStreamFlow(userIdentifier, req.account_email)
+                            : buildGenericBotFlow(userIdentifier, req.account_email);
+                        
                         const result = await requestCodeFromBot(
                             client,
-                            botUsername.replace('@', ''),
+                            cleanBotUsername,
                             steps,
                             120_000,
                         );
