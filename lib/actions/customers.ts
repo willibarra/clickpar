@@ -216,3 +216,64 @@ export async function deleteCustomer(id: string) {
     revalidatePath('/inventory');
     return { success: true, cancelledSales: activeSales?.length || 0 };
 }
+
+/**
+ * Fusiona clientes duplicados en uno.
+ * Reasigna TODAS las ventas de `duplicateIds` al `primaryId` y elimina los duplicados.
+ */
+export async function mergeCustomers(primaryId: string, duplicateIds: string[]) {
+    if (!primaryId || !duplicateIds.length) {
+        return { error: 'Datos incompletos para la fusión.' };
+    }
+
+    const supabase = await createAdminClient();
+
+    // 1. Obtener info del cliente principal y de los duplicados (para audit)
+    const allIds = [primaryId, ...duplicateIds];
+    const { data: customers } = await (supabase.from('customers') as any)
+        .select('id, full_name, phone')
+        .in('id', allIds);
+
+    const primary = (customers || []).find((c: any) => c.id === primaryId);
+    const duplicates = (customers || []).filter((c: any) => duplicateIds.includes(c.id));
+
+    if (!primary) {
+        return { error: 'No se encontró el cliente principal.' };
+    }
+
+    // 2. Reasignar todas las sales de los duplicados al cliente principal
+    let totalTransferred = 0;
+    for (const dupId of duplicateIds) {
+        const { data: dupSales } = await (supabase.from('sales') as any)
+            .select('id')
+            .eq('customer_id', dupId);
+
+        if (dupSales && dupSales.length > 0) {
+            await (supabase.from('sales') as any)
+                .update({ customer_id: primaryId })
+                .eq('customer_id', dupId);
+            totalTransferred += dupSales.length;
+        }
+    }
+
+    // 3. Eliminar los clientes duplicados (ventas ya fueron reasignadas)
+    const { error: deleteError } = await (supabase.from('customers') as any)
+        .delete()
+        .in('id', duplicateIds);
+
+    if (deleteError) {
+        return { error: `Error al eliminar duplicados: ${deleteError.message}` };
+    }
+
+    // 4. Audit log
+    const dupNames = duplicates.map((d: any) => d.full_name || d.phone || d.id).join(', ');
+    await logAction('merge_customers', 'customer', primaryId, {
+        message: `fusionó duplicados [${dupNames}] en ${primary.full_name || primary.phone} — ${totalTransferred} servicio(s) transferido(s)`
+    });
+
+    revalidatePath('/customers');
+    revalidatePath('/renewals');
+    revalidatePath('/inventory');
+
+    return { success: true, transferred: totalTransferred };
+}

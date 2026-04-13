@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3, ShieldCheck
+    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3, ShieldCheck, GitMerge
 } from 'lucide-react';
 import { EditCustomerModal } from '@/components/customers/edit-customer-modal';
 import { WalletTopupModal } from '@/components/customers/wallet-topup-modal';
+import { MergeCustomersModal } from '@/components/customers/merge-customers-modal';
 import { PlatformIcon } from '@/components/ui/platform-icon';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
@@ -127,6 +128,8 @@ export function CustomersView({ customers }: CustomersViewProps) {
     // UI state
     const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
     const [autoEditId, setAutoEditId] = useState<string | null>(() => searchParams.get('edit'));
+    // Merge modal state
+    const [mergeGroup, setMergeGroup] = useState<CustomerRow[] | null>(null);
 
     // Clear ?edit=
     useEffect(() => {
@@ -141,6 +144,27 @@ export function CustomersView({ customers }: CustomersViewProps) {
     }, [searchParams]);
 
     function clearAutoEdit() { setAutoEditId(null); }
+
+    // ── Detect duplicates by normalized phone ──────────────────────
+    const duplicatePhoneMap = useMemo(() => {
+        // Map: normalizedPhone → CustomerRow[]
+        const groups = new Map<string, CustomerRow[]>();
+        customers.forEach(c => {
+            const norm = (c.phone || '').replace(/\D/g, '');
+            if (!norm || norm.length < 6) return; // skip empty/too-short
+            const arr = groups.get(norm) || [];
+            arr.push(c);
+            groups.set(norm, arr);
+        });
+        // Only keep groups with 2+ entries
+        const dupMap = new Map<string, CustomerRow[]>(); // customerId → full group
+        groups.forEach((group) => {
+            if (group.length >= 2) {
+                group.forEach(c => dupMap.set(c.id, group));
+            }
+        });
+        return dupMap;
+    }, [customers]);
 
     // Derive counts
     const counts = useMemo(() => {
@@ -202,6 +226,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
     }, [sortedCustomers, currentPage, pageSize]);
 
     return (
+        <>
         <div className="space-y-4">
             {/* ── Top controls bar ── */}
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -292,7 +317,7 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 mb-0.5">
+                                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                             <h3 className="font-semibold text-foreground text-sm truncate">{customer.full_name || 'Sin nombre'}</h3>
                                             {customer.portal_user_id && (
                                                 <span className="flex-shrink-0 inline-flex items-center gap-0.5 rounded bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-400 border border-sky-400/20" title="Tiene acceso al portal">
@@ -301,6 +326,17 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                             )}
                                             {customer.customer_type === 'creador' && (
                                                 <span className="flex-shrink-0 inline-flex items-center rounded bg-[#818CF8]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#818CF8]">🎬 CREADOR</span>
+                                            )}
+                                            {/* Duplicate badge */}
+                                            {duplicatePhoneMap.has(customer.id) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMergeGroup(duplicatePhoneMap.get(customer.id)!)}
+                                                    title="Teléfono duplicado — click para fusionar"
+                                                    className="flex-shrink-0 inline-flex items-center gap-0.5 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400 border border-amber-400/25 hover:bg-amber-400/25 transition-colors cursor-pointer"
+                                                >
+                                                    <GitMerge className="h-2.5 w-2.5" /> DUPLICADO
+                                                </button>
                                             )}
                                         </div>
                                         <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
@@ -452,7 +488,30 @@ export function CustomersView({ customers }: CustomersViewProps) {
                 </div>
             )}
         </div>
-    );
+
+        {/* Merge Modal */}
+        {mergeGroup && (
+            <MergeCustomersModal
+                open={true}
+                onClose={() => setMergeGroup(null)}
+                duplicates={mergeGroup.map(c => ({
+                    id: c.id,
+                    full_name: c.full_name,
+                    phone: c.phone,
+                    services: c.services,
+                    totalPurchases: c.totalPurchases,
+                    totalSpent: c.totalSpent,
+                }))}
+                suggestedPrimaryId={getSuggestedPrimaryId(mergeGroup)}
+            />
+        )}
+    </>);
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+
+function getSuggestedPrimaryId(group: CustomerRow[]) {
+    return [...group].sort((a, b) => b.totalPurchases - a.totalPurchases)[0]?.id || group[0].id;
 }
 
 // Helper icon component for inline usage
