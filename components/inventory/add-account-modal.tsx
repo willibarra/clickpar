@@ -103,6 +103,7 @@ export function AddAccountModal() {
     const [isAutopay, setIsAutopay] = useState(false);
     const [invitationUrl, setInvitationUrl] = useState('');
     const [inviteAddress, setInviteAddress] = useState('');
+    const [showInStore, setShowInStore] = useState(false);
 
     // Copy last record
     const [copyingLast, setCopyingLast] = useState(false);
@@ -158,6 +159,7 @@ export function AddAccountModal() {
             setIsAutopay(false);
             setInvitationUrl('');
             setInviteAddress('');
+            setShowInStore(false);
             setUsdtCost('');
             setGsCost('');
             setEditingRate(false);
@@ -380,6 +382,7 @@ export function AddAccountModal() {
             invitation_url: invitationUrl.trim() || null,
             invite_address: inviteAddress.trim() || null,
             custom_slots: parsedCustomSlots,
+            show_in_store: showInStore,
         };
     }
 
@@ -476,6 +479,7 @@ export function AddAccountModal() {
             if (inviteAddress.trim()) {
                 formData.set('invite_address', inviteAddress.trim());
             }
+            formData.set('show_in_store', showInStore ? 'true' : 'false');
 
             const result = await createMotherAccount(formData);
 
@@ -889,6 +893,21 @@ export function AddAccountModal() {
                             />
                             <Label htmlFor="is_autopay" className="cursor-pointer text-sm font-normal">
                                 🔄 Cuenta autopagable <span className="text-muted-foreground">(sin fecha de vencimiento fija, revisión cada 15 días)</span>
+                            </Label>
+                        </div>
+
+                        {/* Mostrar en Tienda */}
+                        <div className="flex items-center gap-2 px-1">
+                            <input
+                                type="checkbox"
+                                id="show_in_store"
+                                checked={showInStore}
+                                onChange={(e) => setShowInStore(e.target.checked)}
+                                className="h-4 w-4 rounded border-border accent-[#86EFAC]"
+                            />
+                            <Label htmlFor="show_in_store" className="cursor-pointer text-sm font-normal">
+                                🛒 Mostrar en Tienda{' '}
+                                <span className="text-muted-foreground">(visible en el portal de ventas para clientes)</span>
                             </Label>
                         </div>
 

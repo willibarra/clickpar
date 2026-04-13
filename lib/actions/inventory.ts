@@ -43,6 +43,7 @@ export async function createMotherAccount(formData: FormData) {
         autopay_last_checked: isAutopay ? new Date().toISOString().split('T')[0] : null,
         invitation_url: (formData.get('invitation_url') as string) || null,
         invite_address: (formData.get('invite_address') as string) || null,
+        show_in_store: formData.get('show_in_store') === 'true',
     };
 
     // Validar proveedor obligatorio
@@ -167,6 +168,7 @@ interface BulkAccountSharedData {
     invitation_url: string | null;
     invite_address: string | null;
     custom_slots: { name: string; pin: string }[] | null;
+    show_in_store: boolean;
 }
 
 export async function bulkCreateMotherAccounts(
@@ -250,6 +252,7 @@ export async function bulkCreateMotherAccounts(
                 autopay_last_checked: isAutopay ? new Date().toISOString().split('T')[0] : null,
                 invitation_url: sharedData.invitation_url,
                 invite_address: sharedData.invite_address,
+                show_in_store: sharedData.show_in_store,
             };
 
             const { data: newAccount, error } = await (supabase.from('mother_accounts') as any)
