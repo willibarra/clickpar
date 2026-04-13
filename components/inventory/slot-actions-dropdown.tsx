@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing, Shield, Send, ExternalLink } from 'lucide-react';
+import { Edit3, Copy, Check, TrendingUp, ArrowLeftRight, ChevronDown, Loader2, Repeat, Ban, Snowflake, AlertTriangle, Pencil, BellRing, Shield, Send, ExternalLink, Trash2 } from 'lucide-react';
 import { extendSale, cancelSubscription, enqueueManualReminder, logReminderCopied } from '@/lib/actions/sales';
-import { swapSlotCustomer, freezeMotherAccount, updateSlot } from '@/lib/actions/inventory';
+import { swapSlotCustomer, freezeMotherAccount, updateSlot, deleteSlot } from '@/lib/actions/inventory';
 import { SwapServiceModal } from '@/components/dashboard/swap-service-modal';
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
@@ -353,7 +353,9 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                 slotId={slot.id}
                 initialIdentifier={slot.slot_identifier || ''}
                 initialPin={slot.pin_code || ''}
+                slotStatus={slot.status}
                 onEdited={() => { setModalMode(null); router.refresh(); }}
+                onDeleted={() => { setModalMode(null); router.refresh(); }}
             />
 
             {/* Create Portal Modal */}
@@ -379,13 +381,17 @@ interface EditSlotModalProps {
     slotId: string;
     initialIdentifier: string;
     initialPin: string;
+    slotStatus: string;
     onEdited: () => void;
+    onDeleted: () => void;
 }
 
-function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, onEdited }: EditSlotModalProps) {
+function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, slotStatus, onEdited, onDeleted }: EditSlotModalProps) {
     const [identifier, setIdentifier] = useState(initialIdentifier);
     const [pin, setPin] = useState(initialPin);
     const [loading, setLoading] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -393,6 +399,7 @@ function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, o
             setIdentifier(initialIdentifier);
             setPin(initialPin);
             setError('');
+            setConfirmDelete(false);
         }
     }, [open, initialIdentifier, initialPin]);
 
@@ -412,6 +419,21 @@ function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, o
         }
     };
 
+    const handleDelete = async () => {
+        setDeleting(true);
+        setError('');
+        const result = await deleteSlot(slotId);
+        setDeleting(false);
+        if (result.error) {
+            setError(result.error);
+            setConfirmDelete(false);
+        } else {
+            onDeleted();
+        }
+    };
+
+    const canDelete = slotStatus !== 'sold';
+
     return (
         <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
             <DialogContent className="sm:max-w-[400px] bg-card border-border">
@@ -429,10 +451,55 @@ function EditSlotModal({ open, onClose, slotId, initialIdentifier, initialPin, o
                         <Label>PIN / Contraseña</Label>
                         <Input value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Pin o clave del perfil" />
                     </div>
+
+                    {/* Zona de eliminar pantalla */}
+                    {canDelete && (
+                        <div className="border-t border-border/60 pt-3">
+                            {!confirmDelete ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmDelete(true)}
+                                    disabled={loading || deleting}
+                                    className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Eliminar esta pantalla
+                                </button>
+                            ) : (
+                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5 space-y-2">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+                                        <p className="text-xs text-red-300">
+                                            ¿Eliminar <strong>{identifier || 'esta pantalla'}</strong>? Esta acción no se puede deshacer.
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConfirmDelete(false)}
+                                            disabled={deleting}
+                                            className="flex-1 text-xs py-1.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDelete}
+                                            disabled={deleting}
+                                            className="flex-1 text-xs py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                            Sí, eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <div className="flex justify-end gap-2 border-t border-border pt-4 mt-2">
-                    <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
-                    <Button className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90" onClick={handleSave} disabled={loading}>
+                    <Button variant="outline" onClick={onClose} disabled={loading || deleting}>Cancelar</Button>
+                    <Button className="bg-[#86EFAC] text-black hover:bg-[#86EFAC]/90" onClick={handleSave} disabled={loading || deleting}>
                         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Guardar
                     </Button>
