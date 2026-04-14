@@ -102,6 +102,7 @@ export async function getAccountsForRenewal() {
             sale_slots (id, status, slot_identifier)
         `)
         .in('status', ['active', 'expired'])
+        .is('deleted_at', null)          // excluir cuentas en papelera
         .gte('renewal_date', windowStart.toISOString().split('T')[0])
         .lte('renewal_date', windowEnd.toISOString().split('T')[0])
         .eq('is_autopay', false)  // excluir las de autopay (includes possible_autopay)
