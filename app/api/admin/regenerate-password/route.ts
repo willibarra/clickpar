@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * we find it, link it, and update the password.
  */
 export async function POST(req: NextRequest) {
-    // Auth check — must be super_admin
+    // Auth check — must be super_admin or staff
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
         .eq('id', user.id)
         .single();
 
-    if (profile?.role !== 'super_admin') {
+    if (!['super_admin', 'staff'].includes(profile?.role)) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
