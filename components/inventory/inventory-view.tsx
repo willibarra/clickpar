@@ -1028,7 +1028,20 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                             slots.map((slot, idx) => {
                                                 const activeSale = slot.sales?.[0]; // already filtered to is_active=true in page.tsx
                                                 const customer = activeSale?.customers;
-                                                const endDate = activeSale?.end_date;
+                                                // Use end_date; if null, estimate from start_date or created_at + 30 days
+                                                const rawEndDate = activeSale?.end_date;
+                                                const endDate: string | null = rawEndDate
+                                                    ? rawEndDate
+                                                    : activeSale
+                                                        ? (() => {
+                                                            const base = activeSale.start_date || activeSale.created_at?.split('T')[0];
+                                                            if (!base) return null;
+                                                            const d = new Date(base + 'T12:00:00');
+                                                            d.setDate(d.getDate() + 30);
+                                                            return d.toISOString().split('T')[0];
+                                                          })()
+                                                        : null;
+                                                const isEstimatedDate = !rawEndDate && !!endDate;
                                                 const statusDotColor =
                                                     slot.status === 'available' ? '#86EFAC'
                                                     : slot.status === 'sold' ? '#F97316'

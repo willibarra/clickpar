@@ -87,12 +87,34 @@ export async function POST(req: NextRequest) {
                 action = 'created';
             } else if (createErr?.message?.includes('already been registered')) {
                 // ── PATH C: Email already exists in auth → find and link ──
-                // Look up the existing auth user by email
-                const { data: listData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-                const existingUser = listData?.users?.find((u: any) => u.email === email);
+                // Query auth.users directly (reliable regardless of total user count)
+                const { data: existingAuthRows, error: queryErr } = await admin
+                    .from('auth_users_view' as any)
+                    .select('id')
+                    .eq('email', email)
+                    .limit(1)
+                    .maybeSingle()
+                    .then(async (res: any) => {
+                        // Fallback: if view doesn't exist, paginate through listUsers
+                        if (res.error) {
+                            let foundUser: any = null;
+                            let page = 1;
+                            while (!foundUser) {
+                                const { data: batch } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+                                if (!batch?.users?.length) break;
+                                foundUser = batch.users.find((u: any) => u.email === email) || null;
+                                if (foundUser || batch.users.length < 1000) break;
+                                page++;
+                            }
+                            return { data: foundUser ? { id: foundUser.id } : null, error: null };
+                        }
+                        return res;
+                    });
 
-                if (existingUser) {
-                    authUserId = existingUser.id;
+                const existingId = existingAuthRows?.id ?? null;
+
+                if (existingId) {
+                    authUserId = existingId;
                     // Update their password
                     const { error: updateErr2 } = await admin.auth.admin.updateUserById(authUserId, {
                         password,
@@ -102,7 +124,8 @@ export async function POST(req: NextRequest) {
                     }
                     action = 'linked';
                 } else {
-                    // Email registered but we can't find it (very unlikely)
+                    // Should never happen — createUser said email exists but we can't find it
+                    console.error('[regenerate-password] PATH C: email exists in auth but lookup returned nothing', { email });
                     return NextResponse.json({ 
                         error: 'Ya existe una cuenta con este email pero no se pudo localizar. Contactá soporte.' 
                     }, { status: 500 });

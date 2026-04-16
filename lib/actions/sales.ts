@@ -1053,6 +1053,95 @@ export async function bulkSwapAccountClients(motherAccountId: string) {
       moved++;
     }
 
+    // Build movedClients list for WhatsApp notifications
+    // We need: customer_id, new slot_id for each move
+    const movedClients: Array<{ customerId: string; newSlotId: string }> = [];
+    for (let i = 0; i < sales.length; i++) {
+      movedClients.push({
+        customerId: sales[i].customer_id,
+        newSlotId: validSlots[i].id,
+      });
+    }
+
+    // Fire-and-forget: send credential update to each moved client
+    (async () => {
+      const waSettings = await getWhatsAppSettings();
+      if (!waSettings.auto_send_credentials) return;
+
+      // Skip if family platform
+      const { data: platData } = await (supabase.from("platforms") as any)
+        .select("business_type")
+        .eq("name", account.platform)
+        .single();
+      if (platData?.business_type === "family_account") {
+        console.log("[BulkSwap/WhatsApp] Plataforma FAMILIA — omitiendo mensajes automáticos");
+        return;
+      }
+
+      for (let i = 0; i < movedClients.length; i++) {
+        const { customerId, newSlotId } = movedClients[i];
+
+        try {
+          // Get customer info
+          const { data: customer } = await (supabase.from("customers") as any)
+            .select("full_name, phone, whatsapp_instance")
+            .eq("id", customerId)
+            .single();
+
+          if (!customer?.phone) continue;
+
+          // Get new slot credentials
+          const { data: newSlotInfo } = await (supabase.from("sale_slots") as any)
+            .select(`
+              slot_identifier,
+              pin_code,
+              mother_accounts:mother_account_id (
+                email, password, platform, instructions, send_instructions
+              )
+            `)
+            .eq("id", newSlotId)
+            .single();
+
+          if (!newSlotInfo?.mother_accounts) continue;
+
+          const acct = newSlotInfo.mother_accounts;
+
+          await sendCredentialUpdate({
+            customerPhone: customer.phone,
+            customerName: customer.full_name || customer.phone,
+            platform: acct.platform || account.platform,
+            email: acct.email || "",
+            password: acct.password || "",
+            profile: newSlotInfo.slot_identifier || "Perfil asignado",
+            pin: newSlotInfo.pin_code || undefined,
+            customerId,
+            instanceName: customer.whatsapp_instance || undefined,
+          });
+
+          console.log(`[BulkSwap/WhatsApp] Mensaje enviado a ${customer.phone} (${i + 1}/${movedClients.length})`);
+
+          // Send instructions if configured
+          if (acct.send_instructions && acct.instructions) {
+            await new Promise((r) => setTimeout(r, 1500));
+            const { sendText } = await import("@/lib/whatsapp");
+            await sendText(
+              customer.phone,
+              `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
+              {
+                instanceName: customer.whatsapp_instance || undefined,
+                customerId,
+              }
+            );
+          }
+        } catch (clientErr) {
+          console.error(`[BulkSwap/WhatsApp] Error enviando a cliente ${customerId}:`, clientErr);
+          // Continue with next client even if one fails
+        }
+      }
+    })().catch((waError) => {
+      console.error("[BulkSwap/WhatsApp] Error (non-blocking):", waError);
+    });
+
     return { success: true, moved };
   } catch (error: any) {
     console.error("[BulkSwap] Error:", error);

@@ -98,7 +98,7 @@ export async function getAccountsForRenewal() {
 
     const { data, error } = await (supabase.from('mother_accounts') as any)
         .select(`
-            id, platform, email, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status, is_autopay, supplier_name,
+            id, platform, email, password, renewal_date, purchase_cost_gs, purchase_cost_usdt, max_slots, status, is_autopay, supplier_name,
             sale_slots (id, status, slot_identifier)
         `)
         .in('status', ['active', 'expired'])
@@ -222,7 +222,8 @@ export async function bulkRenewAccounts(
     totalCostGs: number,
     daysToExtend: number,
     totalCostUsdt?: number,
-    baseStartDate?: string
+    baseStartDate?: string,
+    password?: string
 ) {
     const supabase = await createAdminClient();
     const errors: string[] = [];
@@ -244,16 +245,16 @@ export async function bulkRenewAccounts(
             continue;
         }
 
-        // Calculate new renewal date explicitly from user's chosen start date or fallback
-        let baseDateStr = baseStartDate;
-        if (!baseDateStr) {
-            baseDateStr = (account as any).renewal_date || new Date().toISOString().split('T')[0];
-        }
-        
-        const newDate = new Date(baseDateStr + 'T12:00:00');
+        // IMPORTANT: always count days FROM the account's current renewal_date (expiry),
+        // NOT from today. baseStartDate is only used to record when the payment was made.
+        // Example: account expired 08/04 + 30 days → new expiry = 08/05, regardless of today.
+        const accountRenewalDate = (account as any).renewal_date || new Date().toISOString().split('T')[0];
+        const newDate = new Date(accountRenewalDate + 'T12:00:00');
         newDate.setDate(newDate.getDate() + daysToExtend);
         const newRenewalDate = newDate.toISOString().split('T')[0];
         const newBillingDay = newDate.getDate();
+        // Payment date for expense log (when the admin actually paid)
+        const paymentDateStr = baseStartDate || new Date().toISOString().split('T')[0];
 
         // Build update payload — update renewal_date, target_billing_day, and cost
         const updatePayload: Record<string, any> = {
@@ -264,6 +265,9 @@ export async function bulkRenewAccounts(
         };
         if (costPerAccountUsdt != null) {
             updatePayload.purchase_cost_usdt = costPerAccountUsdt;
+        }
+        if (password) {
+            updatePayload.password = password;
         }
 
         // Update the account
@@ -281,7 +285,7 @@ export async function bulkRenewAccounts(
         const usdtNote = costPerAccountUsdt != null ? ` (${costPerAccountUsdt.toFixed(2)} USDT)` : '';
         await (supabase.from('expenses') as any).insert({
             mother_account_id: accountId,
-            expense_date: new Date().toISOString().split('T')[0],
+            expense_date: paymentDateStr,
             amount_gs: costPerAccountGs,
             expense_type: 'renewal',
             description: `Renovación ${(account as any).platform} (${(account as any).email}) - +${daysToExtend} días${usdtNote}`,

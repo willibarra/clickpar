@@ -84,8 +84,11 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [provCost, setProvCost] = useState('');
     const [provUsdt, setProvUsdt] = useState('');
     const [provDays, setProvDays] = useState('30');
+    const [provPassword, setProvPassword] = useState('');
     const todayStr = new Date().toISOString().split('T')[0];
     const [provRenewalDate, setProvRenewalDate] = useState(todayStr);
+    const [provExpiryDate, setProvExpiryDate] = useState('');
+    const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
     const { rate: usdtRate } = useUsdtRate(); // Lee de localStorage (configurado en Settings)
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
@@ -211,7 +214,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < 0).length;
     const clientTodayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 0).length;
     const clientThreeDayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 1 && s.daysUntilExpiry <= 3).length;
-    const clientUrgentTotal = clientExpiredCount + clientTodayCount + clientThreeDayCount;
+    // Tab badge: only expired + today (most urgent)
+    const clientUrgentTotal = clientExpiredCount + clientTodayCount;
 
     // Accounts filtered by status+search only (no platform filter)
     // Used to compute correct per-platform counts and unique platforms for the chips
@@ -324,7 +328,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const expiredCount = accounts.filter(a => getDaysUntil(a.renewal_date) < 0).length;
     const todayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === 0).length;
     const provThreeDayCount = accounts.filter(a => { const d = getDaysUntil(a.renewal_date); return d >= 1 && d <= 3; }).length;
-    const provUrgentTotal = expiredCount + todayCount + provThreeDayCount;
+    // Tab badge: only expired + today (most urgent)
+    const provUrgentTotal = expiredCount + todayCount;
 
     // Toggle selection
     const toggleProv = (id: string) => {
@@ -401,6 +406,8 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         const today = new Date();
         const todayIso = today.toISOString().split('T')[0];
         setProvRenewalDate(todayIso);
+        setProvPassword('');
+        setProvExpiryDate('');
 
         const selectedAccounts = accounts.filter(a => provSelected.has(a.id));
 
@@ -492,12 +499,14 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         if (isNaN(cost) || cost <= 0 || isNaN(days) || days <= 0) return;
 
         startTransition(async () => {
-            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days, usdt, provRenewalDate);
+            const result = await bulkRenewAccounts(Array.from(provSelected), cost, days, usdt, provRenewalDate, provPassword || undefined);
             if (result.success) {
                 setShowProvModal(false);
                 setProvSelected(new Set());
                 setProvCost('');
                 setProvUsdt('');
+                setProvPassword('');
+                setProvExpiryDate('');
                 router.refresh();
             }
         });
@@ -916,10 +925,60 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 onCheckedChange={() => toggleProv(account.id)}
                                             />
                                         </div>
-                                        {/* Plataforma + Email */}
+                                        {/* Plataforma + Email + Contraseña + Estado */}
                                         <div className="min-w-0">
                                             <p className="font-medium text-foreground">{account.platform}</p>
                                             <p className="text-xs text-muted-foreground truncate">{account.email}</p>
+                                            {account.password && (
+                                                <div className="flex items-center gap-1 mt-0.5">
+                                                    <span className="text-[11px] font-mono text-muted-foreground/60">
+                                                        {visiblePasswords.has(account.id) ? account.password : '••••••'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setVisiblePasswords(prev => {
+                                                            const n = new Set(prev);
+                                                            n.has(account.id) ? n.delete(account.id) : n.add(account.id);
+                                                            return n;
+                                                        })}
+                                                        className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                                                        title={visiblePasswords.has(account.id) ? 'Ocultar' : 'Ver contraseña'}
+                                                    >
+                                                        {visiblePasswords.has(account.id)
+                                                            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                                            : <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                        }
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { navigator.clipboard.writeText(account.password); toast.success('Contraseña copiada'); }}
+                                                        className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                                                        title="Copiar contraseña"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {/* Estado de la cuenta */}
+                                            {(() => {
+                                                const s = account.status;
+                                                const cfg: Record<string, { label: string; icon: string; cls: string }> = {
+                                                    active:           { label: 'Activa',          icon: '✅', cls: 'text-green-400' },
+                                                    expired:          { label: 'Vencida',         icon: '🔴', cls: 'text-red-400' },
+                                                    suspended:        { label: 'Suspendida',      icon: '⏸️', cls: 'text-yellow-400' },
+                                                    no_renovar:       { label: 'No renovar',      icon: '🚫', cls: 'text-red-300' },
+                                                    possible_autopay: { label: 'Posible autopay', icon: '💳', cls: 'text-emerald-400' },
+                                                    frozen:           { label: 'Congelada',       icon: '❄️', cls: 'text-blue-300' },
+                                                    inactive:         { label: 'Inactiva',        icon: '⚫', cls: 'text-muted-foreground' },
+                                                };
+                                                const c = cfg[s] ?? { label: s, icon: '•', cls: 'text-muted-foreground' };
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium mt-0.5 ${c.cls}`}>
+                                                        <span>{c.icon}</span>
+                                                        {c.label}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                         {/* Proveedor */}
                                         <div className="text-sm text-muted-foreground truncate">
@@ -1484,12 +1543,81 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             })()}
                         </div>
 
+                        {/* Fecha de Vencimiento deseada → auto-calcula días desde el vencimiento actual */}
                         <div className="space-y-2">
-                            <Label>Días a Extender</Label>
+                            <Label className="flex items-center gap-2">
+                                🎯 Hasta qué fecha querés renovar
+                                <span className="ml-auto text-xs text-muted-foreground">Desde el vencimiento actual de la cuenta</span>
+                            </Label>
+                            <input
+                                type="date"
+                                value={provExpiryDate}
+                                onChange={e => {
+                                    const expiry = e.target.value;
+                                    setProvExpiryDate(expiry);
+                                    if (expiry) {
+                                        // Count days from the dominant renewal_date of selected accounts
+                                        const selectedAccs = accounts.filter(a => provSelected.has(a.id));
+                                        const dateMap: Record<string, number> = {};
+                                        selectedAccs.forEach(a => {
+                                            if (a.renewal_date) dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                                        });
+                                        const dominant = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+                                        const baseStr = dominant ? dominant[0] : new Date().toISOString().split('T')[0];
+                                        const from = new Date(baseStr + 'T12:00:00');
+                                        const to = new Date(expiry + 'T12:00:00');
+                                        const diff = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+                                        if (diff > 0) setProvDays(diff.toString());
+                                    }
+                                }}
+                                className="w-full rounded-md border border-[#86EFAC]/30 bg-[#1a1a1a] px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#86EFAC]/40"
+                            />
+                            {provExpiryDate && (() => {
+                                const selectedAccs = accounts.filter(a => provSelected.has(a.id));
+                                const dateMap: Record<string, number> = {};
+                                selectedAccs.forEach(a => {
+                                    if (a.renewal_date) dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                                });
+                                const dominant = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+                                const baseStr = dominant ? dominant[0] : new Date().toISOString().split('T')[0];
+                                const from = new Date(baseStr + 'T12:00:00');
+                                const to = new Date(provExpiryDate + 'T12:00:00');
+                                const diff = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+                                return diff > 0 ? (
+                                    <p className="text-xs text-[#86EFAC]">
+                                        ✅ {diff} días desde {baseStr} (vencimiento actual) → nuevo vencimiento: {provExpiryDate}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-red-400">⚠️ La fecha debe ser posterior al vencimiento actual ({baseStr})</p>
+                                );
+                            })()}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-2">
+                                Días a Extender
+                                <span className="ml-auto text-xs text-muted-foreground/60">se cuentan desde el vencimiento actual</span>
+                            </Label>
                             <Input
                                 type="number"
                                 value={provDays}
-                                onChange={e => setProvDays(e.target.value)}
+                                onChange={e => {
+                                    setProvDays(e.target.value);
+                                    // Recalculate expiry preview from account's renewal_date + days
+                                    const days = parseInt(e.target.value);
+                                    if (!isNaN(days) && days > 0) {
+                                        const selectedAccs = accounts.filter(a => provSelected.has(a.id));
+                                        const dateMap: Record<string, number> = {};
+                                        selectedAccs.forEach(a => {
+                                            if (a.renewal_date) dateMap[a.renewal_date] = (dateMap[a.renewal_date] || 0) + 1;
+                                        });
+                                        const dominant = Object.entries(dateMap).sort((a, b) => b[1] - a[1])[0];
+                                        const baseStr = dominant ? dominant[0] : new Date().toISOString().split('T')[0];
+                                        const from = new Date(baseStr + 'T12:00:00');
+                                        from.setDate(from.getDate() + days);
+                                        setProvExpiryDate(from.toISOString().split('T')[0]);
+                                    }
+                                }}
                                 min={1}
                             />
                         </div>
