@@ -1174,10 +1174,10 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
                                                             );
                                                         })()}
                                                         <td className={`px-4 py-2.5 ${rightBg} ${slotBorder}`}>
-                                                            {activeSale?.created_at ? (
+                                                            {(activeSale?.start_date || activeSale?.created_at) ? (
                                                                 <div className="flex flex-col gap-0.5">
-                                                                    <span className="text-xs text-muted-foreground">{formatRelativeOnly(activeSale.created_at.split('T')[0], 'past')}</span>
-                                                                    <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(activeSale.created_at.split('T')[0])}</span>
+                                                                    <span className="text-xs text-muted-foreground">{formatRelativeOnly((activeSale.start_date || activeSale.created_at!.split('T')[0]), 'past')}</span>
+                                                                    <span className="text-[10px] text-muted-foreground/50">{formatAbsDate(activeSale.start_date || activeSale.created_at!.split('T')[0])}</span>
                                                                 </div>
                                                             ) : (
                                                                 <span className="text-xs text-muted-foreground/30">—</span>
