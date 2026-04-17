@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Lock, Loader2, Zap, Eye, EyeOff, ChevronDown } from 'lucide-react';
@@ -73,11 +73,25 @@ export default function PortalLoginPage() {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    // True while we verify whether the user is already authenticated
+    const [checkingSession, setCheckingSession] = useState(true);
     const captchaRef = useRef<HCaptcha>(null);
     const router = useRouter();
     const supabase = createClient();
 
     const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || '';
+
+    // ── Guard: if already authenticated, redirect immediately ─────────────
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                router.replace('/cliente');
+            } else {
+                setCheckingSession(false);
+            }
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const selectedCountry = useMemo(
         () => COUNTRIES.find(c => c.code === countryCode) || COUNTRIES[0],
@@ -88,6 +102,13 @@ export default function PortalLoginPage() {
         e.preventDefault();
         setLoading(true);
         setError(null);
+
+        // Safety check: abort if there is already an active session
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        if (existingSession) {
+            router.replace('/cliente');
+            return;
+        }
 
         // Verify captcha first
         if (hcaptchaSiteKey && !captchaToken) {
@@ -159,6 +180,15 @@ export default function PortalLoginPage() {
             setLoading(false);
         }
     };
+
+    // While we verify the session, show a neutral loading screen
+    if (checkingSession) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
