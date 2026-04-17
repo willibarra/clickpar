@@ -16,11 +16,6 @@ export async function middleware(request: NextRequest) {
             return NextResponse.next({ request });
         }
 
-        // Customer login page — allow without auth
-        if (pathname === '/cliente/login') {
-            return NextResponse.next({ request });
-        }
-
         // Creator slug links: single-segment paths like /willibarra
         // These are handled by app/[slug]/page.tsx which logs the click and redirects to WhatsApp
         const isCreatorSlug = /^\/[a-z0-9_-]+$/i.test(pathname);
@@ -33,7 +28,7 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/cliente', request.url));
         }
 
-        // /cliente/* routes → check auth
+        // All /cliente/* routes share a single auth check (the login page included)
         const supabaseNet = createServerClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -47,6 +42,15 @@ export async function middleware(request: NextRequest) {
             }
         );
         const { data: { user: netUser } } = await supabaseNet.auth.getUser();
+
+        // [Capa 1] Authenticated user hitting the login page → send them home
+        if (pathname === '/cliente/login') {
+            if (netUser) {
+                return NextResponse.redirect(new URL('/cliente', request.url));
+            }
+            return NextResponse.next({ request });
+        }
+
         if (!netUser) {
             return NextResponse.redirect(new URL('/cliente/login', request.url));
         }
@@ -91,12 +95,23 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL(pathname.replace('/portal', '/cliente'), request.url));
     }
 
-    // Skip auth for login pages and API routes
-    if (
-        pathname === '/cliente/login' ||
-        pathname === '/staff/login' ||
-        pathname.startsWith('/api/')
-    ) {
+    // Skip auth for staff login and generic API routes
+    if (pathname === '/staff/login' || pathname.startsWith('/api/')) {
+        return NextResponse.next({ request });
+    }
+
+    // [Capa 1] /cliente/login (local dev / clickpar.shop fallback):
+    // Redirect authenticated users straight to the portal.
+    if (pathname === '/cliente/login') {
+        const supabaseLoginCheck = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            { cookies: { getAll() { return request.cookies.getAll(); }, setAll() {} } }
+        );
+        const { data: { user: loginUser } } = await supabaseLoginCheck.auth.getUser();
+        if (loginUser) {
+            return NextResponse.redirect(new URL('/cliente', request.url));
+        }
         return NextResponse.next({ request });
     }
 
@@ -106,7 +121,14 @@ export async function middleware(request: NextRequest) {
         return NextResponse.next({ request });
     }
 
-    let supabaseResponse = NextResponse.next({ request });
+    // [Capa 5] Inject x-pathname into request headers so async Server Components
+    // (e.g. app/cliente/layout.tsx) can read the current pathname via next/headers.
+    const requestWithPathname = new Headers(request.headers);
+    requestWithPathname.set('x-pathname', pathname);
+
+    let supabaseResponse = NextResponse.next({
+        request: { headers: requestWithPathname },
+    });
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -120,7 +142,8 @@ export async function middleware(request: NextRequest) {
                     cookiesToSet.forEach(({ name, value }) =>
                         request.cookies.set(name, value)
                     );
-                    supabaseResponse = NextResponse.next({ request });
+                    // Preserve x-pathname when Supabase refreshes the session token
+                    supabaseResponse = NextResponse.next({ request: { headers: requestWithPathname } });
                     cookiesToSet.forEach(({ name, value, options }) =>
                         supabaseResponse.cookies.set(name, value, options)
                     );
