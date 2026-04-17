@@ -2,6 +2,7 @@ import { getOwnedEmails } from '@/lib/actions/emails';
 import { EmailsView } from '@/components/emails/emails-view';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mail, CheckCircle, AlertTriangle, AlertOctagon } from 'lucide-react';
+import { ImapAccountsPanel } from '@/components/emails/imap-accounts-panel';
 
 export default async function EmailsPage() {
     const emails = await getOwnedEmails();
@@ -20,6 +21,9 @@ export default async function EmailsPage() {
                     <p className="text-muted-foreground">Inventario de correos electrónicos para registrar cuentas</p>
                 </div>
             </div>
+
+            {/* IMAP Accounts Section */}
+            <ImapAccountsPanel />
 
             {/* Stats Cards */}
             <div className="grid gap-4 md:grid-cols-4">

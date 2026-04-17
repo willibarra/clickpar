@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     const {
         email, password, imap_host, imap_port, imap_secure, label,
-        platform, supplier_name, subject_filter, sender_filter, lookback_minutes,
+        platform, supplier_name, subject_filters, sender_filter, lookback_minutes,
     } = body;
 
     if (!email || !password) {
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
             label: label || email,
             platform: platform || null,
             supplier_name: supplier_name || null,
-            subject_filter: subject_filter || null,
+            subject_filters: subject_filters || [],
             sender_filter: sender_filter || null,
             lookback_minutes: lookback_minutes || 15,
         })
@@ -134,7 +134,7 @@ export async function PUT(req: NextRequest) {
     if (body.is_active !== undefined) updates.is_active = body.is_active;
     if (body.platform !== undefined) updates.platform = body.platform;
     if (body.supplier_name !== undefined) updates.supplier_name = body.supplier_name;
-    if (body.subject_filter !== undefined) updates.subject_filter = body.subject_filter;
+    if (body.subject_filters !== undefined) updates.subject_filters = body.subject_filters;
     if (body.sender_filter !== undefined) updates.sender_filter = body.sender_filter;
     if (body.lookback_minutes !== undefined) updates.lookback_minutes = body.lookback_minutes;
 

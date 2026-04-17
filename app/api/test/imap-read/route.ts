@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const {
         email,
         password,
-        subjectFilter,
+        subjectFilters,
         senderFilter,
         lookbackMinutes = 15,
         testOnly = false,
@@ -36,12 +36,12 @@ export async function POST(request: Request) {
         return NextResponse.json(result);
     }
 
-    if (!subjectFilter) {
-        return NextResponse.json({ success: false, error: 'subjectFilter es requerido' }, { status: 400 });
+    if (!subjectFilters || subjectFilters.length === 0) {
+        return NextResponse.json({ success: false, error: 'subjectFilters (array) es requerido' }, { status: 400 });
     }
 
     const result = await fetchCodeFromImap(config, {
-        subjectFilter,
+        subjectFilters,
         senderFilter,
         lookbackMinutes,
     });

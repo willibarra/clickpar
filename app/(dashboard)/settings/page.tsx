@@ -17,7 +17,7 @@ import { EmailSettingsPanel } from '@/components/settings/email-settings-panel';
 import { WhatsAppSettingsPanel } from '@/components/settings/whatsapp-settings-panel';
 import { SupportConfigPanel } from '@/components/settings/support-config-panel';
 import { TelegramSessionPanel } from '@/components/settings/telegram-session-panel';
-import { ImapAccountsPanel } from '@/components/settings/imap-accounts-panel';
+
 import { useUsdtRate } from '@/lib/usdt-rate';
 
 // ==========================================
@@ -398,18 +398,6 @@ export default function SettingsPage() {
                     description="Sesión de Telegram para obtener códigos automáticamente"
                 >
                     <TelegramSessionPanel />
-                </CollapsibleSection>
-            )}
-
-            {/* 6.5. Cuentas IMAP */}
-            {isSuperAdmin && (
-                <CollapsibleSection
-                    icon={<Mail className="h-5 w-5" />}
-                    iconColor="text-amber-400"
-                    title="Cuentas IMAP (Correos)"
-                    description="Hotmail, Outlook, cPanel — para búsqueda automática de códigos"
-                >
-                    <ImapAccountsPanel />
                 </CollapsibleSection>
             )}
 

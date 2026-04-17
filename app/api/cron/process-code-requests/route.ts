@@ -164,7 +164,9 @@ export async function POST(req: Request) {
                     };
 
                     const result = await fetchCodeFromImap(config, {
-                        subjectFilter: account.subject_filter || req.platform || '',
+                        subjectFilters: account.subject_filters && account.subject_filters.length > 0
+                            ? account.subject_filters
+                            : [req.platform || ''],
                         senderFilter: account.sender_filter || undefined,
                         lookbackMinutes: account.lookback_minutes || 15,
                     });
