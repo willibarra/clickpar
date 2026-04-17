@@ -17,220 +17,242 @@ export async function GET(request: NextRequest) {
     const pattern = `%${q}%`;
 
     // If the query looks like a phone number, try normalizing to 595 format.
-    // Strip all non-digit characters first so formats like "+595 994 480158" or
-    // "0994 480 158" are detected and normalized correctly.
     const digits = q.replace(/\D/g, '');
-    // A query is phone-like if removing non-digits leaves >= 4 digits and the
-    // original string contains only digits, spaces, +, -, (, ) characters.
     const isPhoneQuery = digits.length >= 4 && /^[\d\s\+\-\(\)]+$/.test(q);
     const normalized = isPhoneQuery ? safeNormalizePhone(digits) : null;
-    // For phone queries: use normalized or raw digits. For non-phone (emails, names): use the full pattern.
     const phonePattern = isPhoneQuery
         ? (normalized ? `%${normalized}%` : `%${digits}%`)
         : pattern;
 
     try {
-        // 1. Search customers by name or phone (partial)
-        const { data: customers } = await (supabase.from('customers') as any)
-            .select('id, full_name, phone, email')
-            .or(`full_name.ilike.${pattern},phone.ilike.${phonePattern}`)
-            .limit(limit);
+        // ─── PHASE 1: All initial searches run in parallel ──────────────────────
+        // None of these depend on each other, so we fire them all at once.
+        const [
+            { data: customers },
+            { data: accounts },
+            { data: suppliers },
+            { data: slotMatches },
+        ] = await Promise.all([
+            // 1. Customers by name or phone
+            (supabase.from('customers') as any)
+                .select('id, full_name, phone, email')
+                .or(`full_name.ilike.${pattern},phone.ilike.${phonePattern}`)
+                .limit(limit),
 
-        // 2. Search mother accounts by email, platform, supplier_name (exclude soft-deleted)
-        const { data: accounts } = await supabase
-            .from('mother_accounts')
-            .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_type, sale_slots(*)')
-            .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${phonePattern}`)
-            .is('deleted_at', null)
-            .order('platform')
-            .limit(limit);
+            // 2. Mother accounts by email, platform, supplier (include slots)
+            supabase
+                .from('mother_accounts')
+                .select('id, email, password, platform, supplier_name, supplier_phone, status, renewal_date, purchase_cost_gs, sale_price_gs, sale_type, sale_slots(*)')
+                .or(`email.ilike.${pattern},platform.ilike.${pattern},supplier_name.ilike.${pattern},supplier_phone.ilike.${phonePattern}`)
+                .is('deleted_at', null)
+                .order('platform')
+                .limit(limit),
 
-        // 2b. Also fetch the business_type from platforms table for the found accounts,
-        //     so we can mark family accounts in results
+            // 3. Suppliers
+            supabase
+                .from('suppliers')
+                .select('id, name, phone')
+                .or(`name.ilike.${pattern},phone.ilike.${phonePattern}`)
+                .limit(limit),
+
+            // 4. Slot identifier matches (family accounts: YouTube, Spotify, etc.)
+            (supabase.from('sale_slots') as any)
+                .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date)')
+                .ilike('slot_identifier', pattern)
+                .eq('status', 'sold')
+                .limit(20),
+        ]);
+
+        // ─── PHASE 2: Dependent queries, all run in parallel ────────────────────
+        // Each batch depends on Phase 1 results but not on each other.
         const platformNamesInResults = [...new Set((accounts || []).map((a: any) => a.platform))];
-        let platformTypeMap: Record<string, string> = {};
-        if (platformNamesInResults.length > 0) {
-            const { data: platData } = await supabase
-                .from('platforms')
-                .select('name, business_type')
-                .in('name', platformNamesInResults);
-            (platData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
-        }
-
-        // 3. Search suppliers
-        const { data: suppliers } = await supabase
-            .from('suppliers')
-            .select('id, name, phone')
-            .or(`name.ilike.${pattern},phone.ilike.${phonePattern}`)
-            .limit(limit);
-
-        // 3b. Search by slot_identifier (for family accounts: YouTube, Spotify, etc.)
-        // where slot_identifier IS the customer email/name
-        const { data: slotMatches } = await (supabase.from('sale_slots') as any)
-            .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date)')
-            .ilike('slot_identifier', pattern)
-            .eq('status', 'sold')
-            .limit(20);
-
-        // For matched slots, get the active sale + customer
-        const slotMatchIds = (slotMatches || []).map((s: any) => s.id);
-        let slotSaleMap: Record<string, any> = {};
-        if (slotMatchIds.length > 0) {
-            const { data: slotSales } = await (supabase.from('sales') as any)
-                .select('id, customer_id, slot_id, amount_gs, start_date, end_date')
-                .in('slot_id', slotMatchIds)
-                .eq('is_active', true);
-
-            const slotCustIds = [...new Set((slotSales || []).map((s: any) => s.customer_id))];
-            let slotCustMap = new Map<string, any>();
-            if (slotCustIds.length > 0) {
-                const { data: slotCusts } = await (supabase.from('customers') as any)
-                    .select('id, full_name, phone')
-                    .in('id', slotCustIds);
-                (slotCusts || []).forEach((c: any) => slotCustMap.set(c.id, c));
-            }
-
-            (slotSales || []).forEach((sale: any) => {
-                slotSaleMap[sale.slot_id] = { ...sale, customer: slotCustMap.get(sale.customer_id) || null };
-            });
-        }
-
-        // 4. For found customers, get their active services with FULL details
         const customerIds = (customers || []).map((c: any) => c.id);
-        let customerServices: Record<string, any[]> = {};
-        if (customerIds.length > 0) {
-            const { data: sales } = await (supabase.from('sales') as any)
-                .select('id, customer_id, amount_gs, slot_id, is_active, start_date, end_date')
-                .in('customer_id', customerIds)
-                .eq('is_active', true)
-                .not('slot_id', 'is', null);
+        const allSlotIds = (accounts || []).flatMap((a: any) =>
+            (a.sale_slots || []).map((s: any) => s.id)
+        );
+        const slotMatchIds = (slotMatches || []).map((s: any) => s.id);
 
-            const slotIds = (sales || []).map((s: any) => s.slot_id).filter(Boolean);
-            let slotMap = new Map<string, any>();
-            if (slotIds.length > 0) {
-                const { data: slots } = await (supabase.from('sale_slots') as any)
-                    .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date, sale_price_gs, sale_type)')
-                    .in('id', slotIds);
+        const [
+            { data: platData },
+            { data: customerSales },
+            { data: accountSlotSales },
+            { data: slotMatchSales },
+        ] = await Promise.all([
+            // Platforms → business_type for accounts found in Phase 1
+            platformNamesInResults.length > 0
+                ? supabase.from('platforms').select('name, business_type').in('name', platformNamesInResults)
+                : Promise.resolve({ data: [], error: null }),
 
-                // Enrich platformTypeMap with any new platforms found in customer slots
-                const newPlats = [...new Set(
-                    (slots || []).map((s: any) => s.mother_accounts?.platform || '').filter(Boolean)
-                )].filter((p): p is string => typeof p === 'string' && !(p in platformTypeMap));
-                if (newPlats.length > 0) {
-                    const { data: newPlatData } = await supabase
-                        .from('platforms')
-                        .select('name, business_type')
-                        .in('name', newPlats);
-                    (newPlatData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
-                }
+            // Active sales for found customers
+            customerIds.length > 0
+                ? (supabase.from('sales') as any)
+                    .select('id, customer_id, amount_gs, slot_id, is_active, start_date, end_date')
+                    .in('customer_id', customerIds)
+                    .eq('is_active', true)
+                    .not('slot_id', 'is', null)
+                : Promise.resolve({ data: [], error: null }),
 
-                (slots || []).forEach((s: any) => {
-                    const maPlat = s.mother_accounts?.platform || '';
-                    const slotIsFamily = platformTypeMap[maPlat] === 'family_account';
-                    slotMap.set(s.id, {
-                        slot_identifier: s.slot_identifier,
-                        pin_code: s.pin_code,
-                        slot_status: s.status,
-                        platform: maPlat || 'Servicio',
-                        // For family accounts: hide mother email/password
-                        account_email: slotIsFamily ? '' : (s.mother_accounts?.email || ''),
-                        account_password: slotIsFamily ? '' : (s.mother_accounts?.password || ''),
-                        mother_account_id: s.mother_accounts?.id || '',
-                        renewal_date: s.mother_accounts?.renewal_date || '',
-                        sale_type: s.mother_accounts?.sale_type || 'profile',
-                        is_family: slotIsFamily,
-                        mother_platform: maPlat,
-                        // For family: slot_identifier = client final email, pin_code = client final password
-                        client_email: slotIsFamily ? s.slot_identifier : '',
-                        client_password: slotIsFamily ? (s.pin_code || '') : '',
-                    });
-                });
-            }
-
-            // Detect combo sales: group by customer+start_date, mark those with 2+ entries
-            const comboGroups: Record<string, string[]> = {};
-            (sales || []).forEach((sale: any) => {
-                const key = `${sale.customer_id}__${sale.start_date}`;
-                if (!comboGroups[key]) comboGroups[key] = [];
-                comboGroups[key].push(sale.id);
-            });
-            const comboSaleIds = new Set<string>();
-            Object.values(comboGroups).forEach(ids => {
-                if (ids.length >= 2) ids.forEach(id => comboSaleIds.add(id));
-            });
-
-            (sales || []).forEach((sale: any) => {
-                const cid = sale.customer_id;
-                if (!customerServices[cid]) customerServices[cid] = [];
-                const slotInfo = slotMap.get(sale.slot_id) || {};
-
-                // Usar end_date real de la venta
-                const saleEndDate = sale.end_date || '';
-
-                customerServices[cid].push({
-                    sale_id: sale.id,
-                    slot_id: sale.slot_id,
-                    platform: slotInfo.platform || 'Servicio',
-                    slot_identifier: slotInfo.slot_identifier || '',
-                    pin_code: slotInfo.pin_code || '',
-                    slot_status: slotInfo.slot_status || '',
-                    account_email: slotInfo.account_email || '',
-                    account_password: slotInfo.account_password || '',
-                    mother_account_id: slotInfo.mother_account_id || '',
-                    renewal_date: slotInfo.renewal_date || '',
-                    sale_type: slotInfo.sale_type || 'profile',
-                    sale_end_date: saleEndDate,
-                    amount: sale.amount_gs,
-                    start_date: sale.start_date,
-                    is_combo: comboSaleIds.has(sale.id),
-                    is_family: slotInfo.is_family || false,
-                    mother_platform: slotInfo.mother_platform || '',
-                    client_email: slotInfo.client_email || '',
-                    client_password: slotInfo.client_password || '',
-                });
-            });
-        }
-
-        // 5. For found accounts, get customer data for sold slots
-        const accountIds = (accounts || []).map((a: any) => a.id);
-        let accountSlotCustomers: Record<string, Record<string, any>> = {}; // slotId -> customer+sale info
-        if (accountIds.length > 0) {
-            // Get all active sales for these accounts' slots
-            const allSlotIds = (accounts || []).flatMap((a: any) =>
-                (a.sale_slots || []).map((s: any) => s.id)
-            );
-            if (allSlotIds.length > 0) {
-                const { data: slotSales } = await (supabase.from('sales') as any)
+            // Active sales for found accounts' slots
+            allSlotIds.length > 0
+                ? (supabase.from('sales') as any)
                     .select('id, customer_id, slot_id, amount_gs, start_date, end_date, is_active')
                     .in('slot_id', allSlotIds)
-                    .eq('is_active', true);
+                    .eq('is_active', true)
+                : Promise.resolve({ data: [], error: null }),
 
-                // Get customer names for these sales
-                const saleCustIds = [...new Set((slotSales || []).map((s: any) => s.customer_id))];
-                let custNameMap = new Map<string, any>();
-                if (saleCustIds.length > 0) {
-                    const { data: custs } = await (supabase.from('customers') as any)
-                        .select('id, full_name, phone')
-                        .in('id', saleCustIds);
-                    (custs || []).forEach((c: any) => custNameMap.set(c.id, c));
-                }
+            // Active sales for family-slot matches
+            slotMatchIds.length > 0
+                ? (supabase.from('sales') as any)
+                    .select('id, customer_id, slot_id, amount_gs, start_date, end_date')
+                    .in('slot_id', slotMatchIds)
+                    .eq('is_active', true)
+                : Promise.resolve({ data: [], error: null }),
+        ]);
 
-                (slotSales || []).forEach((sale: any) => {
-                    const cust = custNameMap.get(sale.customer_id);
-                    accountSlotCustomers[sale.slot_id] = {
-                        sale_id: sale.id,
-                        customer_id: sale.customer_id,
-                        customer_name: cust?.full_name || 'Sin nombre',
-                        customer_phone: cust?.phone || '',
-                        amount: sale.amount_gs,
-                        start_date: sale.start_date,
-                        end_date: sale.end_date || '',
-                    };
-                });
-            }
+        // Build initial platform type map from Phase 2
+        let platformTypeMap: Record<string, string> = {};
+        (platData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
+
+        // ─── PHASE 3: Final dependent queries, all run in parallel ──────────────
+        const customerSaleSlotIds = (customerSales || []).map((s: any) => s.slot_id).filter(Boolean);
+        const accountSaleCustIds = [...new Set((accountSlotSales || []).map((s: any) => s.customer_id))];
+        const slotMatchCustIds = [...new Set((slotMatchSales || []).map((s: any) => s.customer_id))];
+
+        const [
+            { data: customerSaleSlots },
+            { data: accountSaleCustomers },
+            { data: slotMatchCustomers },
+        ] = await Promise.all([
+            // Slot + mother account details for customer sales
+            customerSaleSlotIds.length > 0
+                ? (supabase.from('sale_slots') as any)
+                    .select('id, slot_identifier, pin_code, status, mother_accounts:mother_account_id(id, platform, email, password, renewal_date, sale_price_gs, sale_type)')
+                    .in('id', customerSaleSlotIds)
+                : Promise.resolve({ data: [], error: null }),
+
+            // Customer names for account slot sales
+            accountSaleCustIds.length > 0
+                ? (supabase.from('customers') as any)
+                    .select('id, full_name, phone')
+                    .in('id', accountSaleCustIds)
+                : Promise.resolve({ data: [], error: null }),
+
+            // Customer names for slot-match sales
+            slotMatchCustIds.length > 0
+                ? (supabase.from('customers') as any)
+                    .select('id, full_name, phone')
+                    .in('id', slotMatchCustIds)
+                : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        // ─── PHASE 4: Enrich platform map with any new platforms from customer slots ──
+        // (only runs additional query if there are platforms not yet in the map)
+        const newPlats = [...new Set(
+            (customerSaleSlots || []).map((s: any) => s.mother_accounts?.platform || '').filter(Boolean)
+        )].filter((p): p is string => typeof p === 'string' && !(p in platformTypeMap));
+
+        if (newPlats.length > 0) {
+            const { data: newPlatData } = await supabase
+                .from('platforms')
+                .select('name, business_type')
+                .in('name', newPlats);
+            (newPlatData || []).forEach((p: any) => { platformTypeMap[p.name] = p.business_type || ''; });
         }
 
-        // Build unified results
+        // ─── Build Maps ────────────────────────────────────────────────────────────
+
+        // Slot info map for customer sales
+        let slotMap = new Map<string, any>();
+        (customerSaleSlots || []).forEach((s: any) => {
+            const maPlat = s.mother_accounts?.platform || '';
+            const slotIsFamily = platformTypeMap[maPlat] === 'family_account';
+            slotMap.set(s.id, {
+                slot_identifier: s.slot_identifier,
+                pin_code: s.pin_code,
+                slot_status: s.status,
+                platform: maPlat || 'Servicio',
+                account_email: slotIsFamily ? '' : (s.mother_accounts?.email || ''),
+                account_password: slotIsFamily ? '' : (s.mother_accounts?.password || ''),
+                mother_account_id: s.mother_accounts?.id || '',
+                renewal_date: s.mother_accounts?.renewal_date || '',
+                sale_type: s.mother_accounts?.sale_type || 'profile',
+                is_family: slotIsFamily,
+                mother_platform: maPlat,
+                client_email: slotIsFamily ? s.slot_identifier : '',
+                client_password: slotIsFamily ? (s.pin_code || '') : '',
+            });
+        });
+
+        // Detect combo sales (same customer + same start_date → 2+ services)
+        const comboGroups: Record<string, string[]> = {};
+        (customerSales || []).forEach((sale: any) => {
+            const key = `${sale.customer_id}__${sale.start_date}`;
+            if (!comboGroups[key]) comboGroups[key] = [];
+            comboGroups[key].push(sale.id);
+        });
+        const comboSaleIds = new Set<string>();
+        Object.values(comboGroups).forEach(ids => {
+            if (ids.length >= 2) ids.forEach(id => comboSaleIds.add(id));
+        });
+
+        // Customer services map
+        let customerServices: Record<string, any[]> = {};
+        (customerSales || []).forEach((sale: any) => {
+            const cid = sale.customer_id;
+            if (!customerServices[cid]) customerServices[cid] = [];
+            const slotInfo = slotMap.get(sale.slot_id) || {};
+            customerServices[cid].push({
+                sale_id: sale.id,
+                slot_id: sale.slot_id,
+                platform: slotInfo.platform || 'Servicio',
+                slot_identifier: slotInfo.slot_identifier || '',
+                pin_code: slotInfo.pin_code || '',
+                slot_status: slotInfo.slot_status || '',
+                account_email: slotInfo.account_email || '',
+                account_password: slotInfo.account_password || '',
+                mother_account_id: slotInfo.mother_account_id || '',
+                renewal_date: slotInfo.renewal_date || '',
+                sale_type: slotInfo.sale_type || 'profile',
+                sale_end_date: sale.end_date || '',
+                amount: sale.amount_gs,
+                start_date: sale.start_date,
+                is_combo: comboSaleIds.has(sale.id),
+                is_family: slotInfo.is_family || false,
+                mother_platform: slotInfo.mother_platform || '',
+                client_email: slotInfo.client_email || '',
+                client_password: slotInfo.client_password || '',
+            });
+        });
+
+        // Account slot → customer map
+        let custNameMap = new Map<string, any>();
+        (accountSaleCustomers || []).forEach((c: any) => custNameMap.set(c.id, c));
+
+        let accountSlotCustomers: Record<string, any> = {};
+        (accountSlotSales || []).forEach((sale: any) => {
+            const cust = custNameMap.get(sale.customer_id);
+            accountSlotCustomers[sale.slot_id] = {
+                sale_id: sale.id,
+                customer_id: sale.customer_id,
+                customer_name: cust?.full_name || 'Sin nombre',
+                customer_phone: cust?.phone || '',
+                amount: sale.amount_gs,
+                start_date: sale.start_date,
+                end_date: sale.end_date || '',
+            };
+        });
+
+        // Slot match sale map
+        let slotMatchCustMap = new Map<string, any>();
+        (slotMatchCustomers || []).forEach((c: any) => slotMatchCustMap.set(c.id, c));
+
+        let slotSaleMap: Record<string, any> = {};
+        (slotMatchSales || []).forEach((sale: any) => {
+            slotSaleMap[sale.slot_id] = { ...sale, customer: slotMatchCustMap.get(sale.customer_id) || null };
+        });
+
+        // ─── Build Unified Results ────────────────────────────────────────────────
+
         const results: any[] = [];
 
         // Add customers with their services
@@ -244,7 +266,7 @@ export async function GET(request: NextRequest) {
             });
         });
 
-        // Add accounts with full detail + customer info per slot
+        // Add mother accounts with full detail + customer info per slot
         (accounts || []).forEach((a: any) => {
             const slots = a.sale_slots || [];
             const totalSlots = slots.length;
@@ -253,10 +275,9 @@ export async function GET(request: NextRequest) {
             const isFamily = platformTypeMap[a.platform] === 'family_account';
 
             const slotDetails = slots
-                .sort((a: any, b: any) => {
-                    // Natural sort: "Perfil 1" < "Perfil 2" < "Perfil 10"
-                    return (a.slot_identifier || '').localeCompare(b.slot_identifier || '', undefined, { numeric: true });
-                })
+                .sort((a: any, b: any) =>
+                    (a.slot_identifier || '').localeCompare(b.slot_identifier || '', undefined, { numeric: true })
+                )
                 .map((s: any) => {
                     const custInfo = accountSlotCustomers[s.id];
                     return {
@@ -303,17 +324,14 @@ export async function GET(request: NextRequest) {
         });
 
         // Add slot-identifier matches (family accounts: YouTube, Spotify)
-        // Group by customer to avoid duplicates
         const addedCustomerIds = new Set(results.filter(r => r.type === 'customer').map((r: any) => r.id));
         (slotMatches || []).forEach((slot: any) => {
             const saleInfo = slotSaleMap[slot.id];
             const cust = saleInfo?.customer;
             const ma = slot.mother_accounts;
-            // Detect if this slot belongs to a family account
             const motherIsFamily = platformTypeMap[ma?.platform] === 'family_account';
 
             if (cust && !addedCustomerIds.has(cust.id)) {
-                // Show as customer result with service info
                 addedCustomerIds.add(cust.id);
                 results.unshift({
                     id: cust.id,
@@ -327,7 +345,6 @@ export async function GET(request: NextRequest) {
                         slot_identifier: slot.slot_identifier,
                         pin_code: slot.pin_code || '',
                         slot_status: slot.status,
-                        // For family accounts: the slot_identifier IS the client email, so don't expose mother email
                         account_email: motherIsFamily ? '' : (ma?.email || ''),
                         account_password: motherIsFamily ? '' : (ma?.password || ''),
                         mother_account_id: ma?.id || '',
@@ -337,16 +354,13 @@ export async function GET(request: NextRequest) {
                         amount: saleInfo.amount_gs,
                         start_date: saleInfo.start_date,
                         is_combo: false,
-                        // Family-specific fields
                         is_family: motherIsFamily,
                         mother_platform: ma?.platform || '',
-                        // For family: slot_identifier = client final email, pin_code = client final password
                         client_email: motherIsFamily ? slot.slot_identifier : '',
                         client_password: motherIsFamily ? (slot.pin_code || '') : '',
                     }],
                 });
             } else if (!cust && !results.some((r: any) => r.id === slot.id)) {
-                // No customer found, show the slot itself
                 results.push({
                     id: slot.id,
                     type: 'customer',
