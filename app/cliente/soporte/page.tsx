@@ -158,7 +158,7 @@ function ServiceSupportCard({ item }: { item: ServiceHelpItem }) {
                 >
                     <span className="flex items-center gap-2">
                         <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        Soporte {item.platform} {item.supplierName && `(${item.supplierName})`}
+                        Soporte {item.platform}
                     </span>
                     {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                 </button>

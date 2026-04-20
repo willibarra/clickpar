@@ -20,8 +20,8 @@ import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, se
 import { logReminderCopied } from '@/lib/actions/sales';
 import { BatchSendModal } from "./batch-send-modal";
 
-type FilterType = 'all' | 'expired' | 'today' | '3days';
-type ClientFilterType = 'all' | 'expired' | 'today' | '3days';
+type FilterType = 'all' | 'expired' | 'today' | 'yesterday' | '3days';
+type ClientFilterType = 'all' | 'expired' | 'today' | 'yesterday' | '3days';
 
 const MESES_CORTOS = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
 
@@ -58,7 +58,8 @@ function getExpiryDate(startDate: string | null): string | null {
 }
 
 function getStatusBadge(days: number) {
-    if (days < 0) return { label: `Vencido (${Math.abs(days)}d)`, color: 'bg-red-600/30 text-red-300 ring-1 ring-red-500/50', dot: 'bg-red-400 animate-pulse' };
+    if (days < -1) return { label: `Vencido (${Math.abs(days)}d)`, color: 'bg-red-600/30 text-red-300 ring-1 ring-red-500/50', dot: 'bg-red-400 animate-pulse' };
+    if (days === -1) return { label: 'Ayer', color: 'bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/50', dot: 'bg-pink-400 animate-pulse' };
     if (days === 0) return { label: 'Vence Hoy', color: 'bg-orange-500/25 text-orange-300 ring-1 ring-orange-500/40', dot: 'bg-orange-400 animate-pulse' };
     if (days <= 3) return { label: `${days}d`, color: 'bg-yellow-500/20 text-yellow-400', dot: 'bg-yellow-500' };
     if (days <= 7) return { label: `${days}d`, color: 'bg-blue-500/20 text-blue-400', dot: 'bg-blue-500' };
@@ -144,8 +145,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     // Unique platforms for client filter chips (derived from enrichedSubs filtered by status+search, no platform filter)
     const clientSubsForPlatformFilter = useMemo(() => {
         return enrichedSubs.filter((sub: any) => {
-            if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= 0) return false; }
+            if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= -1) return false; }
             else if (clientFilter === 'today') { if (sub.daysUntilExpiry !== 0) return false; }
+            else if (clientFilter === 'yesterday') { if (sub.daysUntilExpiry !== -1) return false; }
             else if (clientFilter === '3days') { if (sub.daysUntilExpiry < 1 || sub.daysUntilExpiry > 3) return false; }
             if (clientSearch.trim()) {
                 const q = clientSearch.toLowerCase();
@@ -211,19 +213,21 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     }, [clientSubsForPlatformFilter, clientPlatformFilter, clientSortCol, clientSortDir]);
 
     // Client stats
-    const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < 0).length;
+    const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < -1).length;
+    const clientYesterdayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === -1).length;
     const clientTodayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 0).length;
     const clientThreeDayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 1 && s.daysUntilExpiry <= 3).length;
-    // Tab badge: only expired + today (most urgent)
-    const clientUrgentTotal = clientExpiredCount + clientTodayCount;
+    // Tab badge: only expired + yesterday + today (most urgent)
+    const clientUrgentTotal = clientExpiredCount + clientYesterdayCount + clientTodayCount;
 
     // Accounts filtered by status+search only (no platform filter)
     // Used to compute correct per-platform counts and unique platforms for the chips
     const accountsForPlatformFilter = useMemo(() => {
         return accounts.filter(a => {
             const days = getDaysUntil(a.renewal_date);
-            if (provFilter === 'expired') { if (days >= 0) return false; }
+            if (provFilter === 'expired') { if (days >= -1) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
+            else if (provFilter === 'yesterday') { if (days !== -1) return false; }
             else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
             if (provSearch.trim()) {
                 const q = provSearch.toLowerCase();
@@ -274,8 +278,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (smartUsdt !== 'all' && String(Number(a.purchase_cost_usdt).toFixed(0)) !== smartUsdt) return false;
             if (smartStatus !== 'all') {
                 const days = getDaysUntil(a.renewal_date);
-                if (smartStatus === 'expired' && days >= 0) return false;
+                if (smartStatus === 'expired' && days >= -1) return false;
                 if (smartStatus === 'today' && days !== 0) return false;
+                if (smartStatus === 'yesterday' && days !== -1) return false;
                 if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
                 if (smartStatus === 'urgent' && days > 3) return false;
             }
@@ -287,8 +292,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const filteredAccounts = useMemo(() => {
         return accounts.filter(a => {
             const days = getDaysUntil(a.renewal_date);
-            if (provFilter === 'expired') { if (days >= 0) return false; }
+            if (provFilter === 'expired') { if (days >= -1) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
+            else if (provFilter === 'yesterday') { if (days !== -1) return false; }
             else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
             if (provPlatformFilter !== 'all') {
                 if (a.platform !== provPlatformFilter) return false;
@@ -325,11 +331,12 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const clientTotalPages = clientPageSize === 0 ? 1 : Math.ceil(filteredSubs.length / clientPageSize);
 
     // Stats
-    const expiredCount = accounts.filter(a => getDaysUntil(a.renewal_date) < 0).length;
+    const expiredCount = accounts.filter(a => getDaysUntil(a.renewal_date) < -1).length;
+    const yesterdayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === -1).length;
     const todayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === 0).length;
     const provThreeDayCount = accounts.filter(a => { const d = getDaysUntil(a.renewal_date); return d >= 1 && d <= 3; }).length;
-    // Tab badge: only expired + today (most urgent)
-    const provUrgentTotal = expiredCount + todayCount;
+    // Tab badge: only expired + yesterday + today (most urgent)
+    const provUrgentTotal = expiredCount + yesterdayCount + todayCount;
 
     // Toggle selection
     const toggleProv = (id: string) => {
@@ -467,8 +474,9 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
             if (smartUsdt !== 'all' && String(Number(a.purchase_cost_usdt).toFixed(0)) !== smartUsdt) return false;
             if (smartStatus !== 'all') {
                 const days = getDaysUntil(a.renewal_date);
-                if (smartStatus === 'expired' && days >= 0) return false;
+                if (smartStatus === 'expired' && days >= -1) return false;
                 if (smartStatus === 'today' && days !== 0) return false;
+                if (smartStatus === 'yesterday' && days !== -1) return false;
                 if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
                 if (smartStatus === 'urgent' && days > 3) return false;
             }
@@ -666,6 +674,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
     const filterButtons: { key: FilterType; label: string; count?: number }[] = [
         { key: 'all', label: 'Todos' },
         { key: 'expired', label: 'Vencidos', count: expiredCount },
+        { key: 'yesterday', label: 'Ayer', count: yesterdayCount },
         { key: 'today', label: 'Hoy', count: todayCount },
         { key: '3days', label: 'Próx. 3d', count: provThreeDayCount },
     ];
@@ -673,6 +682,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
     const clientFilterButtons: { key: ClientFilterType; label: string; count?: number }[] = [
         { key: 'all', label: 'Todos' },
         { key: 'expired', label: 'Vencidos', count: clientExpiredCount },
+        { key: 'yesterday', label: 'Ayer', count: clientYesterdayCount },
         { key: 'today', label: 'Hoy', count: clientTodayCount },
         { key: '3days', label: 'Próx. 3d', count: clientThreeDayCount },
     ];
@@ -694,7 +704,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 {/* ─── PROVIDERS TAB ─── */}
                 <TabsContent value="providers" className="space-y-4">
                     {/* Stats Row — clickable filters */}
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-5 gap-3">
                         {/* TOTAL urgente */}
                         <button
                             onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
@@ -706,7 +716,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         >
                             <p className="text-xs text-muted-foreground">Total urgente</p>
                             <p className="text-2xl font-bold">{provUrgentTotal}</p>
-                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">venc. + hoy + 3d</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">vencs + ayer + hoy</p>
                         </button>
                         {/* Vencidas */}
                         <button
@@ -719,6 +729,18 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         >
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{expiredCount}</p>
+                        </button>
+                        {/* Ayer */}
+                        <button
+                            onClick={() => { setProvFilter('yesterday'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                provFilter === 'yesterday'
+                                    ? 'border-pink-400 bg-pink-500/15 ring-1 ring-pink-400/50'
+                                    : 'border-pink-500/30 bg-pink-500/5 hover:border-pink-500/50'
+                            }`}
+                        >
+                            <p className="text-xs text-pink-400">💕 Ayer</p>
+                            <p className="text-2xl font-bold text-pink-400">{yesterdayCount}</p>
                         </button>
                         {/* Vencen Hoy */}
                         <button
@@ -1048,7 +1070,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 {/* ─── CLIENTS TAB ─── */}
                 <TabsContent value="clients" className="space-y-4">
                                     {/* Stats Row — clickable filters */}
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-5 gap-3">
                         {/* TOTAL urgente */}
                         <button
                             onClick={() => { setClientFilter('all'); setClientSelected(new Set()); setClientCurrentPage(1); }}
@@ -1060,7 +1082,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         >
                             <p className="text-xs text-muted-foreground">Total urgente</p>
                             <p className="text-2xl font-bold">{clientUrgentTotal}</p>
-                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">venc. + hoy + 3d</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">vencs + ayer + hoy</p>
                         </button>
                         {/* Vencidos */}
                         <button
@@ -1073,6 +1095,18 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         >
                             <p className="text-xs text-red-400">🔴 Vencidas</p>
                             <p className="text-2xl font-bold text-red-400">{clientExpiredCount}</p>
+                        </button>
+                        {/* Ayer */}
+                        <button
+                            onClick={() => { setClientFilter('yesterday'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                clientFilter === 'yesterday'
+                                    ? 'border-pink-400 bg-pink-500/15 ring-1 ring-pink-400/50'
+                                    : 'border-pink-500/30 bg-pink-500/5 hover:border-pink-500/50'
+                            }`}
+                        >
+                            <p className="text-xs text-pink-400">💕 Ayer</p>
+                            <p className="text-2xl font-bold text-pink-400">{clientYesterdayCount}</p>
                         </button>
                         {/* Vence Hoy */}
                         <button
