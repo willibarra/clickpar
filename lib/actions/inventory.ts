@@ -503,9 +503,9 @@ export async function deleteMotherAccount(id: string) {
         }
     }
 
-    // Soft delete: mark as deleted instead of removing
+    // Soft delete: mark as deleted instead of removing and reset status to active
     const { error } = await (supabase.from('mother_accounts') as any)
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: new Date().toISOString(), status: 'active' })
         .eq('id', id);
 
     if (error) {
@@ -531,7 +531,7 @@ export async function restoreMotherAccount(id: string) {
         .single();
 
     const { error } = await (supabase.from('mother_accounts') as any)
-        .update({ deleted_at: null })
+        .update({ deleted_at: null, status: 'active' })
         .eq('id', id);
 
     if (error) {

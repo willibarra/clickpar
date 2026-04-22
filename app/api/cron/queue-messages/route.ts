@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
     const threeDaysStr = formatDate(addDays(today, 3));
 
     const dateRanges: { filterDate: string; type: MessageType; templateKey: string; daysLabel: string }[] = [
+        { filterDate: sevenDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '7d' },
+        { filterDate: threeDaysStr,  type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '3d' },
+        { filterDate: tomorrowStr,   type: 'pre_expiry',        templateKey: 'pre_vencimiento',    daysLabel: '1d' },
         { filterDate: todayStr,      type: 'expiry_today',      templateKey: 'vencimiento_hoy',    daysLabel: '0d' },
+        { filterDate: yesterdayStr,  type: 'expired_yesterday', templateKey: 'vencimiento_hoy',    daysLabel: '-1d' },
     ];
 
     for (const range of dateRanges) {

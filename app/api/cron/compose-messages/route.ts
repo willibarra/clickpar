@@ -24,7 +24,6 @@ export const dynamic = 'force-dynamic';
  * Phase 2 of the message queue pipeline.
  * Reads pending messages and generates message bodies.
  * For WhatsApp: tries N8N AI first, falls back to static template.
- * For Kommo: builds the message text inline.
  */
 export async function POST(request: NextRequest) {
     const authError = verifyCronSecret(request);
@@ -79,11 +78,11 @@ export async function POST(request: NextRequest) {
 
             if (msg.channel === 'whatsapp') {
                 await composeWhatsApp(msg, supabase, useAiMessages, waSettings, results);
-            } else if (msg.channel === 'kommo') {
-                // Canal kommo desactivado: marcar como skipped
+            } else {
+                // Unknown channel: skip
                 await supabase
                     .from('message_queue' as any)
-                    .update({ status: 'skipped', error: 'Kommo desactivado temporalmente' })
+                    .update({ status: 'skipped', error: `Canal desconocido: ${msg.channel}` })
                     .eq('id', msg.id);
                 results.skipped++;
             }

@@ -198,15 +198,6 @@ async function sendSingleMessage(
             return await sendWhatsApp(msg, supabase);
         }
 
-        // Canal kommo desactivado: marcar como skipped
-        if (msg.channel === 'kommo') {
-            await supabase
-                .from('message_queue' as any)
-                .update({ status: 'skipped', error: 'Kommo desactivado temporalmente' })
-                .eq('id', msg.id);
-            return { success: false, retrying: false };
-        }
-
         // Unknown channel
         await supabase
             .from('message_queue' as any)

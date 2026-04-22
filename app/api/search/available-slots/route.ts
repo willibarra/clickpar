@@ -8,17 +8,17 @@ export async function GET() {
 
     try {
         const { data: slots } = await (supabase.from('sale_slots') as any)
-            .select('id, slot_identifier, status, mother_accounts:mother_account_id(id, platform, email, status, renewal_date)')
+            .select('id, slot_identifier, status, mother_accounts:mother_account_id(id, platform, email, status, renewal_date, deleted_at)')
             .eq('status', 'available')
             .order('slot_identifier');
 
         const today = new Date().toISOString().split('T')[0];
 
-        // Filter out slots from quarantined/inactive/expired accounts
+        // Filter out slots from quarantined/inactive/expired or deleted accounts
         const formattedSlots = (slots || [])
             .filter((s: any) => {
                 const acct = s.mother_accounts;
-                if (!acct || acct.status !== 'active') return false;
+                if (!acct || acct.status !== 'active' || acct.deleted_at) return false;
                 // Exclude expired accounts
                 if (acct.renewal_date && acct.renewal_date < today) return false;
                 return true;
