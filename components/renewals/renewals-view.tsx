@@ -704,11 +704,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 {/* ─── PROVIDERS TAB ─── */}
                 <TabsContent value="providers" className="space-y-4">
                     {/* Stats Row — clickable filters */}
-                    <div className="grid grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                         {/* TOTAL urgente */}
                         <button
                             onClick={() => { setProvFilter('all'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'all'
                                     ? 'border-[#86EFAC] bg-[#86EFAC]/10 ring-1 ring-[#86EFAC]/50'
                                     : 'border-border bg-[#1a1a1a] hover:border-border/80'
@@ -721,7 +721,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Vencidas */}
                         <button
                             onClick={() => { setProvFilter('expired'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'expired'
                                     ? 'border-red-400 bg-red-500/15 ring-1 ring-red-400/50'
                                     : 'border-red-500/30 bg-red-500/5 hover:border-red-500/50'
@@ -733,7 +733,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Ayer */}
                         <button
                             onClick={() => { setProvFilter('yesterday'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'yesterday'
                                     ? 'border-pink-400 bg-pink-500/15 ring-1 ring-pink-400/50'
                                     : 'border-pink-500/30 bg-pink-500/5 hover:border-pink-500/50'
@@ -745,7 +745,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Vencen Hoy */}
                         <button
                             onClick={() => { setProvFilter('today'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === 'today'
                                     ? 'border-orange-400 bg-orange-500/15 ring-1 ring-orange-400/50'
                                     : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
@@ -757,7 +757,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Próx. 3 días */}
                         <button
                             onClick={() => { setProvFilter('3days'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 provFilter === '3days'
                                     ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
                                     : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
@@ -912,7 +912,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
                             {/* Header */}
-                            <div className="grid grid-cols-[40px_1fr_160px_110px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                            <div className="hidden md:grid grid-cols-[40px_1fr_160px_110px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
                                 <div className="flex items-center">
                                     <Checkbox
                                         checked={provSelected.size === filteredAccounts.length && filteredAccounts.length > 0}
@@ -938,7 +938,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 return (
                                     <div
                                         key={account.id}
-                                        className={`grid grid-cols-[40px_1fr_160px_110px_110px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                        className={`flex flex-wrap items-start gap-2 px-3 py-3 md:grid md:grid-cols-[40px_1fr_160px_110px_110px_80px] md:items-center md:px-4 border-b border-border/50 transition-colors ${provSelected.has(account.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
                                             }`}
                                     >
                                         <div>
@@ -1003,8 +1003,8 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                             })()}
                                         </div>
                                         {/* Proveedor */}
-                                        <div className="text-sm text-muted-foreground truncate">
-                                            {account.supplier_name || <span className="text-muted-foreground/40 italic text-xs">Sin proveedor</span>}
+                                        <div className="text-sm text-muted-foreground truncate w-full md:w-auto">
+                                            <span className="md:hidden text-[10px] uppercase tracking-wider text-muted-foreground/60">Prov: </span>{account.supplier_name || <span className="text-muted-foreground/40 italic text-xs">Sin proveedor</span>}
                                         </div>
                                         {/* Vencimiento */}
                                         <div className="text-sm font-medium tabular-nums">
@@ -1070,11 +1070,11 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 {/* ─── CLIENTS TAB ─── */}
                 <TabsContent value="clients" className="space-y-4">
                                     {/* Stats Row — clickable filters */}
-                    <div className="grid grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                         {/* TOTAL urgente */}
                         <button
                             onClick={() => { setClientFilter('all'); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 clientFilter === 'all'
                                     ? 'border-[#86EFAC] bg-[#86EFAC]/10 ring-1 ring-[#86EFAC]/50'
                                     : 'border-border bg-[#1a1a1a] hover:border-border/80'
@@ -1087,7 +1087,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Vencidos */}
                         <button
                             onClick={() => { setClientFilter('expired'); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 clientFilter === 'expired'
                                     ? 'border-red-400 bg-red-500/15 ring-1 ring-red-400/50'
                                     : 'border-red-500/30 bg-red-500/5 hover:border-red-500/50'
@@ -1099,7 +1099,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Ayer */}
                         <button
                             onClick={() => { setClientFilter('yesterday'); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 clientFilter === 'yesterday'
                                     ? 'border-pink-400 bg-pink-500/15 ring-1 ring-pink-400/50'
                                     : 'border-pink-500/30 bg-pink-500/5 hover:border-pink-500/50'
@@ -1111,7 +1111,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Vence Hoy */}
                         <button
                             onClick={() => { setClientFilter('today'); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 clientFilter === 'today'
                                     ? 'border-orange-400 bg-orange-500/15 ring-1 ring-orange-400/50'
                                     : 'border-orange-500/30 bg-orange-500/5 hover:border-orange-500/50'
@@ -1123,7 +1123,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                         {/* Próx. 3 días */}
                         <button
                             onClick={() => { setClientFilter('3days'); setClientSelected(new Set()); setClientCurrentPage(1); }}
-                            className={`rounded-xl border p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                            className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
                                 clientFilter === '3days'
                                     ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
                                     : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
@@ -1224,7 +1224,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
 
                         {/* Table */}
                         <div className="rounded-xl border border-border bg-[#1a1a1a] overflow-hidden">
-                            <div className="grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
+                            <div className="hidden md:grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-[#0d0d0d]">
                                 <div className="flex items-center">
                                     <Checkbox
                                         checked={clientSelected.size === paginatedSubs.length && paginatedSubs.length > 0}
@@ -1281,7 +1281,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                 return (
                                     <div
                                         key={sub.id}
-                                        className={`grid grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] gap-2 px-4 py-3 border-b border-border/50 items-center transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
+                                        className={`flex flex-wrap items-start gap-2 px-3 py-3 md:grid md:grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] md:items-center md:px-4 border-b border-border/50 transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
                                             }`}
                                     >
                                         <div>

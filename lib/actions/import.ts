@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/utils/phone';
 import { revalidatePath } from 'next/cache';
+import { logAction } from './audit';
 
 // Create an untyped Supabase client for bulk operations
 const supabase = createClient(
@@ -81,6 +82,15 @@ export async function bulkImportCustomers(
             result.errors.push(`Error procesando fila: ${error.message}`);
         }
     }
+
+    // Audit log
+    await logAction('bulk_import_customers', 'customer', undefined, {
+        message: `importó ${result.success} clientes (${result.duplicates} duplicados, ${result.errors.length} errores)`,
+        total_rows: data.length,
+        success: result.success,
+        duplicates: result.duplicates,
+        errors_count: result.errors.length,
+    });
 
     revalidatePath('/customers');
     return result;
@@ -180,6 +190,15 @@ export async function bulkImportMotherAccounts(
             result.errors.push(`Error procesando fila: ${error.message}`);
         }
     }
+
+    // Audit log
+    await logAction('bulk_import_accounts', 'mother_account', undefined, {
+        message: `importó ${result.success} cuentas madre (${result.duplicates} duplicados, ${result.errors.length} errores)`,
+        total_rows: data.length,
+        success: result.success,
+        duplicates: result.duplicates,
+        errors_count: result.errors.length,
+    });
 
     revalidatePath('/inventory');
     return result;

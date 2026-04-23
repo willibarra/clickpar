@@ -6,12 +6,14 @@ import { AddCustomerModal } from '@/components/customers/add-customer-modal';
 import { CustomerDataActions } from '@/components/customers/customer-data-actions';
 import { CustomersView, type CustomerRow } from '@/components/customers/customers-view';
 
-export default async function CustomersPage() {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; edit?: string }> }) {
+    const params = await searchParams;
+    const initialSearch = params.q || '';
     const supabase = await createAdminClient();
 
-    // 1. Fetch all customers
+    // 1. Fetch all customers (includes notes for the detail view)
     const { data: rawCustomers } = await (supabase.from('customers') as any)
-        .select('id, full_name, phone, email, created_at, customer_type, whatsapp_instance, creator_slug, creator_whatsapp, panel_disabled, portal_user_id')
+        .select('id, full_name, phone, email, notes, created_at, customer_type, whatsapp_instance, creator_slug, creator_whatsapp, panel_disabled, portal_user_id')
         .order('created_at', { ascending: false });
 
     const customerList = (rawCustomers || []) as any[];
@@ -203,7 +205,7 @@ export default async function CustomersPage() {
 
             {/* Customers Table View */}
             <Suspense fallback={<div className="text-muted-foreground text-sm py-8 text-center">Cargando clientes...</div>}>
-                <CustomersView customers={enrichedCustomers} />
+                <CustomersView customers={enrichedCustomers} initialSearch={initialSearch} />
             </Suspense>
         </div>
     );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Loader2 } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
 export function OmniSearch() {
@@ -9,6 +9,7 @@ export function OmniSearch() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const [query, setQuery] = useState(searchParams.get('q') || '');
+    const [resolving, setResolving] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
     // Track the last query we actually navigated to, to avoid duplicate navigations
@@ -27,7 +28,7 @@ export function OmniSearch() {
     }, [searchParams]);
 
     // Debounced navigation — only triggers after user stops typing
-    const navigate = useCallback((value: string) => {
+    const navigate = useCallback(async (value: string) => {
         const trimmed = value.trim();
 
         // Skip if this is the same query we already navigated to
@@ -35,11 +36,33 @@ export function OmniSearch() {
 
         if (trimmed.length >= 2) {
             lastNavigatedQuery.current = trimmed;
-            // Use replace to avoid stacking history entries that cause backlog
-            router.replace(`/inventory?q=${encodeURIComponent(trimmed)}`);
-        } else if (trimmed.length === 0 && pathname === '/inventory') {
+            setResolving(true);
+
+            try {
+                // Ask the global search API where this query lives
+                const res = await fetch(`/api/search/global?q=${encodeURIComponent(trimmed)}`);
+                const data = await res.json();
+
+                if (data.inventoryCount > 0) {
+                    // Found in inventory — go there
+                    router.replace(`/inventory?q=${encodeURIComponent(trimmed)}`);
+                } else if (data.customersCount > 0) {
+                    // NOT in inventory but IS in customers — redirect to customers
+                    router.replace(`/customers?q=${encodeURIComponent(trimmed)}`);
+                } else {
+                    // Nothing found anywhere — still navigate to inventory (shows "no results")
+                    router.replace(`/inventory?q=${encodeURIComponent(trimmed)}`);
+                }
+            } catch {
+                // Fallback to inventory on error
+                router.replace(`/inventory?q=${encodeURIComponent(trimmed)}`);
+            } finally {
+                setResolving(false);
+            }
+        } else if (trimmed.length === 0 && (pathname === '/inventory' || pathname === '/customers')) {
             lastNavigatedQuery.current = '';
-            router.replace('/inventory');
+            if (pathname === '/inventory') router.replace('/inventory');
+            else router.replace('/customers');
         }
     }, [router, pathname]);
 
@@ -54,8 +77,8 @@ export function OmniSearch() {
         // Cancel any pending navigation
         if (debounceRef.current) clearTimeout(debounceRef.current);
 
-        // Longer debounce (600ms) to avoid hammering the server with navigations
-        debounceRef.current = setTimeout(() => navigate(value), 600);
+        // 700ms debounce to let the user finish typing before API call
+        debounceRef.current = setTimeout(() => navigate(value), 700);
     };
 
     const handleClear = () => {
@@ -63,6 +86,7 @@ export function OmniSearch() {
         lastNavigatedQuery.current = '';
         if (debounceRef.current) clearTimeout(debounceRef.current);
         if (pathname.startsWith('/inventory')) router.replace('/inventory');
+        else if (pathname.startsWith('/customers')) router.replace('/customers');
         inputRef.current?.focus();
     };
 
@@ -95,9 +119,12 @@ export function OmniSearch() {
         <div className="relative w-full max-w-lg neon-search-wrapper">
             <div className="neon-search-inner">
                 <div className="relative flex items-center">
-                    {/* Search icon with gradient */}
+                    {/* Search icon / spinner */}
                     <div className="absolute left-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4" style={{ color: '#a855f7' }} />
+                        {resolving
+                            ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: '#a855f7' }} />
+                            : <Search className="h-4 w-4" style={{ color: '#a855f7' }} />
+                        }
                     </div>
 
                     <input

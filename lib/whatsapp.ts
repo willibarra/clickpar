@@ -6,6 +6,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { normalizePhone, safeNormalizePhone } from '@/lib/utils/phone';
 import { waitForRandomDelay, checkHourlyLimit } from '@/lib/rate-limiter';
+import { logAction } from '@/lib/actions/audit';
 
 // ==========================================
 // Whitelist — reads from app_config
@@ -293,11 +294,23 @@ export async function updateWhatsAppSettings(settings: Partial<WhatsAppSettings>
                 .from('whatsapp_settings')
                 .update({ ...settings, updated_at: new Date().toISOString() })
                 .eq('id', existing.id);
+            if (!error) {
+                const changedKeys = Object.keys(settings).join(', ');
+                logAction('update_whatsapp_settings', 'whatsapp_settings', existing.id, {
+                    message: `actualizó configuración de WhatsApp (${changedKeys})`,
+                    changed_fields: Object.keys(settings),
+                }).catch(() => {});
+            }
             return !error;
         } else {
             const { error } = await supabase
                 .from('whatsapp_settings')
                 .insert({ ...DEFAULT_SETTINGS, ...settings });
+            if (!error) {
+                logAction('create_whatsapp_settings', 'whatsapp_settings', undefined, {
+                    message: `creó configuración inicial de WhatsApp`,
+                }).catch(() => {});
+            }
             return !error;
         }
     } catch {
@@ -328,10 +341,23 @@ export async function getTemplates(): Promise<WhatsAppTemplate[]> {
 export async function updateTemplate(id: string, message: string): Promise<boolean> {
     try {
         const supabase = await waSupabase();
+        // Fetch old message for audit before/after
+        const { data: old } = await supabase
+            .from('whatsapp_templates')
+            .select('key, name, message')
+            .eq('id', id)
+            .single();
+
         const { error } = await supabase
             .from('whatsapp_templates')
             .update({ message, updated_at: new Date().toISOString() })
             .eq('id', id);
+        if (!error && old) {
+            logAction('update_whatsapp_template', 'whatsapp_template', id, {
+                message: `modificó el template "${old.name || old.key}"`,
+                template_key: old.key,
+            }).catch(() => {});
+        }
         return !error;
     } catch {
         return false;
@@ -359,11 +385,37 @@ export async function toggleTemplate(id: string, enabled: boolean): Promise<bool
 // ==========================================
 
 /**
+ * Resolves the display name for {nombre} in templates.
+ *
+ * Rules:
+ * 1. If the name contains only digits (pure phone number), return `#XXX`
+ *    where XXX are the last 3 digits.
+ * 2. Otherwise, return only the first word (first name, no surname).
+ */
+export function resolveNombre(rawName: string): string {
+    const trimmed = rawName?.trim() || '';
+    if (!trimmed) return '';
+
+    // Pure number → last 3 digits as #XXX
+    if (/^\d+$/.test(trimmed)) {
+        return `#${trimmed.slice(-3)}`;
+    }
+
+    // Has letters → take only the first word (first name)
+    return trimmed.split(/\s+/)[0];
+}
+
+/**
  * Render a template with variables.
  * Lines that contain a variable that resolves to an empty string are removed entirely
  * (e.g. "🔒 PIN: {pin}" won't appear when there is no PIN).
+ * The {nombre} variable is automatically normalized via resolveNombre().
  */
 export function renderTemplate(template: string, variables: Record<string, string>): string {
+    // Normalize {nombre} automatically before rendering
+    if ('nombre' in variables) {
+        variables = { ...variables, nombre: resolveNombre(variables.nombre) };
+    }
     const emptyKeys = new Set(
         Object.entries(variables)
             .filter(([, v]) => !v)

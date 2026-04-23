@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { logExport } from '@/lib/actions/audit';
 
 export interface ExportColumn {
     key: string;
@@ -60,6 +61,9 @@ export function DataExportButton({ data, columns, filename, title, subtitle }: D
             // Generar archivo
             const dateStr = new Date().toISOString().split('T')[0];
             XLSX.writeFile(workbook, `${filename}_${dateStr}.xlsx`);
+
+            // Audit log
+            logExport(filename, 'excel', data.length);
         } catch (error) {
             console.error('Error exporting to Excel:', error);
         } finally {
@@ -152,6 +156,9 @@ export function DataExportButton({ data, columns, filename, title, subtitle }: D
             // Guardar
             const fileDateStr = new Date().toISOString().split('T')[0];
             doc.save(`${filename}_${fileDateStr}.pdf`);
+
+            // Audit log
+            logExport(filename, 'pdf', data.length);
         } catch (error) {
             console.error('Error exporting to PDF:', error);
         } finally {

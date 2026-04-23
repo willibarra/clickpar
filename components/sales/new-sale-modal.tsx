@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, Copy, Package, Users, MessageCircle } from 'lucide-react';
+import { Plus, Loader2, DollarSign, AlertCircle, Search, UserPlus, Check, X, Copy, Package, Users, MessageCircle, History, ArrowRight, RotateCcw } from 'lucide-react';
 import { createQuickSale, createFullAccountSale } from '@/lib/actions/sales';
 import { createClient } from '@/lib/supabase/client';
 import { SlotPicker } from './slot-picker';
@@ -93,6 +93,23 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     // WhatsApp instance state
     const [waConfig, setWaConfig] = useState<WhatsAppInstanceConfig | null>(null);
     const [selectedWaInstance, setSelectedWaInstance] = useState<string | null>(null);
+
+    // ── Return customer hint ─────────────────────────────────────
+    // Holds info about the customer's last slot if they were a previous client
+    interface ReturnHint {
+        checking: boolean;
+        found: boolean;
+        slotAvailable: boolean;
+        slotId?: string;
+        slotIdentifier?: string | null;
+        platform?: string | null;
+        accountEmail?: string | null;
+        lastSaleDate?: string | null;
+        lastAmount?: number | null;
+        reason?: string;
+    }
+    const [returnHint, setReturnHint] = useState<ReturnHint>({ checking: false, found: false, slotAvailable: false });
+    const returnHintRef = useRef<ReturnHint>({ checking: false, found: false, slotAvailable: false });
 
     // Form state
     const [selectedPlatform, setSelectedPlatform] = useState<string>('');
@@ -367,6 +384,33 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         }
         // Pre-setear instancia WhatsApp del cliente
         setSelectedWaInstance(customer.whatsapp_instance || null);
+
+        // ── Check if this is a returning customer with a previous slot ──
+        setReturnHint({ checking: true, found: false, slotAvailable: false });
+        const platformFilter = selectedPlatform ? `&platform=${encodeURIComponent(selectedPlatform)}` : '';
+        fetch(`/api/search/customer-last-slot?customerId=${customer.id}${platformFilter}`)
+            .then(r => r.json())
+            .then(data => {
+                const hint: ReturnHint = {
+                    checking: false,
+                    found: data.found,
+                    slotAvailable: data.slotAvailable,
+                    slotId: data.slotId,
+                    slotIdentifier: data.slotIdentifier,
+                    platform: data.platform,
+                    accountEmail: data.accountEmail,
+                    lastSaleDate: data.lastSaleDate,
+                    lastAmount: data.lastAmount,
+                    reason: data.reason,
+                };
+                setReturnHint(hint);
+                returnHintRef.current = hint;
+                // If the previous slot is available and matches the current platform, auto-select it
+                if (data.slotAvailable && data.slotId && (!selectedPlatform || data.platform === selectedPlatform)) {
+                    setSelectedSlotId(data.slotId);
+                }
+            })
+            .catch(() => setReturnHint({ checking: false, found: false, slotAvailable: false }));
     };
 
     const handleClearCustomer = () => {
@@ -377,6 +421,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setSelectedWaInstance(null);
         setPriceOverridden(false);
         priceOverriddenRef.current = false;
+        setReturnHint({ checking: false, found: false, slotAvailable: false });
+        returnHintRef.current = { checking: false, found: false, slotAvailable: false };
         // Restaurar precio default
         if (selectedPlatform) {
             const plat = dbPlatforms.find(p => p.name === selectedPlatform);
@@ -727,7 +773,71 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                                             </div>
                                         )}
                                     </div>
-                                ) : (
+                                ) : null}
+
+                                {/* ── Return Customer Hint Banner ── */}
+                                {selectedCustomer && (
+                                    <>
+                                        {returnHint.checking && (
+                                            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground animate-pulse">
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                Verificando historial del cliente...
+                                            </div>
+                                        )}
+
+                                        {/* ✅ Slot anterior DISPONIBLE */}
+                                        {!returnHint.checking && returnHint.found && returnHint.slotAvailable && (
+                                            <div className="rounded-lg border border-[#86EFAC]/40 bg-[#86EFAC]/8 px-3 py-2.5 space-y-1"
+                                                style={{ background: 'rgba(134,239,172,0.07)' }}>
+                                                <div className="flex items-center gap-2">
+                                                    <RotateCcw className="h-3.5 w-3.5 text-[#86EFAC] flex-shrink-0" />
+                                                    <p className="text-xs font-semibold text-[#86EFAC]">
+                                                        ¡Cliente que regresa! — Su slot anterior está libre
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+                                                    <span className="font-medium text-foreground">{returnHint.platform}</span>
+                                                    {returnHint.slotIdentifier && (
+                                                        <><ArrowRight className="h-3 w-3" /><span>{returnHint.slotIdentifier}</span></>
+                                                    )}
+                                                    {returnHint.accountEmail && (
+                                                        <span className="opacity-60 truncate">· {returnHint.accountEmail}</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-[#86EFAC]/70 pl-5">
+                                                    Slot pre-seleccionado automáticamente — podés cambiarlo si querés
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* ⚠️ Slot anterior OCUPADO */}
+                                        {!returnHint.checking && returnHint.found && !returnHint.slotAvailable && (
+                                            <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2.5 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <History className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
+                                                    <p className="text-xs font-semibold text-amber-400">
+                                                        Cliente que regresa — slot anterior ocupado
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+                                                    <span className="font-medium text-foreground">{returnHint.platform}</span>
+                                                    {returnHint.slotIdentifier && (
+                                                        <><ArrowRight className="h-3 w-3" /><span>{returnHint.slotIdentifier}</span></>
+                                                    )}
+                                                    {returnHint.accountEmail && (
+                                                        <span className="opacity-60 truncate">· {returnHint.accountEmail}</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-amber-400/70 pl-5">
+                                                    Se asignará un slot diferente disponible
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* Search input — only show when no customer selected and not showing new form */}
+                                {!selectedCustomer && !showNewCustomerForm && (
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                         <Input

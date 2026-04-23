@@ -171,3 +171,20 @@
 ::-webkit-scrollbar-track    { background: #09090b; }
 ::-webkit-scrollbar-thumb    { background: rgba(168, 85, 247, 0.35); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.6); }
+
+/* ─── Safe Area (iPhone notch / home indicator) ─── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ─── Mobile: prevent horizontal overflow on small screens ─── */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+

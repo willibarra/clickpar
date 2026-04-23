@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -8,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3, ShieldCheck, GitMerge
+    Filter, Phone, RefreshCw, Clock, Monitor, X, Check, Edit3, ShieldCheck, GitMerge, ExternalLink
 } from 'lucide-react';
 import { EditCustomerModal } from '@/components/customers/edit-customer-modal';
 import { WalletTopupModal } from '@/components/customers/wallet-topup-modal';
@@ -55,6 +56,7 @@ export interface CustomerRow {
 
 interface CustomersViewProps {
     customers: CustomerRow[];
+    initialSearch?: string;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────── */
@@ -114,11 +116,11 @@ const statusOrder = { active: 1, expired: 2, inactive: 3 };
 
 /* ── Component ───────────────────────────────────────────────── */
 
-export function CustomersView({ customers }: CustomersViewProps) {
+export function CustomersView({ customers, initialSearch = '' }: CustomersViewProps) {
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || initialSearch || '');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [sortField, setSortField] = useState<SortField>('nextExpiry');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -383,6 +385,17 @@ export function CustomersView({ customers }: CustomersViewProps) {
                                         >
                                             <Clock className="h-3 w-3 mr-1" /> Historial
                                         </Button>
+                                        
+                                        <Link href={`/customers/${customer.id}`}>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 px-2 text-xs border-border text-muted-foreground hover:text-foreground"
+                                                title="Ver ficha completa"
+                                            >
+                                                <ExternalLink className="h-3 w-3 mr-1" /> Ficha
+                                            </Button>
+                                        </Link>
                                         
                                         <EditCustomerModal
                                             customer={{

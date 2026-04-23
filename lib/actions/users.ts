@@ -115,6 +115,13 @@ export async function updateUser(data: UpdateUserData) {
     const supabase = await createAdminClient();
 
     try {
+        // Fetch current profile for audit before/after
+        const { data: oldProfile } = await (supabase
+            .from('profiles') as any)
+            .select('full_name, role, phone_number')
+            .eq('id', data.userId)
+            .single();
+
         const updateData: any = {};
         if (data.fullName !== undefined) updateData.full_name = data.fullName;
         if (data.phoneNumber !== undefined) updateData.phone_number = data.phoneNumber;
@@ -135,6 +142,20 @@ export async function updateUser(data: UpdateUserData) {
             });
         }
 
+        // Audit log
+        const userName = data.fullName || oldProfile?.full_name || 'usuario';
+        const changes: string[] = [];
+        if (data.role && data.role !== oldProfile?.role) changes.push(`rol: ${oldProfile?.role} → ${data.role}`);
+        if (data.fullName && data.fullName !== oldProfile?.full_name) changes.push(`nombre actualizado`);
+        if (data.phoneNumber && data.phoneNumber !== oldProfile?.phone_number) changes.push(`teléfono actualizado`);
+        if (data.permissions) changes.push(`permisos actualizados`);
+
+        await logAction('update_user', 'user', data.userId, {
+            message: `actualizó al usuario ${userName}${changes.length ? ` (${changes.join(', ')})` : ''}`,
+            old_role: oldProfile?.role,
+            new_role: data.role,
+        });
+
         revalidatePath('/settings');
         return { success: true };
     } catch (error: any) {
@@ -154,10 +175,31 @@ export async function deleteUser(userId: string) {
             return { error: 'No podés eliminarte a vos mismo' };
         }
 
+        // Fetch user info BEFORE deleting (CASCADE will remove profile)
+        const { data: profile } = await (supabase
+            .from('profiles') as any)
+            .select('full_name, role, phone_number')
+            .eq('id', userId)
+            .single();
+
+        let userEmail = 'N/A';
+        try {
+            const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId);
+            userEmail = authUser?.email || 'N/A';
+        } catch { /* ignore */ }
+
         // Eliminar de auth.users (esto también eliminará el perfil por CASCADE)
         const { error } = await supabase.auth.admin.deleteUser(userId);
 
         if (error) throw error;
+
+        // Audit log (after successful deletion)
+        await logAction('delete_user', 'user', userId, {
+            message: `eliminó al usuario ${profile?.full_name || 'desconocido'} (${profile?.role || 'sin rol'})`,
+            deleted_user_name: profile?.full_name,
+            deleted_user_role: profile?.role,
+            deleted_user_email: userEmail,
+        });
 
         revalidatePath('/settings');
         return { success: true };

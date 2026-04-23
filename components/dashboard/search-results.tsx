@@ -141,8 +141,8 @@ function useCopy() {
 function CopyButton({ getText, size = 'sm' }: { getText: () => string; size?: 'sm' | 'xs' }) {
     const { copied, copy } = useCopy();
     const cls = size === 'xs'
-        ? 'p-1 rounded text-[10px]'
-        : 'px-2 py-1 rounded-md text-xs';
+        ? 'p-1.5 rounded text-[10px] min-h-[28px]'
+        : 'px-2.5 py-1.5 rounded-md text-xs min-h-[36px]';
     return (
         <button
             onClick={() => copy(getText())}
@@ -166,7 +166,7 @@ function SearchPhoneButton({ phone }: { phone: string }) {
     return (
         <button
             onClick={() => router.push(`/?q=${encodeURIComponent(phone)}`)}
-            className="flex items-center gap-1 p-1 rounded text-[10px] font-medium bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316]/20 transition-colors"
+            className="flex items-center gap-1 p-1.5 rounded text-[10px] font-medium bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316]/20 transition-colors min-h-[28px]"
             title={`Buscar ${phone}`}
         >
             <Search className="h-3 w-3" />
@@ -304,7 +304,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
     if (!editing) {
         return (
             <div className="rounded-lg border border-border/40 bg-[#111] overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-2.5">
+                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-3 py-2.5 md:px-4">
                     <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
 
                     <div className={`flex-1 grid grid-cols-2 ${isFamilyAccount ? 'md:grid-cols-7' : 'md:grid-cols-6'} gap-x-3 gap-y-1 items-center min-w-0`}>
@@ -366,17 +366,17 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                         <CopyButton getText={copyText} />
                         <button
                             onClick={() => setEditing(true)}
-                            className="flex items-center gap-1 rounded-md bg-yellow-500/10 px-2 py-1 text-xs font-medium text-yellow-500 hover:bg-yellow-500/20 transition-colors"
+                            className="flex items-center gap-1 rounded-md bg-yellow-500/10 px-2.5 py-1.5 text-xs font-medium text-yellow-500 hover:bg-yellow-500/20 transition-colors min-h-[36px]"
                         >
                             <Pencil className="h-3 w-3" /> Editar
                         </button>
                         <button
                             onClick={onSwap}
-                            className="flex items-center gap-1 rounded-md bg-[#F97316]/10 px-2 py-1 text-xs font-medium text-[#F97316] hover:bg-[#F97316]/20 transition-colors"
+                            className="flex items-center gap-1 rounded-md bg-[#F97316]/10 px-2.5 py-1.5 text-xs font-medium text-[#F97316] hover:bg-[#F97316]/20 transition-colors min-h-[36px]"
                         >
                             <Repeat className="h-3 w-3" /> Intercambiar
                         </button>
@@ -393,7 +393,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                                 <button
                                     onClick={handleDelete}
                                     disabled={deleting}
-                                    className="flex items-center gap-1 rounded-md bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-1 rounded-md bg-red-500/20 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50 min-h-[36px]"
                                 >
                                     {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : '¿Seguro?'}
                                 </button>
@@ -407,7 +407,7 @@ function CustomerServiceRow({ svc, onSwap, onSaved }: { svc: ServiceInfo; onSwap
                         ) : (
                             <button
                                 onClick={() => setConfirmDelete(true)}
-                                className="flex items-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                                className="flex items-center gap-1 rounded-md bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors min-h-[36px]"
                                 title="Cancelar suscripción"
                             >
                                 <Trash2 className="h-3 w-3" /> Eliminar
@@ -614,7 +614,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
         <Card className={`border-border bg-card overflow-hidden ${isQuarantined ? 'opacity-60 border-yellow-500/30' : ''}`}>
             <CardContent className="p-0">
                 {/* ── COMPACT INFO ROW — Plataforma, Usuario, Clave, Proveedor, Vencimiento, Días ── */}
-                <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-3 py-3 md:px-4">
                     <div className="w-1.5 h-10 rounded-full flex-shrink-0" style={{ backgroundColor: isQuarantined ? '#EAB308' : color }} />
 
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-6 gap-x-4 gap-y-1 items-center min-w-0">
@@ -655,7 +655,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                         {isQuarantined && !reactivated && (
                             <button
                                 onClick={async () => {
@@ -670,7 +670,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                                     setReactivating(false);
                                 }}
                                 disabled={reactivating}
-                                className="flex items-center gap-1 rounded-md bg-[#86EFAC]/10 px-2 py-1 text-xs font-medium text-[#86EFAC] hover:bg-[#86EFAC]/20 transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 rounded-md bg-[#86EFAC]/10 px-2.5 py-1.5 text-xs font-medium text-[#86EFAC] hover:bg-[#86EFAC]/20 transition-colors disabled:opacity-50 min-h-[36px]"
                             >
                                 {reactivating ? <Loader2 className="h-3 w-3 animate-spin" /> : reactivated ? <Check className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                                 {reactivated ? 'Reactivada' : 'Reactivar'}
@@ -678,7 +678,7 @@ function AccountCard({ account, onRefresh, onSwapSlot }: { account: SearchResult
                         )}
                         <Link
                             href={`/inventory?q=${encodeURIComponent(email || account.platform || '')}`}
-                            className="flex items-center gap-1 rounded-md bg-[#818CF8]/10 px-2.5 py-1 text-xs font-medium text-[#818CF8] hover:bg-[#818CF8]/20 transition-colors"
+                            className="flex items-center gap-1 rounded-md bg-[#818CF8]/10 px-2.5 py-1.5 text-xs font-medium text-[#818CF8] hover:bg-[#818CF8]/20 transition-colors min-h-[36px]"
                         >
                             <ExternalLink className="h-3 w-3" /> Gestionar
                         </Link>
@@ -938,7 +938,7 @@ function SupplierAccountRow({ account, onRefresh }: { account: SearchResult; onR
             editing ? 'border-yellow-500/40' : 'border-border/40 hover:border-border/70'
         } transition-colors`}>
             {/* Compact row */}
-            <div className="flex items-center gap-3 px-4 py-2.5">
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-3 py-2.5 md:px-4">
                 <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
 
                 <div className="flex-1 grid grid-cols-2 md:grid-cols-6 gap-x-4 gap-y-1 items-center min-w-0">
@@ -985,11 +985,11 @@ function SupplierAccountRow({ account, onRefresh }: { account: SearchResult; onR
                     <span className="text-muted-foreground/40">/{total}</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                     <CopyButton getText={copyText} />
                     <button
                         onClick={() => setEditing(!editing)}
-                        className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                        className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
                             editing ? 'bg-yellow-500/20 text-yellow-500' : 'bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20'
                         }`}
                     >

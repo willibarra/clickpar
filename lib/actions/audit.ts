@@ -74,3 +74,16 @@ export async function logAction(
         });
     }
 }
+
+/**
+ * Registra una exportación de datos (llamable desde Client Components).
+ * Fire-and-forget — no bloquea la UI.
+ */
+export async function logExport(filename: string, format: string, rowCount: number) {
+    await logAction('export_data', 'report', undefined, {
+        message: `exportó ${rowCount} registros de "${filename}" en ${format.toUpperCase()}`,
+        filename,
+        format,
+        row_count: rowCount,
+    });
+}

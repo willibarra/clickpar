@@ -54,6 +54,53 @@ export async function GET(request: NextRequest) {
         });
     }
 
+    // Enrich with active sales data (platform, end_date, slot info)
+    const customerIds = filtered
+        .map((c: any) => c.customer?.id)
+        .filter(Boolean);
+
+    if (customerIds.length > 0) {
+        const { data: salesData } = await supabase
+            .from('sales')
+            .select(`
+                id,
+                customer_id,
+                is_active,
+                end_date,
+                amount_gs,
+                sale_slots:slot_id (
+                    id,
+                    slot_identifier,
+                    mother_accounts:mother_account_id (
+                        platform
+                    )
+                )
+            `)
+            .in('customer_id', customerIds)
+            .eq('is_active', true);
+
+        if (salesData && salesData.length > 0) {
+            const salesByCustomer: Record<string, any[]> = {};
+            for (const sale of salesData as any[]) {
+                const cid = sale.customer_id;
+                if (!salesByCustomer[cid]) salesByCustomer[cid] = [];
+                salesByCustomer[cid].push(sale);
+            }
+            filtered = filtered.map((c: any) => {
+                if (c.customer?.id && salesByCustomer[c.customer.id]) {
+                    return {
+                        ...c,
+                        customer: {
+                            ...c.customer,
+                            sales: salesByCustomer[c.customer.id],
+                        },
+                    };
+                }
+                return c;
+            });
+        }
+    }
+
     return NextResponse.json({ conversations: filtered });
 }
 

@@ -58,7 +58,8 @@ export function SalesTable({ sales }: SalesTableProps) {
             <CardContent>
                 {sales && sales.length > 0 ? (
                     <div className="space-y-4">
-                        <div className="overflow-x-auto">
+                        {/* Desktop table */}
+                        <div className="hidden md:block overflow-x-auto">
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-border text-left text-sm text-muted-foreground">
@@ -120,6 +121,56 @@ export function SalesTable({ sales }: SalesTableProps) {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+
+                        {/* Mobile card view */}
+                        <div className="md:hidden space-y-3">
+                            {paginatedSales.map((sale: any) => (
+                                <div key={sale.id} className="rounded-xl border border-border/50 bg-[#0d0d0d] p-4 space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <p className="font-medium text-foreground truncate">
+                                                {sale.customers?.full_name || 'Sin nombre'}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {sale.customers?.phone || 'Sin teléfono'}
+                                            </p>
+                                        </div>
+                                        <span className={`flex-shrink-0 rounded-full px-2 py-1 text-xs font-medium ${sale.is_active
+                                            ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
+                                            : 'bg-red-500/20 text-red-500'
+                                            }`}>
+                                            {sale.is_active ? 'Activa' : 'Cancelada'}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Plataforma</span>
+                                            <p className="text-foreground">{sale.sale_slots?.mother_accounts?.platform || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Precio</span>
+                                            <p className="font-medium text-foreground">Gs. {sale.amount_gs?.toLocaleString('es-PY')}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Inicio</span>
+                                            <p className="text-muted-foreground">{formatDate(sale.start_date)}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Vencimiento</span>
+                                            <p className="text-muted-foreground">{formatDate(sale.end_date || sale.start_date)}</p>
+                                        </div>
+                                    </div>
+                                    {sale.is_active && (
+                                        <div className="pt-1">
+                                            <CancelSubscriptionButton
+                                                subscriptionId={sale.id}
+                                                slotId={sale.sale_slots?.id}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                         </div>
 
                         {/* Pagination Controls */}

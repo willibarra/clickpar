@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
     MessageSquare, Search, CheckCircle2, RefreshCw,
     Send, User, Loader2,
-    Zap, X,
+    Zap, X, Info, Calendar, CreditCard, AlertTriangle,
     MessageCircle, Inbox, Phone, Package, UserCheck,
 } from 'lucide-react';
 
@@ -161,8 +161,14 @@ function MessageBubble({ msg }: { msg: Message }) {
                 <div className={`flex items-center gap-1 px-1 ${isInbound ? 'self-start' : 'self-end'}`}>
                     <span className="text-[9px] text-muted-foreground">{formatTime(msg.created_at)}</span>
                     {!isInbound && (
-                        <span className="text-[9px] text-muted-foreground">
-                            {msg.wa_status === 'read' ? '✓✓' : msg.wa_status === 'delivered' ? '✓✓' : '✓'}
+                        <span className={`text-[9px] ${
+                            msg.wa_status === 'read' ? 'text-blue-400' :
+                            msg.wa_status === 'failed' ? 'text-red-400' :
+                            'text-muted-foreground'
+                        }`}>
+                            {msg.wa_status === 'read' ? '✓✓' :
+                             msg.wa_status === 'delivered' ? '✓✓' :
+                             msg.wa_status === 'failed' ? '✕' : '✓'}
                         </span>
                     )}
                 </div>
@@ -200,8 +206,65 @@ export default function ConversacionesPage() {
     const [search, setSearch] = useState('');
     const [showQuickReplies, setShowQuickReplies] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [staffEmail, setStaffEmail] = useState('Staff ClickPar');
+    const [showCustomerInfo, setShowCustomerInfo] = useState(false);
+    const [customerInfo, setCustomerInfo] = useState<any>(null);
+    const [customerInfoLoading, setCustomerInfoLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const prevUnreadRef = useRef(0);
+
+    // ── Fetch current staff identity ─────────────────────────────────────────
+    useEffect(() => {
+        fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => {
+            if (d?.email) setStaffEmail(d.email.split('@')[0]);
+        }).catch(() => {});
+    }, []);
+
+    // ── Notification sound on new messages ────────────────────────────────────
+    useEffect(() => {
+        const currentUnread = conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+        if (currentUnread > prevUnreadRef.current && prevUnreadRef.current >= 0) {
+            try {
+                const audio = new Audio('/sounds/notification.wav');
+                audio.volume = 0.4;
+                audio.play().catch(() => {});
+            } catch { /* silent */ }
+            // Browser notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('ClickPar — Nuevo mensaje', {
+                    body: 'Tenés un nuevo mensaje de un cliente',
+                    icon: '/favicon.ico',
+                });
+            }
+        }
+        prevUnreadRef.current = currentUnread;
+    }, [conversations]);
+
+    // Request notification permission on mount
+    useEffect(() => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }, []);
+
+    // ── Load customer info panel ──────────────────────────────────────────────
+    const loadCustomerInfo = async (convId: string) => {
+        setCustomerInfoLoading(true);
+        try {
+            const res = await fetch(`/api/conversations/${convId}/customer-info`);
+            if (res.ok) {
+                setCustomerInfo(await res.json());
+            }
+        } catch { /* silent */ }
+        setCustomerInfoLoading(false);
+    };
+
+    useEffect(() => {
+        if (showCustomerInfo && selectedConv) {
+            loadCustomerInfo(selectedConv.id);
+        }
+    }, [showCustomerInfo, selectedConv?.id]);
 
     // ── Load conversations ───────────────────────────────────────────────────
 
@@ -260,7 +323,7 @@ export default function ConversacionesPage() {
                 action: 'reply',
                 conversationId: selectedConv.id,
                 message: text,
-                staffName: 'Staff ClickPar',
+                staffName: staffEmail,
             }),
         });
 
@@ -443,6 +506,7 @@ export default function ConversacionesPage() {
 
             {/* ── Right panel: Chat ─────────────────────────────────────── */}
             {selectedConv ? (
+                <>
                 <div className="flex-1 flex flex-col min-w-0">
 
                     {/* Chat header */}
@@ -517,6 +581,19 @@ export default function ConversacionesPage() {
                                 className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <X className="h-4 w-4" />
+                            </button>
+
+                            {/* Toggle customer info panel */}
+                            <button
+                                onClick={() => setShowCustomerInfo(v => !v)}
+                                className={`rounded-lg p-1.5 transition-colors ${
+                                    showCustomerInfo
+                                        ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                                title="Info del cliente"
+                            >
+                                <Info className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
@@ -609,6 +686,107 @@ export default function ConversacionesPage() {
                         </p>
                     </div>
                 </div>
+
+                {/* ── Customer Info Sidebar ─────────────────────────────── */}
+                {showCustomerInfo && (
+                    <div className="w-72 flex-shrink-0 border-l border-border/30 bg-card overflow-y-auto">
+                        <div className="p-4 border-b border-border/30 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground">Info del Cliente</h3>
+                            <button onClick={() => setShowCustomerInfo(false)} className="text-muted-foreground hover:text-foreground">
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                        {customerInfoLoading ? (
+                            <div className="flex justify-center py-8">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : customerInfo ? (
+                            <div className="p-4 space-y-4">
+                                {/* Contact */}
+                                <div className="space-y-2">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Contacto</p>
+                                    <div className="bg-muted/30 rounded-xl p-3 space-y-1.5">
+                                        <p className="text-sm font-semibold text-foreground">{customerInfo.customer?.full_name}</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <Phone className="h-3 w-3 text-muted-foreground" />
+                                            <span className="text-xs text-muted-foreground">{customerInfo.wa_phone || customerInfo.customer?.phone}</span>
+                                        </div>
+                                        {customerInfo.customer?.email && (
+                                            <p className="text-xs text-muted-foreground">📧 {customerInfo.customer.email}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Active Sales */}
+                                {customerInfo.active_sales?.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ventas Activas</p>
+                                        {customerInfo.active_sales.map((sale: any) => (
+                                            <div key={sale.id} className="bg-[#86EFAC]/5 border border-[#86EFAC]/20 rounded-xl p-3 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-[#86EFAC]">
+                                                        📺 {sale.sale_slots?.mother_accounts?.platform || 'N/A'}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        {sale.amount_gs?.toLocaleString()} Gs
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-[11px] text-muted-foreground">Vence: {sale.end_date}</span>
+                                                </div>
+                                                {sale.sale_slots?.slot_identifier && (
+                                                    <p className="text-[10px] text-muted-foreground">Slot: {sale.sale_slots.slot_identifier}</p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Open Tickets */}
+                                {customerInfo.tickets?.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tickets Abiertos</p>
+                                        {customerInfo.tickets.map((t: any) => (
+                                            <div key={t.id} className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3">
+                                                <div className="flex items-center gap-1.5">
+                                                    <AlertTriangle className="h-3 w-3 text-yellow-400" />
+                                                    <span className="text-xs text-foreground">{t.subject}</span>
+                                                </div>
+                                                <p className="text-[10px] text-muted-foreground mt-1">{t.status} · {timeAgo(t.created_at)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Past Sales */}
+                                {customerInfo.past_sales?.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Historial</p>
+                                        {customerInfo.past_sales.map((sale: any) => (
+                                            <div key={sale.id} className="bg-muted/20 rounded-lg p-2 space-y-0.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-muted-foreground">
+                                                        {sale.sale_slots?.mother_accounts?.platform || '?'}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground/60">
+                                                        {sale.end_date}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-2 py-12 text-center px-4">
+                                <User className="h-6 w-6 text-muted-foreground/40" />
+                                <p className="text-xs text-muted-foreground">Sin información disponible</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+                </>
             ) : (
                 /* Empty state */
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
