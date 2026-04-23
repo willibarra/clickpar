@@ -102,7 +102,7 @@ async function processInboundMessage(msg: any, instance: string) {
     // 2. Find or create conversation
     let conversation: any;
     if (customer) {
-        const { data: existingRaw } = await supabase
+        const { data: existing } = await supabase
             .from('conversations' as any)
             .select('*')
             .eq('customer_id', customer.id)
@@ -126,7 +126,7 @@ async function processInboundMessage(msg: any, instance: string) {
                 .eq('id', existing.id);
         } else {
             // Create new conversation
-            const { data: newConvRaw } = await supabase
+            const { data: newConv } = await supabase
                 .from('conversations' as any)
                 .insert({
                     customer_id: customer.id,
@@ -143,7 +143,7 @@ async function processInboundMessage(msg: any, instance: string) {
         }
     } else {
         // Unknown customer — create conversation with just the phone
-        const { data: existingRaw } = await supabase
+        const { data: existing } = await supabase
             .from('conversations' as any)
             .select('*')
             .eq('wa_phone', phone)
@@ -164,7 +164,7 @@ async function processInboundMessage(msg: any, instance: string) {
                 })
                 .eq('id', existing.id);
         } else {
-            const { data: newConvRaw } = await supabase
+            const { data: newConv } = await supabase
                 .from('conversations' as any)
                 .insert({
                     status: 'open',
@@ -240,7 +240,7 @@ async function handleAutoResponse(
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
-        const { data: alreadySentOOHRaw } = await supabase
+        const { data: alreadySentOOH } = await supabase
             .from('conversation_messages' as any)
             .select('id')
             .eq('conversation_id', conversationId)
