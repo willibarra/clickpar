@@ -77,6 +77,7 @@ export async function createMotherAccount(formData: FormData) {
         if (emailNorm.includes('@gmail')) provider = 'gmail';
         else if (emailNorm.includes('@hotmail')) provider = 'hotmail';
         else if (emailNorm.includes('@outlook')) provider = 'outlook';
+        else if (emailNorm.includes('@icloud') || emailNorm.includes('@me.com')) provider = 'icloud';
         else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
 
         await (supabase.from('owned_emails') as any).upsert(
@@ -223,6 +224,7 @@ export async function bulkCreateMotherAccounts(
                 if (emailNorm.includes('@gmail')) provider = 'gmail';
                 else if (emailNorm.includes('@hotmail')) provider = 'hotmail';
                 else if (emailNorm.includes('@outlook')) provider = 'outlook';
+                else if (emailNorm.includes('@icloud') || emailNorm.includes('@me.com')) provider = 'icloud';
                 else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
 
                 await (supabase.from('owned_emails') as any).upsert(
@@ -387,6 +389,7 @@ export async function updateMotherAccount(id: string, formData: FormData) {
         if (emailNorm.includes('@gmail')) provider = 'gmail';
         else if (emailNorm.includes('@hotmail')) provider = 'hotmail';
         else if (emailNorm.includes('@outlook')) provider = 'outlook';
+        else if (emailNorm.includes('@icloud') || emailNorm.includes('@me.com')) provider = 'icloud';
         else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
         await (supabase.from('owned_emails') as any).upsert(
             { email: emailNorm, password: emailPassword, provider },

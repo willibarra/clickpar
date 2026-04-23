@@ -28,7 +28,7 @@ export function EmailSettingsPanel() {
     const [showAdd, setShowAdd] = useState(false);
     const [newEmail, setNewEmail] = useState('');
     const [newPassword, setNewPassword] = useState('');
-    const [newType, setNewType] = useState<'cpanel' | 'gmail' | 'hotmail'>('cpanel');
+    const [newType, setNewType] = useState<'cpanel' | 'gmail' | 'hotmail' | 'icloud'>('cpanel');
     const [newRedirect, setNewRedirect] = useState('');
     const [adding, setAdding] = useState(false);
     const [showPasswords, setShowPasswords] = useState<Set<string>>(new Set());
@@ -56,6 +56,7 @@ export function EmailSettingsPanel() {
         let provider = 'otro';
         if (emailNorm.includes('@gmail')) provider = 'gmail';
         else if (emailNorm.includes('@hotmail') || emailNorm.includes('@outlook')) provider = 'hotmail';
+        else if (emailNorm.includes('@icloud') || emailNorm.includes('@me.com')) provider = 'icloud';
         else if (emailNorm.includes('@yahoo')) provider = 'yahoo';
 
         const record: any = {
@@ -105,6 +106,7 @@ export function EmailSettingsPanel() {
         cpanel: '#818CF8',
         gmail: '#F97316',
         hotmail: '#60A5FA',
+        icloud: '#34D399',
     };
 
     if (loading) return null;
@@ -127,7 +129,7 @@ export function EmailSettingsPanel() {
                     </Button>
                 </div>
                 <CardDescription>
-                    Correos que usás para las cuentas de streaming — cPanel, Gmail, Hotmail
+                    Correos que usás para las cuentas de streaming — cPanel, Gmail, Hotmail, iCloud
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -144,7 +146,7 @@ export function EmailSettingsPanel() {
 
                         {/* Type selector */}
                         <div className="flex gap-2">
-                            {(['cpanel', 'gmail', 'hotmail'] as const).map(type => (
+                            {(['cpanel', 'gmail', 'hotmail', 'icloud'] as const).map(type => (
                                 <button
                                     key={type}
                                     type="button"
@@ -156,7 +158,7 @@ export function EmailSettingsPanel() {
                                     style={newType === type ? { backgroundColor: typeColors[type] + '20', color: typeColors[type], borderColor: typeColors[type] + '30' } : {}}
                                 >
                                     {type === 'cpanel' ? <Server className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
-                                    {type === 'cpanel' ? 'cPanel' : type === 'gmail' ? 'Gmail' : 'Hotmail'}
+                                    {type === 'cpanel' ? 'cPanel' : type === 'gmail' ? 'Gmail' : type === 'hotmail' ? 'Hotmail' : 'iCloud'}
                                 </button>
                             ))}
                         </div>

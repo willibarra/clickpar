@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { testImapConnection } from '@/lib/imap-reader';
+import { detectImapConfig } from '@/lib/imap-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,13 +83,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Email y contraseña son requeridos' }, { status: 400 });
     }
 
+    // Auto-detect IMAP host from email domain if not provided
+    const detected = detectImapConfig(email);
+
     const { data, error } = await (admin.from('imap_email_accounts') as any)
         .insert({
             email,
             password,
-            imap_host: imap_host || 'outlook.office365.com',
-            imap_port: imap_port || 993,
-            imap_secure: imap_secure ?? true,
+            imap_host: imap_host || detected?.host || 'outlook.office365.com',
+            imap_port: imap_port || detected?.port || 993,
+            imap_secure: imap_secure ?? detected?.secure ?? true,
             label: label || email,
             platform: platform || null,
             supplier_name: supplier_name || null,

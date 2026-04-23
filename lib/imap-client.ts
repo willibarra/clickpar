@@ -35,6 +35,8 @@ export const IMAP_PRESETS: Record<string, { host: string; port: number; secure: 
     live: { host: 'outlook.office365.com', port: 993, secure: true },
     gmail: { host: 'imap.gmail.com', port: 993, secure: true },
     yahoo: { host: 'imap.mail.yahoo.com', port: 993, secure: true },
+    icloud: { host: 'imap.mail.me.com', port: 993, secure: true },
+    me: { host: 'imap.mail.me.com', port: 993, secure: true },
     // cPanel uses custom host — must be provided explicitly
 };
 

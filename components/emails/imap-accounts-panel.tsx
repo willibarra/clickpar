@@ -167,7 +167,7 @@ export function ImapAccountsPanel() {
                         <Mail className="h-5 w-5 text-blue-400" /> Cuentas Lectoras (IMAP)
                     </CardTitle>
                     <CardDescription>
-                        Correos Hotmail/Outlook de donde el sistema extrae automáticamente los códigos de verificación
+                        Correos Hotmail/Outlook/iCloud de donde el sistema extrae automáticamente los códigos de verificación
                     </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -186,21 +186,21 @@ export function ImapAccountsPanel() {
                     <div className="border border-border rounded-lg p-4 bg-muted/20 space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Correo de Microsoft (Outlook/Hotmail) *</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Correo (Outlook/Hotmail/iCloud) *</label>
                                 <Input
-                                    placeholder="ej: andrewanna7226@hotmail.com"
+                                    placeholder="ej: cuenta@hotmail.com o cuenta@icloud.com"
                                     value={form.email}
                                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                                 />
                             </div>
                             <div>
                                 <label className="text-xs text-muted-foreground mb-1 block">
-                                    Contraseña de Aplicación * <span className="text-yellow-400 opacity-80">(16 letras juntas)</span>
+                                    Contraseña de Aplicación * <span className="text-yellow-400 opacity-80">(App Password)</span>
                                 </label>
                                 <div className="relative">
                                     <Input
                                         type={showPassword ? 'text' : 'password'}
-                                        placeholder="ej: porjcwecqcmbitvw"
+                                        placeholder="ej: porjcwecqcmbitvw o xxxx-xxxx-xxxx-xxxx"
                                         value={form.password}
                                         onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                                         className="pr-10"

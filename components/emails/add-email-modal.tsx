@@ -9,6 +9,7 @@ const providerOptions = [
     { value: 'gmail', label: 'Gmail' },
     { value: 'hotmail', label: 'Hotmail' },
     { value: 'outlook', label: 'Outlook' },
+    { value: 'icloud', label: 'iCloud' },
     { value: 'yahoo', label: 'Yahoo' },
     { value: 'otro', label: 'Otro' },
 ];

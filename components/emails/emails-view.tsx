@@ -22,7 +22,7 @@ const statusConfig = {
 };
 
 const providerLabels: Record<string, string> = {
-    gmail: 'Gmail', hotmail: 'Hotmail', outlook: 'Outlook', yahoo: 'Yahoo', otro: 'Otro',
+    gmail: 'Gmail', hotmail: 'Hotmail', outlook: 'Outlook', icloud: 'iCloud', yahoo: 'Yahoo', otro: 'Otro',
 };
 
 export function EmailsView({ emails: initialEmails }: { emails: OwnedEmailWithStatus[] }) {

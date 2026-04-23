@@ -1,6 +1,6 @@
 /**
  * IMAP Reader — imapflow
- * Conecta on-demand a Outlook/Hotmail para extraer códigos de verificación.
+ * Conecta on-demand a Outlook/Hotmail/iCloud para extraer códigos de verificación.
  * Soporta múltiples filtros de asunto por cuenta.
  */
 
@@ -85,7 +85,9 @@ export async function fetchCodeFromImap(
         return { success: false, error: 'No se configuraron asuntos para buscar' };
     }
 
-    const host = config.host || 'outlook.office365.com';
+    const emailDomain = config.email?.split('@')[1]?.toLowerCase() || '';
+    const isIcloud = emailDomain.includes('icloud') || emailDomain.includes('me.com');
+    const host = config.host || (isIcloud ? 'imap.mail.me.com' : 'outlook.office365.com');
     const port = config.port || 993;
     const secure = config.secure !== false;
 
@@ -167,8 +169,10 @@ export async function testImapConnection(config: ImapAccountConfig): Promise<{
     error?: string;
     messageCount?: number;
 }> {
+    const emailDomain = config.email?.split('@')[1]?.toLowerCase() || '';
+    const isIcloud = emailDomain.includes('icloud') || emailDomain.includes('me.com');
     const client = new ImapFlow({
-        host: config.host || 'outlook.office365.com',
+        host: config.host || (isIcloud ? 'imap.mail.me.com' : 'outlook.office365.com'),
         port: config.port || 993,
         secure: config.secure !== false,
         auth: { user: config.email, pass: config.password },

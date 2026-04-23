@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { searchImapForCode, type ImapAccountConfig } from '@/lib/imap-client';
+import { detectImapConfig } from '@/lib/imap-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,13 +48,14 @@ export async function POST(req: NextRequest) {
             secure: acct.imap_secure,
         };
     } else {
-        // Direct credentials
+        // Direct credentials — auto-detect host from email domain
+        const detected = detectImapConfig(body.email);
         config = {
             email: body.email,
             password: body.password,
-            host: body.host || 'outlook.office365.com',
-            port: body.port || 993,
-            secure: body.secure ?? true,
+            host: body.host || detected?.host || 'outlook.office365.com',
+            port: body.port || detected?.port || 993,
+            secure: body.secure ?? detected?.secure ?? true,
         };
     }
 

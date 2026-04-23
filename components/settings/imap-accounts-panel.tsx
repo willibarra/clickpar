@@ -203,14 +203,14 @@ export function ImapAccountsPanel() {
                 <div className="border border-border rounded-lg p-4 bg-muted/20 space-y-3">
                     <h4 className="font-medium text-sm text-foreground flex items-center gap-2">
                         <Mail className="h-4 w-4 text-blue-400" />
-                        Agregar cuenta Hotmail / Outlook
+                        Agregar cuenta Hotmail / Outlook / iCloud
                     </h4>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Email *</label>
                             <Input
-                                placeholder="cuenta@hotmail.com"
+                                placeholder="cuenta@hotmail.com o cuenta@icloud.com"
                                 value={form.email}
                                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                             />
@@ -237,7 +237,7 @@ export function ImapAccountsPanel() {
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Etiqueta (opcional)</label>
                             <Input
-                                placeholder="ej: Hotmail Disney Principal"
+                                placeholder="ej: iCloud Netflix Principal"
                                 value={form.label}
                                 onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
                             />
@@ -313,7 +313,7 @@ export function ImapAccountsPanel() {
                 <div className="text-center py-8 text-muted-foreground text-sm">
                     <Mail className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     <p>No hay cuentas IMAP configuradas.</p>
-                    <p className="text-xs mt-1">Agregá una cuenta Hotmail con su App Password.</p>
+                    <p className="text-xs mt-1">Agregá una cuenta Hotmail o iCloud con su App Password.</p>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -467,14 +467,25 @@ export function ImapAccountsPanel() {
             )}
 
             {/* Help note */}
-            <div className="rounded-lg bg-blue-950/30 border border-blue-800/30 p-3 text-xs text-blue-300 space-y-1">
-                <p className="font-medium">¿Cómo obtener el App Password de Microsoft?</p>
-                <ol className="list-decimal list-inside space-y-0.5 text-blue-400/80">
-                    <li>Ir a <span className="text-blue-300">account.microsoft.com</span> → Seguridad</li>
-                    <li>Buscar "Contraseñas de aplicación" o "App passwords"</li>
-                    <li>Crear nueva → copiar los 16 caracteres generados</li>
-                </ol>
-                <p className="text-blue-400/60 pt-1">⚠️ Usar la contraseña de App, NO la contraseña normal de la cuenta.</p>
+            <div className="rounded-lg bg-blue-950/30 border border-blue-800/30 p-3 text-xs text-blue-300 space-y-2">
+                <div>
+                    <p className="font-medium">📧 Microsoft (Hotmail/Outlook)</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-blue-400/80 mt-1">
+                        <li>Ir a <span className="text-blue-300">account.microsoft.com</span> → Seguridad</li>
+                        <li>Buscar "Contraseñas de aplicación" o "App passwords"</li>
+                        <li>Crear nueva → copiar los 16 caracteres generados</li>
+                    </ol>
+                    <p className="text-yellow-400/70 pt-1">⚠️ Microsoft depreca App Passwords el 30/04/2026. Recomendamos migrar a iCloud.</p>
+                </div>
+                <div className="border-t border-blue-800/30 pt-2">
+                    <p className="font-medium"> iCloud Mail</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-blue-400/80 mt-1">
+                        <li>Ir a <span className="text-blue-300">account.apple.com</span> → Inicio de sesión y seguridad</li>
+                        <li>Buscar "Contraseñas de apps" o "App-Specific Passwords"</li>
+                        <li>Generar nueva → copiar la contraseña generada</li>
+                    </ol>
+                    <p className="text-green-400/70 pt-1">✅ iCloud soporta hasta 25 App Passwords sin fecha de deprecación.</p>
+                </div>
             </div>
         </div>
     );
