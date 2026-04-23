@@ -27,18 +27,9 @@ export async function GET(request: NextRequest) {
             customer:customer_id (
                 id,
                 full_name,
-                phone,
-                sales (
-                    id,
-                    is_active,
-                    end_date,
-                    sale_slots (
-                        slot_identifier,
-                        mother_accounts (platform)
-                    )
-                )
+                phone
             )
-        `, { count: 'exact' })
+        `)
         .order('last_message_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
