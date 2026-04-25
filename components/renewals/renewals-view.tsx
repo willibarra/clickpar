@@ -20,8 +20,8 @@ import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, se
 import { logReminderCopied } from '@/lib/actions/sales';
 import { BatchSendModal } from "./batch-send-modal";
 
-type FilterType = 'all' | 'expired' | 'today' | 'yesterday' | '3days';
-type ClientFilterType = 'all' | 'expired' | 'today' | 'yesterday' | '3days';
+type FilterType = 'all' | 'expired' | 'today' | 'yesterday' | 'tomorrow';
+type ClientFilterType = 'all' | 'expired' | 'today' | 'yesterday' | 'tomorrow';
 
 const MESES_CORTOS = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
 
@@ -148,7 +148,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (clientFilter === 'expired') { if (sub.daysUntilExpiry >= -1) return false; }
             else if (clientFilter === 'today') { if (sub.daysUntilExpiry !== 0) return false; }
             else if (clientFilter === 'yesterday') { if (sub.daysUntilExpiry !== -1) return false; }
-            else if (clientFilter === '3days') { if (sub.daysUntilExpiry < 1 || sub.daysUntilExpiry > 3) return false; }
+            else if (clientFilter === 'tomorrow') { if (sub.daysUntilExpiry !== 1) return false; }
             if (clientSearch.trim()) {
                 const q = clientSearch.toLowerCase();
                 const c = sub.customer;
@@ -216,7 +216,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const clientExpiredCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry < -1).length;
     const clientYesterdayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === -1).length;
     const clientTodayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 0).length;
-    const clientThreeDayCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry >= 1 && s.daysUntilExpiry <= 3).length;
+    const clientTomorrowCount = enrichedSubs.filter((s: any) => s.daysUntilExpiry === 1).length;
     // Tab badge: only expired + yesterday + today (most urgent)
     const clientUrgentTotal = clientExpiredCount + clientYesterdayCount + clientTodayCount;
 
@@ -228,7 +228,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (provFilter === 'expired') { if (days >= -1) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
             else if (provFilter === 'yesterday') { if (days !== -1) return false; }
-            else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
+            else if (provFilter === 'tomorrow') { if (days !== 1) return false; }
             if (provSearch.trim()) {
                 const q = provSearch.toLowerCase();
                 return a.platform?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q);
@@ -281,7 +281,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                 if (smartStatus === 'expired' && days >= -1) return false;
                 if (smartStatus === 'today' && days !== 0) return false;
                 if (smartStatus === 'yesterday' && days !== -1) return false;
-                if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
+                if (smartStatus === 'tomorrow' && days !== 1) return false;
                 if (smartStatus === 'urgent' && days > 3) return false;
             }
             return true;
@@ -295,7 +295,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
             if (provFilter === 'expired') { if (days >= -1) return false; }
             else if (provFilter === 'today') { if (days !== 0) return false; }
             else if (provFilter === 'yesterday') { if (days !== -1) return false; }
-            else if (provFilter === '3days') { if (days < 1 || days > 3) return false; }
+            else if (provFilter === 'tomorrow') { if (days !== 1) return false; }
             if (provPlatformFilter !== 'all') {
                 if (a.platform !== provPlatformFilter) return false;
             }
@@ -334,7 +334,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const expiredCount = accounts.filter(a => getDaysUntil(a.renewal_date) < -1).length;
     const yesterdayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === -1).length;
     const todayCount = accounts.filter(a => getDaysUntil(a.renewal_date) === 0).length;
-    const provThreeDayCount = accounts.filter(a => { const d = getDaysUntil(a.renewal_date); return d >= 1 && d <= 3; }).length;
+    const provTomorrowCount = accounts.filter(a => { const d = getDaysUntil(a.renewal_date); return d === 1; }).length;
     // Tab badge: only expired + yesterday + today (most urgent)
     const provUrgentTotal = expiredCount + yesterdayCount + todayCount;
 
@@ -361,7 +361,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         const emailsStr = selectedAccounts.map((a: any) => a.email).join('\n');
         const totalUsdt = selectedAccounts.reduce((sum: number, a: any) => sum + (Number(a.purchase_cost_usdt) || 0), 0);
 
-        const textToCopy = `CUENTAS: (${selectedAccounts.length})
+        const fechaHoy = formatDateES(new Date());
+        const textToCopy = `FECHA: ${fechaHoy}
+CUENTAS: (${selectedAccounts.length})
 ${emailsStr}
 
 TOTAL A PAGAR: ${totalUsdt} USDT`;
@@ -477,7 +479,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                 if (smartStatus === 'expired' && days >= -1) return false;
                 if (smartStatus === 'today' && days !== 0) return false;
                 if (smartStatus === 'yesterday' && days !== -1) return false;
-                if (smartStatus === '3days' && (days < 1 || days > 3)) return false;
+                if (smartStatus === 'tomorrow' && days !== 1) return false;
                 if (smartStatus === 'urgent' && days > 3) return false;
             }
             return true;
@@ -676,7 +678,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         { key: 'expired', label: 'Vencidos', count: expiredCount },
         { key: 'yesterday', label: 'Ayer', count: yesterdayCount },
         { key: 'today', label: 'Hoy', count: todayCount },
-        { key: '3days', label: 'Próx. 3d', count: provThreeDayCount },
+        { key: 'tomorrow', label: 'Mañana', count: provTomorrowCount },
     ];
 
     const clientFilterButtons: { key: ClientFilterType; label: string; count?: number }[] = [
@@ -684,7 +686,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
         { key: 'expired', label: 'Vencidos', count: clientExpiredCount },
         { key: 'yesterday', label: 'Ayer', count: clientYesterdayCount },
         { key: 'today', label: 'Hoy', count: clientTodayCount },
-        { key: '3days', label: 'Próx. 3d', count: clientThreeDayCount },
+        { key: 'tomorrow', label: 'Mañana', count: clientTomorrowCount },
     ];
 
     return (
@@ -754,17 +756,17 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             <p className="text-xs text-orange-400">🟠 Vence Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{todayCount}</p>
                         </button>
-                        {/* Próx. 3 días */}
+                        {/* Mañana */}
                         <button
-                            onClick={() => { setProvFilter('3days'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
+                            onClick={() => { setProvFilter('tomorrow'); setProvSelected(new Set()); setProvCurrentPage(1); setProvSupplierFilter('all'); }}
                             className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                                provFilter === '3days'
+                                provFilter === 'tomorrow'
                                     ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
                                     : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
                             }`}
                         >
-                            <p className="text-xs text-yellow-400">🟡 Próx. 3 días</p>
-                            <p className="text-2xl font-bold text-yellow-400">{provThreeDayCount}</p>
+                            <p className="text-xs text-yellow-400">🟡 Mañana</p>
+                            <p className="text-2xl font-bold text-yellow-400">{provTomorrowCount}</p>
                         </button>
                     </div>
 
@@ -1120,17 +1122,17 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                             <p className="text-xs text-orange-400">🟠 Vence Hoy</p>
                             <p className="text-2xl font-bold text-orange-400">{clientTodayCount}</p>
                         </button>
-                        {/* Próx. 3 días */}
+                        {/* Mañana */}
                         <button
-                            onClick={() => { setClientFilter('3days'); setClientSelected(new Set()); setClientCurrentPage(1); }}
+                            onClick={() => { setClientFilter('tomorrow'); setClientSelected(new Set()); setClientCurrentPage(1); }}
                             className={`rounded-xl border p-3 md:p-4 text-left transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                                clientFilter === '3days'
+                                clientFilter === 'tomorrow'
                                     ? 'border-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-400/50'
                                     : 'border-yellow-500/30 bg-yellow-500/5 hover:border-yellow-500/50'
                             }`}
                         >
-                            <p className="text-xs text-yellow-400">🟡 Próx. 3 días</p>
-                            <p className="text-2xl font-bold text-yellow-400">{clientThreeDayCount}</p>
+                            <p className="text-xs text-yellow-400">🟡 Mañana</p>
+                            <p className="text-2xl font-bold text-yellow-400">{clientTomorrowCount}</p>
                         </button>
                     </div>
 
@@ -1966,7 +1968,7 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                     { key: 'all', label: 'Todos' },
                                     { key: 'expired', label: '🔴 Vencidas' },
                                     { key: 'today', label: '🟠 Vence Hoy' },
-                                    { key: '3days', label: '🟡 Próx. 3d' },
+                                    { key: 'tomorrow', label: '🟡 Mañana' },
                                     { key: 'urgent', label: '⚡ Urgentes (venc+hoy+3d)' },
                                 ] as { key: string; label: string }[]).map(opt => (
                                     <button
