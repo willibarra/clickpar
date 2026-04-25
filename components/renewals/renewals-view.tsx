@@ -93,6 +93,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const { rate: usdtRate } = useUsdtRate(); // Lee de localStorage (configurado en Settings)
     const [provPageSize, setProvPageSize] = useState<number>(30);
     const [provCurrentPage, setProvCurrentPage] = useState(1);
+    const [provUsdtOverrides, setProvUsdtOverrides] = useState<Record<string, string>>({});
+    const [editingUsdtId, setEditingUsdtId] = useState<string | null>(null);
 
     // Smart selection modal state
     const [showSmartSelect, setShowSmartSelect] = useState(false);
@@ -111,6 +113,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     const [clientDays, setClientDays] = useState('30');
     const [clientPageSize, setClientPageSize] = useState<number>(30);
     const [clientCurrentPage, setClientCurrentPage] = useState(1);
+    const [clientAmountOverrides, setClientAmountOverrides] = useState<Record<string, string>>({});
+    const [editingAmountId, setEditingAmountId] = useState<string | null>(null);
     const [showReleaseModal, setShowReleaseModal] = useState(false);
     const [showBatchSendModal, setShowBatchSendModal] = useState(false);
     // Client sorting
@@ -354,22 +358,48 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         }
     };
 
+    /** Helper: get effective USDT for an account (override or original) */
+    const getEffectiveUsdt = (account: any): number => {
+        if (provUsdtOverrides[account.id] !== undefined) {
+            return Number(provUsdtOverrides[account.id]) || 0;
+        }
+        return Number(account.purchase_cost_usdt) || 0;
+    };
+
     const handleCopyProviders = () => {
         const selectedAccounts = filteredAccounts.filter((a: any) => provSelected.has(a.id));
         if (selectedAccounts.length === 0) return;
 
-        const emailsStr = selectedAccounts.map((a: any) => a.email).join('\n');
-        const totalUsdt = selectedAccounts.reduce((sum: number, a: any) => sum + (Number(a.purchase_cost_usdt) || 0), 0);
+        // Group by renewal_date
+        const groups: Record<string, any[]> = {};
+        selectedAccounts.forEach((a: any) => {
+            const key = a.renewal_date || 'sin-fecha';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(a);
+        });
 
-        const fechaHoy = formatDateES(new Date());
-        const textToCopy = `FECHA: ${fechaHoy}
-CUENTAS: (${selectedAccounts.length})
-${emailsStr}
+        // Sort dates ascending (sin-fecha last)
+        const sortedDates = Object.keys(groups).sort((a, b) => {
+            if (a === 'sin-fecha') return 1;
+            if (b === 'sin-fecha') return -1;
+            return a.localeCompare(b);
+        });
 
-TOTAL A PAGAR: ${totalUsdt} USDT`;
+        const blocks = sortedDates.map(dateKey => {
+            const accts = groups[dateKey];
+            const emailsStr = accts.map((a: any) => a.email).join('\n');
+            const totalUsdt = accts.reduce((sum: number, a: any) => sum + getEffectiveUsdt(a), 0);
+            const fechaStr = dateKey === 'sin-fecha'
+                ? 'Sin fecha'
+                : formatDateES(new Date(dateKey + 'T12:00:00'), { year: true });
+
+            return `FECHA: ${fechaStr}\nCUENTAS: (${accts.length})\n${emailsStr}\n\nTOTAL A PAGAR: ${totalUsdt} USDT`;
+        });
+
+        const textToCopy = blocks.join('\n\n');
 
         navigator.clipboard.writeText(textToCopy);
-        toast.success('Copiado al portapapeles', { description: 'Correos y total a pagar copiados.' });
+        toast.success('Copiado al portapapeles', { description: `${sortedDates.length} grupo(s) de fechas copiados.` });
     };
 
     const toggleClient = (id: string) => {
@@ -1021,11 +1051,42 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 {badge.label}
                                             </span>
                                         </div>
-                                        {/* Costo USDT */}
+                                        {/* Costo USDT – editable */}
                                         <div className="text-sm font-medium text-[#86EFAC]">
-                                            {account.purchase_cost_usdt != null
-                                                ? `$${Number(account.purchase_cost_usdt).toFixed(0)}`
-                                                : '—'}
+                                            {editingUsdtId === account.id ? (
+                                                <input
+                                                    type="number"
+                                                    autoFocus
+                                                    className="w-16 bg-transparent border border-[#86EFAC]/50 rounded px-1.5 py-0.5 text-sm text-[#86EFAC] outline-none focus:ring-1 focus:ring-[#86EFAC]/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                    defaultValue={provUsdtOverrides[account.id] ?? (account.purchase_cost_usdt != null ? Number(account.purchase_cost_usdt).toFixed(0) : '')}
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value.trim();
+                                                        if (val && Number(val) !== Number(account.purchase_cost_usdt)) {
+                                                            setProvUsdtOverrides(prev => ({ ...prev, [account.id]: val }));
+                                                        } else if (!val || Number(val) === Number(account.purchase_cost_usdt)) {
+                                                            setProvUsdtOverrides(prev => { const n = { ...prev }; delete n[account.id]; return n; });
+                                                        }
+                                                        setEditingUsdtId(null);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                        if (e.key === 'Escape') { setEditingUsdtId(null); }
+                                                    }}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingUsdtId(account.id)}
+                                                    className="hover:underline hover:text-[#a5f3c4] transition-colors cursor-text"
+                                                    title="Click para editar precio USDT"
+                                                >
+                                                    {provUsdtOverrides[account.id] !== undefined
+                                                        ? <span>${provUsdtOverrides[account.id]} <span className="text-[10px] text-yellow-400">✏️</span></span>
+                                                        : (account.purchase_cost_usdt != null
+                                                            ? `$${Number(account.purchase_cost_usdt).toFixed(0)}`
+                                                            : '—')}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -1320,16 +1381,45 @@ TOTAL A PAGAR: ${totalUsdt} USDT`;
                                                 {badge.label}
                                             </span>
                                         </div>
-                                        {/* Monto */}
+                                        {/* Monto – editable */}
                                         <div className="text-sm font-medium">
                                             {sub.is_canje ? (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[11px] font-semibold">
                                                     🎬 Canje
                                                 </span>
+                                            ) : editingAmountId === sub.id ? (
+                                                <input
+                                                    type="number"
+                                                    autoFocus
+                                                    className="w-20 bg-transparent border border-[#86EFAC]/50 rounded px-1.5 py-0.5 text-sm text-[#86EFAC] outline-none focus:ring-1 focus:ring-[#86EFAC]/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                    defaultValue={clientAmountOverrides[sub.id] ?? (sub.amount_gs ? (sub.amount_gs / 1000).toFixed(0) : '')}
+                                                    placeholder="ej: 25"
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value.trim();
+                                                        const originalK = sub.amount_gs ? (sub.amount_gs / 1000).toFixed(0) : '';
+                                                        if (val && val !== originalK) {
+                                                            setClientAmountOverrides(prev => ({ ...prev, [sub.id]: val }));
+                                                        } else {
+                                                            setClientAmountOverrides(prev => { const n = { ...prev }; delete n[sub.id]; return n; });
+                                                        }
+                                                        setEditingAmountId(null);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                        if (e.key === 'Escape') { setEditingAmountId(null); }
+                                                    }}
+                                                />
                                             ) : (
-                                                <span className="text-[#86EFAC] font-semibold">
-                                                    {sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—'}
-                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingAmountId(sub.id)}
+                                                    className="text-[#86EFAC] font-semibold hover:underline hover:text-[#a5f3c4] transition-colors cursor-text"
+                                                    title="Click para editar precio"
+                                                >
+                                                    {clientAmountOverrides[sub.id] !== undefined
+                                                        ? <span>{clientAmountOverrides[sub.id]}k Gs <span className="text-[10px] text-yellow-400">✏️</span></span>
+                                                        : (sub.amount_gs ? `${(sub.amount_gs / 1000).toFixed(0)}k Gs` : '—')}
+                                                </button>
                                             )}
                                         </div>
                                         {/* Aviso WhatsApp */}
