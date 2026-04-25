@@ -6,13 +6,11 @@ import {
     Phone,
     Clock,
     ChevronDown,
-    ChevronUp,
     HelpCircle,
     Loader2,
     AlertTriangle,
     Search,
     ListChecks,
-    Info,
     TicketCheck,
     CheckCircle2,
     XCircle,
@@ -27,6 +25,14 @@ interface FAQItem {
     a: string;
 }
 
+interface CodeButtonItem {
+    label: string;
+    source: string;
+    url: string | null;
+    telegram_bot_username: string | null;
+    telegram_user_identifier: string | null;
+}
+
 interface ServiceHelpItem {
     saleId: string;
     email: string;
@@ -39,23 +45,24 @@ interface ServiceHelpItem {
     needsCode: boolean;
     codeUrl: string | null;
     codeSource: string;
+    codeButtons: CodeButtonItem[];
 }
 
-const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
-    Netflix: { emoji: '🎬', gradient: 'from-red-600 to-red-800' },
-    'HBO Max': { emoji: '💜', gradient: 'from-purple-600 to-purple-800' },
-    'Disney+': { emoji: '🏰', gradient: 'from-blue-600 to-blue-800' },
-    'Amazon Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
-    'Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
-    'Spotify Premium': { emoji: '🎧', gradient: 'from-green-500 to-green-700' },
-    Spotify: { emoji: '🎧', gradient: 'from-green-500 to-green-700' },
-    'YouTube Premium': { emoji: '▶️', gradient: 'from-red-500 to-red-700' },
-    Crunchyroll: { emoji: '🍥', gradient: 'from-orange-500 to-orange-700' },
-    VIX: { emoji: '📺', gradient: 'from-amber-500 to-amber-700' },
-    Vix: { emoji: '📺', gradient: 'from-amber-500 to-amber-700' },
-    'Paramount+': { emoji: '⛰️', gradient: 'from-blue-700 to-blue-900' },
-    iCloud: { emoji: '☁️', gradient: 'from-sky-400 to-sky-600' },
-    FLUJOTV: { emoji: '📡', gradient: 'from-indigo-500 to-indigo-700' },
+const PLATFORM_CONFIG: Record<string, { blurColor: string }> = {
+    Netflix: { blurColor: 'rgba(220,38,38,0.5)' },
+    'HBO Max': { blurColor: 'rgba(147,51,234,0.5)' },
+    'Disney+': { blurColor: 'rgba(37,99,235,0.5)' },
+    'Amazon Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    'Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    'Spotify Premium': { blurColor: 'rgba(34,197,94,0.45)' },
+    Spotify: { blurColor: 'rgba(34,197,94,0.45)' },
+    'YouTube Premium': { blurColor: 'rgba(239,68,68,0.45)' },
+    Crunchyroll: { blurColor: 'rgba(249,115,22,0.45)' },
+    VIX: { blurColor: 'rgba(245,158,11,0.45)' },
+    Vix: { blurColor: 'rgba(245,158,11,0.45)' },
+    'Paramount+': { blurColor: 'rgba(29,78,216,0.5)' },
+    iCloud: { blurColor: 'rgba(56,189,248,0.45)' },
+    FLUJOTV: { blurColor: 'rgba(99,102,241,0.45)' },
 };
 
 function FAQAccordion({ item }: { item: FAQItem }) {
@@ -69,11 +76,7 @@ function FAQAccordion({ item }: { item: FAQItem }) {
             >
                 <HelpCircle className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 <span className="flex-1 text-sm text-foreground">{item.q}</span>
-                {open ? (
-                    <ChevronUp className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                ) : (
-                    <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                )}
+                <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open && (
                 <div className="border-t border-border/30 px-4 py-3">
@@ -86,141 +89,164 @@ function FAQAccordion({ item }: { item: FAQItem }) {
     );
 }
 
-function VerCodeButton({ platform, codeUrl }: { platform: string; codeUrl: string }) {
-    const [showModal, setShowModal] = useState(false);
+function CodeActionButton({ btn, saleId, platform }: { btn: CodeButtonItem; saleId: string; platform: string }) {
+    const [showIframe, setShowIframe] = useState(false);
+    const [showRequest, setShowRequest] = useState(false);
 
-    return (
-        <>
-            <button
-                onClick={() => setShowModal(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20"
-            >
-                <Search className="h-4 w-4" />
-                Abrir iFrame (Código)
-            </button>
-            <CodeIframeModal
-                isOpen={showModal}
-                onClose={() => setShowModal(false)}
-                codeUrl={codeUrl}
-                platform={platform}
-            />
-        </>
-    );
-}
+    if (btn.source === 'iframe' && btn.url) {
+        return (
+            <>
+                <button
+                    onClick={() => setShowIframe(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20"
+                >
+                    <Search className="h-4 w-4" />
+                    {btn.label || 'Consultar Código'}
+                </button>
+                <CodeIframeModal
+                    isOpen={showIframe}
+                    onClose={() => setShowIframe(false)}
+                    codeUrl={btn.url}
+                    platform={platform}
+                />
+            </>
+        );
+    }
 
-function TelegramCodeButton({ saleId, platform }: { saleId: string; platform: string }) {
-    const [showModal, setShowModal] = useState(false);
+    if (btn.source === 'telegram_bot') {
+        return (
+            <>
+                <button
+                    onClick={() => setShowRequest(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8]/30 bg-[#818CF8]/10 py-2.5 text-sm font-medium text-[#818CF8] transition-all hover:bg-[#818CF8]/20"
+                >
+                    <Send className="h-4 w-4" />
+                    {btn.label || 'Solicitar Código'}
+                </button>
+                <CodeRequestModal
+                    isOpen={showRequest}
+                    onClose={() => setShowRequest(false)}
+                    saleId={saleId}
+                    platform={platform}
+                />
+            </>
+        );
+    }
 
-    return (
-        <>
-            <button
-                onClick={() => setShowModal(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8]/30 bg-[#818CF8]/10 py-2.5 text-sm font-medium text-[#818CF8] transition-all hover:bg-[#818CF8]/20"
-            >
-                <Send className="h-4 w-4" />
-                Solicitar Código
-            </button>
-            <CodeRequestModal
-                isOpen={showModal}
-                onClose={() => setShowModal(false)}
-                saleId={saleId}
-                platform={platform}
-            />
-        </>
-    );
+    if (btn.source === 'imap') {
+        return (
+            <>
+                <button
+                    onClick={() => setShowRequest(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2.5 text-sm font-medium text-amber-400 transition-all hover:bg-amber-500/20"
+                >
+                    <Search className="h-4 w-4" />
+                    {btn.label || 'Consultar Código'}
+                </button>
+                <CodeRequestModal
+                    isOpen={showRequest}
+                    onClose={() => setShowRequest(false)}
+                    saleId={saleId}
+                    platform={platform}
+                />
+            </>
+        );
+    }
+
+    // Manual fallback
+    return null;
 }
 
 function ServiceSupportCard({ item }: { item: ServiceHelpItem }) {
-    const [expanded, setExpanded] = useState(false);
-    const platformInfo = PLATFORM_ICONS[item.platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
-
-    const showVerCode = item.needsCode && item.codeUrl && item.codeSource !== 'telegram_bot';
-    const showTelegramCode = item.needsCode && item.codeSource === 'telegram_bot' && item.saleId;
+    const [showSteps, setShowSteps] = useState(false);
+    const [showFaqs, setShowFaqs] = useState(false);
+    const config = PLATFORM_CONFIG[item.platform] || { blurColor: 'rgba(120,120,120,0.4)' };
+    const buttons = item.codeButtons || [];
 
     return (
-        <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
-            {/* Account Header */}
-            <div className={`bg-gradient-to-r ${platformInfo.gradient} px-5 py-3.5`}>
-                <div className="flex items-center gap-3">
-                    <span className="text-xl">{platformInfo.emoji}</span>
-                    <div>
-                        <h3 className="text-base font-bold text-white">Cuenta de {item.platform}</h3>
-                        <p className="text-sm font-mono text-white/90">{item.email}</p>
+        <div className="overflow-hidden rounded-2xl border border-white/[0.04] bg-[#111118]">
+            {/* Bokeh Header */}
+            <div className="relative overflow-hidden px-5 py-8 text-center">
+                {/* Blurred gradient blob */}
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        background: `radial-gradient(ellipse 80% 100% at 50% 0%, ${config.blurColor}, transparent 70%)`,
+                    }}
+                />
+                {/* Second layer for depth */}
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        background: `radial-gradient(circle at 30% 20%, ${config.blurColor.replace(/[\d.]+\)$/, '0.3)')}, transparent 50%)`,
+                    }}
+                />
+                <h3 className="relative text-xl font-bold text-white tracking-wide">
+                    {item.platform}
+                </h3>
+                <p className="relative mt-1.5 text-sm font-mono text-white/60">
+                    {item.email}
+                </p>
+            </div>
+
+            {/* Content body */}
+            <div className="space-y-0.5 px-1 pb-1">
+                {/* Pasos de acceso accordion */}
+                {item.helpSteps && item.helpSteps.length > 0 && (
+                    <button
+                        onClick={() => setShowSteps(!showSteps)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-sm text-foreground/80 transition-colors hover:bg-white/[0.03] rounded-lg"
+                    >
+                        <span className="flex items-center gap-2.5">
+                            <ListChecks className="h-4 w-4 text-muted-foreground" />
+                            Pasos de acceso ({item.helpSteps.length})
+                        </span>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showSteps ? 'rotate-180' : ''}`} />
+                    </button>
+                )}
+                {showSteps && item.helpSteps && (
+                    <div className="space-y-1.5 px-4 pb-3">
+                        {item.helpSteps.map((step, i) => (
+                            <div key={i} className="flex items-start gap-3 rounded-lg bg-white/[0.03] px-3.5 py-2.5">
+                                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/15 text-[10px] font-bold text-[#86EFAC]">
+                                    {i + 1}
+                                </span>
+                                <span className="text-sm text-foreground/80 leading-relaxed">{step}</span>
+                            </div>
+                        ))}
                     </div>
-                </div>
+                )}
+
+                {/* FAQs accordion */}
+                {item.faqItems && item.faqItems.length > 0 && (
+                    <button
+                        onClick={() => setShowFaqs(!showFaqs)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-sm text-foreground/80 transition-colors hover:bg-white/[0.03] rounded-lg"
+                    >
+                        <span className="flex items-center gap-2.5">
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                            Preguntas frecuentes ({item.faqItems.length})
+                        </span>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showFaqs ? 'rotate-180' : ''}`} />
+                    </button>
+                )}
+                {showFaqs && item.faqItems && (
+                    <div className="space-y-1.5 px-4 pb-3">
+                        {item.faqItems.map((faq, i) => (
+                            <FAQAccordion key={i} item={faq} />
+                        ))}
+                    </div>
+                )}
+
+                {/* Code Action Buttons */}
+                {buttons.length > 0 && (
+                    <div className={`flex gap-2 px-4 py-3 ${buttons.length > 1 ? 'flex-row' : ''}`}>
+                        {buttons.map((btn, i) => (
+                            <CodeActionButton key={i} btn={btn} saleId={item.saleId} platform={item.platform} />
+                        ))}
+                    </div>
+                )}
             </div>
-
-            {/* Accordion Toggle */}
-            <div className="p-4 bg-muted/5">
-                <button
-                    onClick={() => setExpanded(!expanded)}
-                    className="flex w-full items-center justify-between rounded-xl border border-border/40 bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-muted/50 hover:border-border/80"
-                >
-                    <span className="flex items-center gap-2">
-                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        Soporte {item.platform}
-                    </span>
-                    {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                </button>
-            </div>
-
-            {/* Expanded Content */}
-            {expanded && (
-                <div className="space-y-4 p-5 pt-2 border-t border-border/20">
-                    {/* Instructions summary */}
-                    {item.supportInstructions && (
-                        <div className="flex items-start gap-3 rounded-xl bg-blue-500/5 border border-blue-500/15 p-3.5">
-                            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />
-                            <p className="text-sm text-blue-200/80 leading-relaxed">
-                                {item.supportInstructions}
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Step-by-step guide */}
-                    {item.helpSteps && item.helpSteps.length > 0 && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <ListChecks className="h-4 w-4" />
-                                <span className="text-xs font-medium uppercase tracking-wider">Pasos de acceso</span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {item.helpSteps.map((step, i) => (
-                                    <div key={i} className="flex items-start gap-3 rounded-lg bg-muted/30 px-3.5 py-2.5">
-                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/20 text-[10px] font-bold text-[#86EFAC]">
-                                            {i + 1}
-                                        </span>
-                                        <span className="text-sm text-foreground/90 leading-relaxed">{step}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Code Actions */}
-                    {(showVerCode || showTelegramCode) && (
-                        <div className="pt-2">
-                            {showVerCode && <VerCodeButton platform={item.platform} codeUrl={item.codeUrl!} />}
-                            {showTelegramCode && <TelegramCodeButton saleId={item.saleId} platform={item.platform} />}
-                        </div>
-                    )}
-
-                    {/* FAQs */}
-                    {item.faqItems && item.faqItems.length > 0 && (
-                        <div className="space-y-2 pt-2">
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <HelpCircle className="h-4 w-4" />
-                                <span className="text-xs font-medium uppercase tracking-wider">Preguntas frecuentes</span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {item.faqItems.map((faq, i) => (
-                                    <FAQAccordion key={i} item={faq} />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     );
 }

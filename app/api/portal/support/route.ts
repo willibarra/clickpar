@@ -110,7 +110,7 @@ export async function GET() {
     const configMap = new Map<string, any>();
     if (uniqueKeys.size > 0) {
         const { data: configs } = await (admin.from('provider_support_config') as any)
-            .select('platform, supplier_name, code_url, needs_code, support_instructions, help_steps, faq_items, code_source');
+            .select('platform, supplier_name, code_url, needs_code, support_instructions, help_steps, faq_items, code_source, code_buttons');
         if (configs) {
             for (const c of configs) {
                 configMap.set(`${c.platform}||${c.supplier_name}`, c);
@@ -123,6 +123,23 @@ export async function GET() {
         const slot = slotMap.get(sale.slot_id);
         const account = slot?.mother_account;
         const config = configMap.get(`${account?.platform}||${account?.supplier_name}`);
+
+        // Build code_buttons array - use new field if available, fall back to legacy fields
+        let codeButtons: any[] = [];
+        if (config) {
+            if (config.code_buttons && Array.isArray(config.code_buttons) && config.code_buttons.length > 0) {
+                codeButtons = config.code_buttons;
+            } else if (config.needs_code) {
+                // Legacy fallback: build a single button from flat fields
+                codeButtons = [{
+                    label: 'Consultar Código',
+                    source: config.code_source || 'manual',
+                    url: config.code_url || null,
+                    telegram_bot_username: null,
+                    telegram_user_identifier: null,
+                }];
+            }
+        }
         
         return {
             saleId: sale.id,
@@ -133,9 +150,10 @@ export async function GET() {
             supportInstructions: config?.support_instructions || 'Contactá soporte por WhatsApp para asistencia.',
             helpSteps: config?.help_steps || [],
             faqItems: config?.faq_items || [],
-            needsCode: config?.needs_code || false,
+            needsCode: codeButtons.length > 0,
             codeUrl: config?.code_url || null,
             codeSource: config?.code_source || 'manual',
+            codeButtons,
         };
     });
 

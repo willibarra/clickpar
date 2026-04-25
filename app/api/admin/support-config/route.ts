@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
             code_source = 'manual',
             telegram_bot_username = null,
             telegram_user_identifier = null,
+            code_buttons = [],
         } = body;
 
         if (!platform || !supplier_name) {
@@ -54,6 +55,9 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+
+        // Derive needs_code from code_buttons length for backward compat
+        const derivedNeedsCode = code_buttons.length > 0 ? true : needs_code;
 
         const supabase = await getSupabase();
         const { data, error } = await (supabase as any)
@@ -64,11 +68,12 @@ export async function POST(request: NextRequest) {
                 support_instructions,
                 help_steps,
                 faq_items,
-                needs_code,
+                needs_code: derivedNeedsCode,
                 code_url,
                 code_source,
                 telegram_bot_username,
                 telegram_user_identifier,
+                code_buttons,
             })
             .select()
             .single();
@@ -108,7 +113,13 @@ export async function PUT(request: NextRequest) {
             code_source,
             telegram_bot_username,
             telegram_user_identifier,
+            code_buttons,
         } = body;
+
+        // Derive needs_code from code_buttons if provided
+        const derivedNeedsCode = code_buttons !== undefined && Array.isArray(code_buttons)
+            ? code_buttons.length > 0
+            : needs_code;
 
         const supabase = await getSupabase();
         const { data, error } = await (supabase as any)
@@ -119,11 +130,12 @@ export async function PUT(request: NextRequest) {
                 ...(support_instructions !== undefined && { support_instructions }),
                 ...(help_steps !== undefined && { help_steps }),
                 ...(faq_items !== undefined && { faq_items }),
-                ...(needs_code !== undefined && { needs_code }),
+                ...(derivedNeedsCode !== undefined && { needs_code: derivedNeedsCode }),
                 ...(code_url !== undefined && { code_url }),
                 ...(code_source !== undefined && { code_source }),
                 ...(telegram_bot_username !== undefined && { telegram_bot_username }),
                 ...(telegram_user_identifier !== undefined && { telegram_user_identifier }),
+                ...(code_buttons !== undefined && { code_buttons }),
             })
             .eq('id', id)
             .select()

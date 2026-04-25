@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     Plus, Pencil, Trash2, Loader2, Check, X, ChevronDown, ChevronRight,
-    HelpCircle, ListChecks, Link, ToggleLeft, ToggleRight, Search,
+    HelpCircle, ListChecks, Link, Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,22 @@ interface FaqItem {
     q: string;
     a: string;
 }
+
+interface CodeButton {
+    label: string;
+    source: string;
+    url: string | null;
+    telegram_bot_username: string | null;
+    telegram_user_identifier: string | null;
+}
+
+const EMPTY_BUTTON: CodeButton = {
+    label: 'Consultar Código',
+    source: 'iframe',
+    url: null,
+    telegram_bot_username: null,
+    telegram_user_identifier: null,
+};
 
 interface SupportConfig {
     id: string;
@@ -27,6 +43,7 @@ interface SupportConfig {
     code_source: string;
     telegram_bot_username: string | null;
     telegram_user_identifier: string | null;
+    code_buttons: CodeButton[];
 }
 
 const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
@@ -40,6 +57,7 @@ const EMPTY_CONFIG: Omit<SupportConfig, 'id'> = {
     code_source: 'manual',
     telegram_bot_username: null,
     telegram_user_identifier: null,
+    code_buttons: [],
 };
 
 // ─── Step List Editor ──────────────────────────────────────────────────────
@@ -171,9 +189,9 @@ function SupplierCard({
                         : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                     }
                     <span className="text-sm font-medium text-foreground">{config.supplier_name}</span>
-                    {config.needs_code && (
+                    {config.code_buttons && config.code_buttons.length > 0 && (
                         <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-400">
-                            Necesita código
+                            {config.code_buttons.length} botón{config.code_buttons.length !== 1 ? 'es' : ''}
                         </span>
                     )}
                 </div>
@@ -229,19 +247,29 @@ function SupplierCard({
                         </div>
                     )}
 
-                    {/* Code source */}
-                    {config.needs_code && (
+                    {/* Code Buttons */}
+                    {config.code_buttons && config.code_buttons.length > 0 && (
                         <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Fuente de código</p>
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-xs font-medium text-blue-400">
-                                {config.code_source === 'manual' ? '🤝 Manual' :
-                                 config.code_source === 'iframe' ? '🌐 iFrame' :
-                                 config.code_source === 'telegram_bot' ? '🤖 Telegram Bot' :
-                                 config.code_source === 'imap' ? '📨 IMAP' : config.code_source}
-                            </span>
-                            {config.code_url && (
-                                <p className="text-xs text-muted-foreground mt-1 font-mono truncate">{config.code_url}</p>
-                            )}
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Botones de consulta ({config.code_buttons.length})</p>
+                            <div className="space-y-2">
+                                {config.code_buttons.map((btn: CodeButton, i: number) => (
+                                    <div key={i} className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/10 px-3 py-2">
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-[10px] font-bold text-blue-400">
+                                            {i + 1}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-foreground/90 truncate">{btn.label}</p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                                {btn.source === 'manual' ? '🤝 Manual' :
+                                                 btn.source === 'iframe' ? '🌐 iFrame' :
+                                                 btn.source === 'telegram_bot' ? '🤖 Telegram Bot' :
+                                                 btn.source === 'imap' ? '📨 IMAP' : btn.source}
+                                                {btn.url && <span className="ml-1 font-mono opacity-60">· {btn.url}</span>}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -473,42 +501,58 @@ function EditModal({
                         )}
                     </div>
 
-                    {/* Code lookup */}
+                    {/* Code Buttons */}
                     <div>
-                        <SectionHeader id="code" label="Consulta de código" icon={<Link className="h-4 w-4" />} />
+                        <SectionHeader id="code" label={`Botones de consulta (${draft.code_buttons?.length || 0})`} icon={<Link className="h-4 w-4" />} />
                         {openSection === 'code' && (
                             <div className="mt-2 space-y-3">
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={() => set('needs_code', !draft.needs_code)}
-                                        className="flex items-center gap-2 text-sm"
-                                    >
-                                        {draft.needs_code
-                                            ? <ToggleRight className="h-5 w-5 text-[#86EFAC]" />
-                                            : <ToggleLeft className="h-5 w-5 text-muted-foreground" />
-                                        }
-                                        <span className={draft.needs_code ? 'text-[#86EFAC]' : 'text-muted-foreground'}>
-                                            Requiere código de acceso
-                                        </span>
-                                    </button>
-                                </div>
-                                {draft.needs_code && (
-                                    <>
+                                {(draft.code_buttons || []).map((btn, btnIdx) => (
+                                    <div key={btnIdx} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-muted-foreground font-medium">Botón #{btnIdx + 1}</span>
+                                            <button
+                                                onClick={() => {
+                                                    const next = (draft.code_buttons || []).filter((_, i) => i !== btnIdx);
+                                                    set('code_buttons', next);
+                                                }}
+                                                className="rounded p-0.5 text-muted-foreground hover:text-red-400"
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                        {/* Label */}
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Texto del botón</label>
+                                            <Input
+                                                value={btn.label || ''}
+                                                onChange={(e) => {
+                                                    const next = [...(draft.code_buttons || [])];
+                                                    next[btnIdx] = { ...next[btnIdx], label: e.target.value };
+                                                    set('code_buttons', next);
+                                                }}
+                                                placeholder="Consultar Código de Inicio"
+                                                className="h-8 text-sm"
+                                            />
+                                        </div>
                                         {/* Source selector */}
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-medium text-muted-foreground">Fuente del código</label>
-                                            <div className="flex gap-2 flex-wrap">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Fuente</label>
+                                            <div className="flex gap-1.5 flex-wrap">
                                                 {[
                                                     { value: 'manual', label: '🤝 Manual' },
-                                                    { value: 'iframe', label: '🌐 iFrame (URL)' },
-                                                    { value: 'telegram_bot', label: '🤖 Telegram Bot' },
-                                                    { value: 'imap', label: '📨 IMAP (Correo)' },
+                                                    { value: 'iframe', label: '🌐 iFrame' },
+                                                    { value: 'telegram_bot', label: '🤖 Telegram' },
+                                                    { value: 'imap', label: '📨 IMAP' },
                                                 ].map(opt => (
                                                     <button
                                                         key={opt.value}
-                                                        onClick={() => set('code_source', opt.value)}
-                                                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                                                            (draft.code_source || 'manual') === opt.value
+                                                        onClick={() => {
+                                                            const next = [...(draft.code_buttons || [])];
+                                                            next[btnIdx] = { ...next[btnIdx], source: opt.value };
+                                                            set('code_buttons', next);
+                                                        }}
+                                                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                                            (btn.source || 'manual') === opt.value
                                                                 ? 'border-[#86EFAC]/60 bg-[#86EFAC]/10 text-[#86EFAC]'
                                                                 : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border'
                                                         }`}
@@ -518,55 +562,71 @@ function EditModal({
                                                 ))}
                                             </div>
                                         </div>
-
-                                        {/* URL field (only for iframe) */}
-                                        {(draft.code_source === 'iframe' || (!draft.code_source && draft.code_url)) && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-medium text-muted-foreground">URL del servicio de código</label>
+                                        {/* URL (iframe) */}
+                                        {btn.source === 'iframe' && (
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">URL del iFrame</label>
                                                 <Input
-                                                    value={draft.code_url || ''}
-                                                    onChange={(e) => set('code_url', e.target.value || null)}
+                                                    value={btn.url || ''}
+                                                    onChange={(e) => {
+                                                        const next = [...(draft.code_buttons || [])];
+                                                        next[btnIdx] = { ...next[btnIdx], url: e.target.value || null };
+                                                        set('code_buttons', next);
+                                                    }}
                                                     placeholder="https://householdcode.com/es"
                                                     className="h-8 text-sm"
                                                 />
                                             </div>
                                         )}
-
                                         {/* IMAP hint */}
-                                        {draft.code_source === 'imap' && (
+                                        {btn.source === 'imap' && (
                                             <p className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2">
-                                                📨 Se buscará el código automáticamente en las cuentas IMAP configuradas en Ajustes → Cuentas IMAP.
+                                                📨 Se buscará automáticamente en las cuentas IMAP configuradas.
                                             </p>
                                         )}
-
-                                        {/* Telegram bot config */}
-                                        {draft.code_source === 'telegram_bot' && (
-                                            <div className="space-y-3">
+                                        {/* Telegram config */}
+                                        {btn.source === 'telegram_bot' && (
+                                            <div className="space-y-2">
                                                 <p className="text-xs text-[#818CF8]/80 bg-[#818CF8]/5 border border-[#818CF8]/15 rounded-lg px-3 py-2">
-                                                    🤖 Se usará el UserBot de Telegram para pedir el código automáticamente al bot del proveedor.
+                                                    🤖 UserBot de Telegram pedirá el código al bot del proveedor.
                                                 </p>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-medium text-muted-foreground">Username del Bot del proveedor</label>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Username del Bot</label>
                                                     <Input
-                                                        value={draft.telegram_bot_username || ''}
-                                                        onChange={(e) => set('telegram_bot_username', e.target.value || null)}
+                                                        value={btn.telegram_bot_username || ''}
+                                                        onChange={(e) => {
+                                                            const next = [...(draft.code_buttons || [])];
+                                                            next[btnIdx] = { ...next[btnIdx], telegram_bot_username: e.target.value || null };
+                                                            set('code_buttons', next);
+                                                        }}
                                                         placeholder="@autocodestream_bot"
                                                         className="h-8 text-sm font-mono"
                                                     />
                                                 </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-medium text-muted-foreground">Tu usuario registrado en ese bot</label>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Tu usuario en ese bot</label>
                                                     <Input
-                                                        value={draft.telegram_user_identifier || ''}
-                                                        onChange={(e) => set('telegram_user_identifier', e.target.value || null)}
+                                                        value={btn.telegram_user_identifier || ''}
+                                                        onChange={(e) => {
+                                                            const next = [...(draft.code_buttons || [])];
+                                                            next[btnIdx] = { ...next[btnIdx], telegram_user_identifier: e.target.value || null };
+                                                            set('code_buttons', next);
+                                                        }}
                                                         placeholder="will"
                                                         className="h-8 text-sm"
                                                     />
                                                 </div>
                                             </div>
                                         )}
-                                    </>
-                                )}
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => set('code_buttons', [...(draft.code_buttons || []), { ...EMPTY_BUTTON }])}
+                                    className="flex items-center gap-1.5 text-xs text-[#86EFAC] hover:text-[#86EFAC]/80"
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Agregar botón de consulta
+                                </button>
                             </div>
                         )}
                     </div>
