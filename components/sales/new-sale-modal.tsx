@@ -268,7 +268,21 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
     const selectedPlatformObj = dbPlatforms.find(p => p.name === selectedPlatform);
     const isFamilyPlatform = selectedPlatformObj?.business_type === 'family_account';
 
-    // Reset form when platform or saleMode changes
+    // Ref para dbPlatforms para evitar que el efecto de reset se dispare cuando las plataformas cargan async
+    const dbPlatformsRef = useRef(dbPlatforms);
+    useEffect(() => { dbPlatformsRef.current = dbPlatforms; }, [dbPlatforms]);
+
+    // Cuando dbPlatforms carga y hay plataforma seleccionada, actualizar precio sin resetear slot
+    useEffect(() => {
+        if (selectedPlatform && !isCreadorRef.current && !priceOverriddenRef.current) {
+            const plat = dbPlatforms.find(p => p.name === selectedPlatform);
+            const price = plat?.default_slot_price_gs || 30000;
+            setDefaultPrice(price);
+            setSalePrice(price.toString());
+        }
+    }, [dbPlatforms, selectedPlatform]);
+
+    // Reset form when platform or saleMode changes (NOT when dbPlatforms loads)
     useEffect(() => {
         setSelectedSlotId(null);
         setSelectedFullAccountId('');
@@ -277,7 +291,7 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
             setPriceOverridden(false);
             priceOverriddenRef.current = false;
             if (selectedPlatform) {
-                const plat = dbPlatforms.find(p => p.name === selectedPlatform);
+                const plat = dbPlatformsRef.current.find(p => p.name === selectedPlatform);
                 const price = plat?.default_slot_price_gs || 30000;
                 setDefaultPrice(price);
                 setSalePrice(price.toString());
@@ -289,7 +303,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
         setClientEmail('');
         setClientPassword('');
         setFamilyAccessType('credentials');
-    }, [selectedPlatform, saleMode, dbPlatforms]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedPlatform, saleMode]);
 
     const handleSlotSelect = useCallback((slotId: string, slotDefaultPrice: number | null) => {
         setSelectedSlotId(slotId);
