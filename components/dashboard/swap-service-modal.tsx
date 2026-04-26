@@ -28,6 +28,7 @@ interface AvailableSlot {
     platform: string;
     account_email: string;
     account_id: string;
+    supplier_name: string | null;
 }
 
 interface SiblingInfo {
@@ -206,13 +207,13 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
         ? availableSlots
         : availableSlots.filter(s => s.platform === filterPlatform);
 
-    // Group slots by platform > account
-    const grouped = new Map<string, Map<string, AvailableSlot[]>>();
+    // Group slots by platform > account (include supplier for display)
+    const grouped = new Map<string, Map<string, { slots: AvailableSlot[]; supplier: string | null }>>();
     filteredSlots.forEach(slot => {
         if (!grouped.has(slot.platform)) grouped.set(slot.platform, new Map());
         const platformGroup = grouped.get(slot.platform)!;
-        if (!platformGroup.has(slot.account_email)) platformGroup.set(slot.account_email, []);
-        platformGroup.get(slot.account_email)!.push(slot);
+        if (!platformGroup.has(slot.account_email)) platformGroup.set(slot.account_email, { slots: [], supplier: slot.supplier_name });
+        platformGroup.get(slot.account_email)!.slots.push(slot);
     });
 
     if (!isOpen) return null;
@@ -308,9 +309,12 @@ export function SwapServiceModal({ isOpen, onClose, service, customerId, custome
                                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: platformColors[platform] || '#86EFAC' }} />
                                         <span className="text-sm font-semibold text-foreground">{platform}</span>
                                     </div>
-                                    {Array.from(accounts.entries()).map(([email, slots]) => (
+                                    {Array.from(accounts.entries()).map(([email, { slots, supplier }]) => (
                                         <div key={email} className="ml-4 mb-2">
-                                            <p className="text-xs text-muted-foreground mb-1">{email}</p>
+                                            <p className="text-xs text-muted-foreground mb-1">
+                                                {email}
+                                                {supplier && <span className="ml-1.5 text-[10px] text-muted-foreground/60">· {supplier}</span>}
+                                            </p>
                                             <div className="space-y-1">
                                                 {slots.map(slot => (
                                                     <button

@@ -8,7 +8,7 @@ export async function GET() {
 
     try {
         const { data: slots } = await (supabase.from('sale_slots') as any)
-            .select('id, slot_identifier, status, mother_accounts:mother_account_id(id, platform, email, status, renewal_date, deleted_at)')
+            .select('id, slot_identifier, status, mother_accounts:mother_account_id(id, platform, email, status, renewal_date, deleted_at, supplier_name)')
             .eq('status', 'available')
             .order('slot_identifier');
 
@@ -29,6 +29,7 @@ export async function GET() {
                 platform: s.mother_accounts?.platform || 'Desconocido',
                 account_email: s.mother_accounts?.email || '',
                 account_id: s.mother_accounts?.id || '',
+                supplier_name: s.mother_accounts?.supplier_name || null,
                 renewal: s.mother_accounts?.renewal_date || '1970-01-01'
             })).sort((a: any, b: any) => new Date(b.renewal).getTime() - new Date(a.renewal).getTime());
 

@@ -5,6 +5,7 @@
  */
 
 import { ImapFlow } from 'imapflow';
+import { detectImapConfig } from '@/lib/imap-client';
 
 export interface ImapAccountConfig {
     email: string;
@@ -85,10 +86,9 @@ export async function fetchCodeFromImap(
         return { success: false, error: 'No se configuraron asuntos para buscar' };
     }
 
-    const emailDomain = config.email?.split('@')[1]?.toLowerCase() || '';
-    const isIcloud = emailDomain.includes('icloud') || emailDomain.includes('me.com');
-    const host = config.host || (isIcloud ? 'imap.mail.me.com' : 'outlook.office365.com');
-    const port = config.port || 993;
+    const detected = detectImapConfig(config.email);
+    const host = config.host || detected?.host || 'outlook.office365.com';
+    const port = config.port || detected?.port || 993;
     const secure = config.secure !== false;
 
     const client = new ImapFlow({
@@ -169,11 +169,10 @@ export async function testImapConnection(config: ImapAccountConfig): Promise<{
     error?: string;
     messageCount?: number;
 }> {
-    const emailDomain = config.email?.split('@')[1]?.toLowerCase() || '';
-    const isIcloud = emailDomain.includes('icloud') || emailDomain.includes('me.com');
+    const detected = detectImapConfig(config.email);
     const client = new ImapFlow({
-        host: config.host || (isIcloud ? 'imap.mail.me.com' : 'outlook.office365.com'),
-        port: config.port || 993,
+        host: config.host || detected?.host || 'outlook.office365.com',
+        port: config.port || detected?.port || 993,
         secure: config.secure !== false,
         auth: { user: config.email, pass: config.password },
         logger: false,
