@@ -392,7 +392,14 @@ export function InventoryView({ accounts, platformColors, statusColors, initialS
         }
         if (deferredSearchQuery.trim()) {
             const q = deferredSearchQuery.toLowerCase();
-            result = result.filter(a => a._searchVector.includes(q));
+            // Strip spaces/dashes/dots for numeric-like queries (phone numbers)
+            const qNorm = q.replace(/[\s\-\.]/g, '');
+            result = result.filter(a => {
+                if (a._searchVector.includes(q)) return true;
+                // Also try normalized match (e.g. "613 96 73 17" → "613967317")
+                if (qNorm !== q && a._searchVector.replace(/[\s\-\.]/g, '').includes(qNorm)) return true;
+                return false;
+            });
         }
         return result;
     }, [searchableAccounts, deferredSearchQuery, platformFilter, supplierFilter, statusFilter, saleTypeFilter, availabilityFilter, renewalRangeFilter]);
