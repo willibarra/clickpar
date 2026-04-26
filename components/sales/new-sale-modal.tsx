@@ -166,14 +166,20 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                 .from('customers')
                 .select('id, full_name, phone, customer_type, whatsapp_instance')
                 .order('full_name', { ascending: true })
-                .then(({ data }) => setCustomers((data as Customer[]) || []));
+                .then(({ data, error }) => {
+                    if (error) console.error('[NewSale] Error fetching customers:', error.message);
+                    setCustomers((data as Customer[]) || []);
+                });
 
             supabase
                 .from('platforms')
                 .select('id, name, default_slot_price_gs, business_type')
                 .eq('is_active', true)
                 .order('name')
-                .then(({ data }) => setDbPlatforms((data as DBPlatform[]) || []));
+                .then(({ data, error }) => {
+                    if (error) console.error('[NewSale] Error fetching platforms:', error.message);
+                    setDbPlatforms((data as DBPlatform[]) || []);
+                });
 
             // Fetch available slots & determine which platforms have stock
             supabase
@@ -186,7 +192,10 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                     )
                 `)
                 .eq('status', 'available')
-                .then(({ data }) => {
+                .then(({ data, error }) => {
+                    if (error) {
+                        console.error('[NewSale] Error fetching slots:', error.message);
+                    }
                     const slots = (data || []) as any[];
                     // Filter out slots whose mother account is deleted or not active
                     const validSlots = slots.filter((slot: any) => {
@@ -220,7 +229,8 @@ export function NewSaleModal({ open: externalOpen, onOpenChange: externalOnOpenC
                 .select('id, platform, email, max_slots, renewal_date, deleted_at, sale_slots (id, status)')
                 .eq('status', 'active')
                 .is('deleted_at', null)
-                .then(({ data }) => {
+                .then(({ data, error }) => {
+                    if (error) console.error('[NewSale] Error fetching full accounts:', error.message);
                     const full = ((data || []) as any[]).filter((acct: any) => {
                         const slots = acct.sale_slots || [];
                         return slots.length > 0 && slots.every((s: any) => s.status === 'available');
