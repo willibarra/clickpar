@@ -148,7 +148,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
             `🔐 Datos de acceso a ClickPar`,
             `📱 Teléfono: ${phoneDisplay}`,
             `🔑 Contraseña: ${portalPassword}`,
-            `🌐 Portal: clickpar.shop/cliente/login`,
+            `🌐 Portal: https://clickpar.net/cliente/login`,
         ].join('\n');
 
         try {

@@ -914,7 +914,7 @@ export async function bulkUpdateAvailableSlotPrices(
 ) {
     const supabase = await createClient();
 
-    // Get mother_account_ids that have at least one available slot
+    // Fetch IDs of mother accounts with at least one available slot
     const { data: slots, error: slotsError } = await (supabase.from('sale_slots') as any)
         .select('mother_account_id')
         .eq('status', 'available');
@@ -924,17 +924,22 @@ export async function bulkUpdateAvailableSlotPrices(
     const ids: string[] = [...new Set<string>((slots || []).map((s: any) => s.mother_account_id as string))];
     if (ids.length === 0) return { error: 'No hay cuentas con perfiles libres' };
 
-    let query = (supabase.from('mother_accounts') as any)
-        .update({ sale_price_gs: newPrice })
-        .in('id', ids)
-        .eq('status', 'active');
+    // Update in batches of 100 to avoid "URI too long" errors
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE);
+        let query = (supabase.from('mother_accounts') as any)
+            .update({ sale_price_gs: newPrice })
+            .in('id', batch)
+            .eq('status', 'active');
 
-    if (platform && platform !== 'all') {
-        query = query.eq('platform', platform);
+        if (platform && platform !== 'all') {
+            query = query.eq('platform', platform);
+        }
+
+        const { error: batchError } = await query;
+        if (batchError) return { error: batchError.message };
     }
-
-    const { error } = await query;
-    if (error) return { error: error.message };
 
     await logAction('bulk_price_update', 'mother_account', ids[0], {
         message: `actualizó precio de perfiles libres a Gs. ${newPrice.toLocaleString('es-PY')}${platform && platform !== 'all' ? ` (${platform})` : ' (todas las plataformas)'}`

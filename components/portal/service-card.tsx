@@ -1,9 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink, Send, Wallet } from 'lucide-react';
+import { Copy, Eye, EyeOff, Check, Search, RefreshCw, ExternalLink, Send, Wallet, ChevronDown, ListChecks } from 'lucide-react';
 import { CodeIframeModal } from './code-iframe-modal';
 import { CodeRequestModal } from './code-request-modal';
+
+interface CodeButtonItem {
+    label: string;
+    source: string;
+    url: string | null;
+    telegram_bot_username: string | null;
+    telegram_user_identifier: string | null;
+}
 
 interface ServiceCardProps {
     saleId?: string;
@@ -20,6 +28,8 @@ interface ServiceCardProps {
     needsCode?: boolean;
     codeUrl?: string | null;
     codeSource?: string;
+    codeButtons?: CodeButtonItem[];
+    helpSteps?: string[];
     isCanje?: boolean;
 }
 
@@ -120,6 +130,73 @@ function TelegramCodeButton({ saleId, platform }: { saleId: string; platform: st
     );
 }
 
+function CodeActionButton({ btn, saleId, platform }: { btn: CodeButtonItem; saleId: string; platform: string }) {
+    const [showIframe, setShowIframe] = useState(false);
+    const [showRequest, setShowRequest] = useState(false);
+
+    if (btn.source === 'iframe' && btn.url) {
+        return (
+            <>
+                <button
+                    onClick={() => setShowIframe(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#86EFAC]/30 bg-[#86EFAC]/10 py-2.5 text-sm font-medium text-[#86EFAC] transition-all hover:bg-[#86EFAC]/20"
+                >
+                    <Search className="h-4 w-4" />
+                    {btn.label || 'Consultar Código'}
+                </button>
+                <CodeIframeModal
+                    isOpen={showIframe}
+                    onClose={() => setShowIframe(false)}
+                    codeUrl={btn.url}
+                    platform={platform}
+                />
+            </>
+        );
+    }
+
+    if (btn.source === 'telegram_bot') {
+        return (
+            <>
+                <button
+                    onClick={() => setShowRequest(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8]/30 bg-[#818CF8]/10 py-2.5 text-sm font-medium text-[#818CF8] transition-all hover:bg-[#818CF8]/20"
+                >
+                    <Send className="h-4 w-4" />
+                    {btn.label || 'Solicitar Código'}
+                </button>
+                <CodeRequestModal
+                    isOpen={showRequest}
+                    onClose={() => setShowRequest(false)}
+                    saleId={saleId}
+                    platform={platform}
+                />
+            </>
+        );
+    }
+
+    if (btn.source === 'imap') {
+        return (
+            <>
+                <button
+                    onClick={() => setShowRequest(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2.5 text-sm font-medium text-amber-400 transition-all hover:bg-amber-500/20"
+                >
+                    <Search className="h-4 w-4" />
+                    {btn.label || 'Consultar Código'}
+                </button>
+                <CodeRequestModal
+                    isOpen={showRequest}
+                    onClose={() => setShowRequest(false)}
+                    saleId={saleId}
+                    platform={platform}
+                />
+            </>
+        );
+    }
+
+    return null;
+}
+
 function RenewWithBalanceButton({ saleId, amount }: { saleId: string; amount?: number }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -182,12 +259,14 @@ function RenewWithBalanceButton({ saleId, amount }: { saleId: string; amount?: n
     );
 }
 
-export function ServiceCard({ saleId, platform, displayName, email, password, pin, profile, expiresAt, amount, supplierName, needsCode, codeUrl, codeSource, isCanje }: ServiceCardProps) {
+export function ServiceCard({ saleId, platform, displayName, email, password, pin, profile, expiresAt, amount, supplierName, needsCode, codeUrl, codeSource, codeButtons, helpSteps, isCanje }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
+    const [showSteps, setShowSteps] = useState(false);
     const config = PLATFORM_CONFIG[platform] || { blurColor: 'rgba(120,120,120,0.4)' };
     const expiryBadge = getExpiryBadge(expiresAt, isCanje);
-    const showVerCode = needsCode && codeUrl && codeSource !== 'telegram_bot';
-    const showTelegramCode = needsCode && codeSource === 'telegram_bot' && saleId;
+    const hasCodeButtons = codeButtons && codeButtons.length > 0;
+    const showVerCode = !hasCodeButtons && needsCode && codeUrl && codeSource !== 'telegram_bot';
+    const showTelegramCode = !hasCodeButtons && needsCode && codeSource === 'telegram_bot' && saleId;
 
     // Show Renovar button when <= 7 days remaining or expired (and not a canje)
     const showRenovar = !isCanje && saleId && expiryBadge.daysLeft !== null && expiryBadge.daysLeft <= 7;
@@ -297,14 +376,51 @@ export function ServiceCard({ saleId, platform, displayName, email, password, pi
                     </div>
                 )}
 
-                {/* Ver Código button (Gmail/iframe) */}
+                {/* Ver Código button (Gmail/iframe) — legacy single-button fallback */}
                 {showVerCode && <VerCodeButton platform={platform} codeUrl={codeUrl} />}
 
-                {/* Telegram code request button */}
+                {/* Telegram code request button — legacy single-button fallback */}
                 {showTelegramCode && <TelegramCodeButton saleId={saleId!} platform={platform} />}
+
+                {/* Custom code buttons from provider_support_config */}
+                {hasCodeButtons && saleId && (
+                    <div className={`flex gap-2 ${codeButtons!.length > 1 ? 'flex-row' : ''}`}>
+                        {codeButtons!.map((btn, i) => (
+                            <CodeActionButton key={i} btn={btn} saleId={saleId} platform={platform} />
+                        ))}
+                    </div>
+                )}
 
                 {/* Renovar button — only when <= 7 days or expired */}
                 {showRenovar && <RenewWithBalanceButton saleId={saleId!} amount={amount} />}
+
+                {/* Help steps accordion — shown when provider has instructions */}
+                {helpSteps && helpSteps.length > 0 && (
+                    <div className="-mx-5 -mb-5 border-t border-white/[0.06]">
+                        <button
+                            onClick={() => setShowSteps(!showSteps)}
+                            className="flex w-full items-center justify-between px-5 py-3 text-sm text-foreground/70 transition-colors hover:bg-white/[0.03]"
+                        >
+                            <span className="flex items-center gap-2">
+                                <ListChecks className="h-4 w-4 text-muted-foreground" />
+                                Instrucciones de acceso ({helpSteps.length})
+                            </span>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showSteps ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showSteps && (
+                            <div className="space-y-1.5 px-5 pb-4">
+                                {helpSteps.map((step, i) => (
+                                    <div key={i} className="flex items-start gap-3 rounded-lg bg-white/[0.03] px-3.5 py-2.5">
+                                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[#86EFAC]/15 text-[10px] font-bold text-[#86EFAC]">
+                                            {i + 1}
+                                        </span>
+                                        <span className="text-sm text-foreground/80 leading-relaxed">{step}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

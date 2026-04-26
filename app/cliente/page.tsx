@@ -20,6 +20,8 @@ interface Service {
     needsCode: boolean;
     codeUrl: string | null;
     codeSource: string;
+    codeButtons: { label: string; source: string; url: string | null; telegram_bot_username: string | null; telegram_user_identifier: string | null }[];
+    helpSteps: string[];
     isCanje: boolean;
 }
 
@@ -243,6 +245,8 @@ export default function PortalDashboard() {
                                     needsCode={service.needsCode}
                                     codeUrl={service.codeUrl}
                                     codeSource={service.codeSource}
+                                    codeButtons={service.codeButtons}
+                                    helpSteps={service.helpSteps}
                                     isCanje={service.isCanje}
                                 />
                             );

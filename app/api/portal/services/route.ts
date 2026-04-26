@@ -148,7 +148,7 @@ export async function GET() {
     }
     if (configKeys.size > 0) {
         const { data: configs } = await (admin.from('provider_support_config') as any)
-            .select('platform, supplier_name, code_url, needs_code, support_instructions, code_source');
+            .select('platform, supplier_name, code_url, needs_code, support_instructions, code_source, code_buttons, help_steps');
         if (configs) {
             configs.forEach((c: any) => {
                 providerConfigs.set(`${c.platform}||${c.supplier_name}`, c);
@@ -162,6 +162,23 @@ export async function GET() {
         const account = slot?.mother_account;
         const configKey = `${account?.platform}||${account?.supplier_name}`;
         const providerConfig = providerConfigs.get(configKey);
+
+        // Build code_buttons array - use new field if available, fall back to legacy fields
+        let codeButtons: any[] = [];
+        if (providerConfig) {
+            if (providerConfig.code_buttons && Array.isArray(providerConfig.code_buttons) && providerConfig.code_buttons.length > 0) {
+                codeButtons = providerConfig.code_buttons;
+            } else if (providerConfig.needs_code) {
+                codeButtons = [{
+                    label: 'Consultar Código',
+                    source: providerConfig.code_source || 'manual',
+                    url: providerConfig.code_url || null,
+                    telegram_bot_username: null,
+                    telegram_user_identifier: null,
+                }];
+            }
+        }
+
         return {
             saleId: sale.id,
             platform: account?.platform || 'Desconocido',
@@ -175,9 +192,11 @@ export async function GET() {
             renewalDate: account?.renewal_date || null,
             amount: sale.amount_gs,
             supplierName: account?.supplier_name || null,
-            needsCode: providerConfig?.needs_code || false,
+            needsCode: codeButtons.length > 0,
             codeUrl: providerConfig?.code_url || null,
             codeSource: providerConfig?.code_source || 'manual',
+            codeButtons,
+            helpSteps: providerConfig?.help_steps || [],
             isCanje: sale.is_canje || false,
         };
     });
