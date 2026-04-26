@@ -795,6 +795,7 @@ export async function sendSaleCredentials(params: {
     saleId?: string;
     instanceName?: string;
     triggeredBy?: 'manual' | 'auto';
+    skipRateLimiting?: boolean;
 }): Promise<SendResult> {
     // Resolve nickname
     const displayName = await getPlatformDisplayName(params.platform);
@@ -818,6 +819,7 @@ export async function sendSaleCredentials(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        skipRateLimiting: params.skipRateLimiting,
     });
 }
 
@@ -835,6 +837,7 @@ export async function sendFamilyCredentials(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    skipRateLimiting?: boolean;
 }): Promise<SendResult> {
     const displayName = await getPlatformDisplayName(params.platform);
 
@@ -863,6 +866,7 @@ export async function sendFamilyCredentials(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        skipRateLimiting: params.skipRateLimiting,
     });
 }
 
@@ -879,6 +883,7 @@ export async function sendFamilyInvite(params: {
     customerId?: string;
     saleId?: string;
     instanceName?: string;
+    skipRateLimiting?: boolean;
 }): Promise<SendResult> {
     const displayName = await getPlatformDisplayName(params.platform);
 
@@ -904,6 +909,7 @@ export async function sendFamilyInvite(params: {
         customerId: params.customerId,
         saleId: params.saleId,
         instanceName: params.instanceName,
+        skipRateLimiting: params.skipRateLimiting,
     });
 }
 
@@ -1034,6 +1040,7 @@ export async function sendCredentialUpdate(params: {
     pin?: string;
     customerId?: string;
     instanceName?: string;
+    skipRateLimiting?: boolean;
 }): Promise<SendResult> {
     const message = await getRenderedTemplate('credenciales_actualizadas', {
         nombre: params.customerName,
@@ -1052,6 +1059,7 @@ export async function sendCredentialUpdate(params: {
         templateKey: 'credenciales_actualizadas',
         customerId: params.customerId,
         instanceName: params.instanceName,
+        skipRateLimiting: params.skipRateLimiting,
     });
 }
 

@@ -291,7 +291,6 @@ export async function createQuickSale(data: QuickSaleData) {
     (async () => {
       const waSettings = await getWhatsAppSettings();
       if (waSettings.auto_send_credentials) {
-        await new Promise((r) => setTimeout(r, 2000));
 
         const slotId = slotToSell.slot_id || slotToSell.id;
         const expDateStr = endDateStr
@@ -319,6 +318,7 @@ export async function createQuickSale(data: QuickSaleData) {
               expirationDate: expDateStr,
               customerId,
               instanceName: customerWaInstance || undefined,
+              skipRateLimiting: true,
             });
             // Auto-assign WA instance if customer didn't have one
             if (!customerWaInstance && familyCredResult?.instanceUsed) {
@@ -337,6 +337,7 @@ export async function createQuickSale(data: QuickSaleData) {
               expirationDate: expDateStr,
               customerId,
               instanceName: customerWaInstance || undefined,
+              skipRateLimiting: true,
             });
             // Auto-assign WA instance if customer didn't have one
             if (!customerWaInstance && familyInvResult?.instanceUsed) {
@@ -382,6 +383,7 @@ export async function createQuickSale(data: QuickSaleData) {
               expirationDate: expDateStr,
               customerId,
               instanceName: customerWaInstance || undefined,
+              skipRateLimiting: true,
             });
             // Auto-assign WA instance if customer didn't have one
             if (!customerWaInstance && credResult?.instanceUsed) {
@@ -397,12 +399,12 @@ export async function createQuickSale(data: QuickSaleData) {
 
             // Send instructions as a second message if enabled
             if (acct.send_instructions && acct.instructions) {
-              await new Promise((r) => setTimeout(r, 1500));
+              await new Promise((r) => setTimeout(r, 500));
               const { sendText } = await import("@/lib/whatsapp");
               await sendText(
                 data.customerPhone,
                 `📋 *Instrucciones de acceso:*\n\n${acct.instructions}`,
-                { instanceName: customerWaInstance || undefined, customerId },
+                { instanceName: customerWaInstance || undefined, customerId, skipRateLimiting: true },
               );
               console.log(
                 "[WhatsApp] Instrucciones enviadas a",
@@ -797,9 +799,6 @@ export async function swapService(data: SwapServiceData) {
               "[WhatsApp/Swap] Cuenta FAMILIA — omitiendo mensaje automático de cambio",
             );
           } else {
-            // Esperar 5 segundos antes de enviar el mensaje, solicitado por el usuario
-            await new Promise((r) => setTimeout(r, 5000));
-
             await sendCredentialUpdate({
               customerPhone: customer.phone || data.customerId,
               customerName: customer.full_name || customer.phone,
@@ -810,10 +809,11 @@ export async function swapService(data: SwapServiceData) {
               pin: newSlotInfo.pin_code || undefined,
               customerId: data.customerId,
               instanceName: customer.whatsapp_instance || undefined,
+              skipRateLimiting: true,
             });
 
             if (acct.send_instructions && acct.instructions) {
-              await new Promise((r) => setTimeout(r, 1500));
+              await new Promise((r) => setTimeout(r, 500));
               const { sendText } = await import("@/lib/whatsapp");
               await sendText(
                 customer.phone,
@@ -821,6 +821,7 @@ export async function swapService(data: SwapServiceData) {
                 {
                   instanceName: customer.whatsapp_instance || undefined,
                   customerId: data.customerId,
+                  skipRateLimiting: true,
                 },
               );
             }
@@ -1599,6 +1600,7 @@ export async function processComboSale(data: ComboSaleData) {
                 expirationDate: expDateStr,
                 customerId,
                 instanceName: customerWaInstance || undefined,
+                skipRateLimiting: true,
               });
               // Auto-assign WA instance if customer didn't have one
               if (!customerWaInstance && comboCredResult?.instanceUsed) {
