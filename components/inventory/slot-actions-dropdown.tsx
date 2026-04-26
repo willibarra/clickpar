@@ -303,14 +303,8 @@ ${activeSale?.end_date ? `📅 Vence: ${new Date(activeSale.end_date + 'T12:00:0
                         if (newAccountEmail) {
                             router.push(`/inventory?q=${encodeURIComponent(newAccountEmail)}`);
                         } else {
-                            // "Quedarme aquí": navigate to the current account email
-                            // so the search shows THIS account, not the customer's new account
-                            const currentEmail = accountEmail || account.email;
-                            if (currentEmail) {
-                                router.push(`/inventory?q=${encodeURIComponent(currentEmail)}`);
-                            } else {
-                                router.refresh();
-                            }
+                            // "Quedarme aquí": just close the modal and refresh data in-place
+                            router.refresh();
                         }
                     }}
                 />

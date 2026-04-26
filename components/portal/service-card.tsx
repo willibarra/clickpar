@@ -23,18 +23,20 @@ interface ServiceCardProps {
     isCanje?: boolean;
 }
 
-const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
-    Netflix: { emoji: '🎬', gradient: 'from-red-600 to-red-800' },
-    'HBO Max': { emoji: '💜', gradient: 'from-purple-600 to-purple-800' },
-    'Disney+': { emoji: '🏰', gradient: 'from-blue-600 to-blue-800' },
-    'Amazon Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
-    'Prime Video': { emoji: '📦', gradient: 'from-blue-500 to-cyan-600' },
-    Spotify: { emoji: '🎧', gradient: 'from-green-500 to-green-700' },
-    'YouTube Premium': { emoji: '▶️', gradient: 'from-red-500 to-red-700' },
-    Crunchyroll: { emoji: '🍥', gradient: 'from-orange-500 to-orange-700' },
-    VIX: { emoji: '📺', gradient: 'from-amber-500 to-amber-700' },
-    'Paramount+': { emoji: '⛰️', gradient: 'from-blue-700 to-blue-900' },
-    iCloud: { emoji: '☁️', gradient: 'from-sky-400 to-sky-600' },
+const PLATFORM_CONFIG: Record<string, { blurColor: string }> = {
+    Netflix: { blurColor: 'rgba(220,38,38,0.5)' },
+    'HBO Max': { blurColor: 'rgba(147,51,234,0.5)' },
+    'Disney+': { blurColor: 'rgba(37,99,235,0.5)' },
+    'Amazon Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    'Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    Spotify: { blurColor: 'rgba(34,197,94,0.45)' },
+    'YouTube Premium': { blurColor: 'rgba(239,68,68,0.45)' },
+    Crunchyroll: { blurColor: 'rgba(249,115,22,0.45)' },
+    VIX: { blurColor: 'rgba(245,158,11,0.45)' },
+    Vix: { blurColor: 'rgba(245,158,11,0.45)' },
+    'Paramount+': { blurColor: 'rgba(29,78,216,0.5)' },
+    iCloud: { blurColor: 'rgba(56,189,248,0.45)' },
+    FLUJOTV: { blurColor: 'rgba(99,102,241,0.45)' },
 };
 
 function getExpiryBadge(expiresAt: string | null, isCanje?: boolean) {
@@ -182,7 +184,7 @@ function RenewWithBalanceButton({ saleId, amount }: { saleId: string; amount?: n
 
 export function ServiceCard({ saleId, platform, displayName, email, password, pin, profile, expiresAt, amount, supplierName, needsCode, codeUrl, codeSource, isCanje }: ServiceCardProps) {
     const [showPassword, setShowPassword] = useState(false);
-    const platformInfo = PLATFORM_ICONS[platform] || { emoji: '📱', gradient: 'from-gray-600 to-gray-800' };
+    const config = PLATFORM_CONFIG[platform] || { blurColor: 'rgba(120,120,120,0.4)' };
     const expiryBadge = getExpiryBadge(expiresAt, isCanje);
     const showVerCode = needsCode && codeUrl && codeSource !== 'telegram_bot';
     const showTelegramCode = needsCode && codeSource === 'telegram_bot' && saleId;
@@ -215,28 +217,38 @@ export function ServiceCard({ saleId, platform, displayName, email, password, pi
     const shownName = displayName || platform;
 
     return (
-        <div className="overflow-hidden rounded-2xl border border-border/50 bg-card transition-all hover:border-border">
-            {/* Platform header */}
-            <div className={`bg-gradient-to-r ${platformInfo.gradient} px-5 py-4`}>
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">{platformInfo.emoji}</span>
-                        <div>
-                            <h3 className="text-lg font-bold text-white">{shownName}</h3>
-                            {profile && <p className="text-xs text-white/70">Perfil: {profile}</p>}
-                        </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${expiryBadge.color}`}>
-                            {expiryBadge.label}
+        <div className="overflow-hidden rounded-2xl border border-white/[0.04] bg-[#111118]">
+            {/* Bokeh Header */}
+            <div className="relative overflow-hidden px-5 py-7 text-center">
+                {/* Blurred gradient blob */}
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        background: `radial-gradient(ellipse 80% 100% at 50% 0%, ${config.blurColor}, transparent 70%)`,
+                    }}
+                />
+                {/* Second layer for depth */}
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        background: `radial-gradient(circle at 30% 20%, ${config.blurColor.replace(/[\d.]+\)$/, '0.3)')}, transparent 50%)`,
+                    }}
+                />
+                {/* Expiry badge */}
+                <div className="absolute top-3 right-3 flex flex-col items-end gap-0.5">
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${expiryBadge.color}`}>
+                        {expiryBadge.label}
+                    </span>
+                    {formattedDate && (
+                        <span className="text-[10px] text-white/50">
+                            Vence: {formattedDate}
                         </span>
-                        {formattedDate && (
-                            <span className="text-[10px] text-white/60">
-                                Vence: {formattedDate}
-                            </span>
-                        )}
-                    </div>
+                    )}
                 </div>
+                <h3 className="relative text-xl font-bold text-white tracking-wide">
+                    {shownName}
+                </h3>
+                {profile && <p className="relative mt-1 text-sm text-white/50">Perfil: {profile}</p>}
             </div>
 
             {/* Credentials */}

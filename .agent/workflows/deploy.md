@@ -23,20 +23,26 @@ Si hay errores de build, corregilos antes de continuar.
 cd /Applications/ClickPar && git add -A && git commit -m "descripción del cambio" && git push origin main
 ```
 
-### 3. Deploy en Dokploy
+### 3. Deploy automático
+El deploy se ejecuta automáticamente al hacer push a `main` gracias al GitHub Webhook configurado en el repo → Dokploy.
+
+> **No se necesita hacer nada manual.** Dokploy detecta el push, clona el repo, y reconstruye la imagen Docker.
+
+Si por algún motivo falla el auto-deploy, se puede hacer manualmente:
 Ir a Dokploy → Proyecto-Sistema-ClickPar → clickpar-app → Pestaña "General" → Click "Deploy" → Confirmar.
 
-**O usar el webhook de auto-deploy:**
+### 4. Esperar el build (~2 min)
+// turbo
 ```bash
-curl -X POST "http://76.13.163.100:3000/api/deploy/B7G2eJua-C74j8FZ9Lb-P"
+sleep 120
 ```
 
-### 4. Verificar el deploy
+### 5. Verificar el deploy
 // turbo
 ```bash
 curl -sk -o /dev/null -w "HTTP %{http_code}" https://clickpar.shop/login
 ```
-Debe devolver `HTTP 200`.
+Debe devolver `HTTP 200` o `HTTP 307`.
 
 ## Qué sucede internamente
 

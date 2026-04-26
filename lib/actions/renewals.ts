@@ -158,7 +158,7 @@ export async function getClientSubscriptions() {
     const custMap = new Map<string, any>();
     for (const ids of chunk(custIds, 200)) {
         const { data: rows } = await (supabase.from('customers') as any)
-            .select('id, full_name, phone').in('id', ids);
+            .select('id, full_name, phone, customer_type').in('id', ids);
         (rows || []).forEach((r: any) => custMap.set(r.id, r));
     }
 
@@ -205,7 +205,8 @@ export async function getClientSubscriptions() {
             slot: slotMap.get(sale.slot_id) || null,
             lastNotified: notifMap.get(sale.id) || null,
         }))
-        .filter((sale: any) => sale.customer !== null); // Ignorar ventas sin cliente
+        .filter((sale: any) => sale.customer !== null) // Ignorar ventas sin cliente
+        .filter((sale: any) => sale.customer.customer_type !== 'creador'); // Creadores no aparecen en renovaciones (canje sin vencimiento)
 
     return { data: enriched };
 }

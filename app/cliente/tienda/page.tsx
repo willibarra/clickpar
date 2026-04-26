@@ -17,18 +17,20 @@ interface Product {
     availableSlots: number;
 }
 
-const PLATFORM_ICONS: Record<string, { emoji: string; gradient: string }> = {
-    Netflix: { emoji: '🎬', gradient: 'from-red-900/60 to-red-800/40' },
-    'HBO Max': { emoji: '💜', gradient: 'from-purple-900/60 to-purple-800/40' },
-    'Disney+': { emoji: '🏰', gradient: 'from-blue-900/60 to-blue-800/40' },
-    'Amazon Prime Video': { emoji: '📦', gradient: 'from-cyan-900/60 to-cyan-800/40' },
-    'Prime Video': { emoji: '📦', gradient: 'from-cyan-900/60 to-cyan-800/40' },
-    Spotify: { emoji: '🎧', gradient: 'from-green-900/60 to-green-800/40' },
-    'YouTube Premium': { emoji: '▶️', gradient: 'from-red-900/60 to-red-700/40' },
-    Crunchyroll: { emoji: '🍥', gradient: 'from-orange-900/60 to-orange-800/40' },
-    VIX: { emoji: '📺', gradient: 'from-amber-900/60 to-amber-800/40' },
-    'Paramount+': { emoji: '⛰️', gradient: 'from-blue-900/60 to-blue-900/40' },
-    iCloud: { emoji: '☁️', gradient: 'from-sky-900/60 to-sky-800/40' },
+const PLATFORM_CONFIG: Record<string, { blurColor: string }> = {
+    Netflix: { blurColor: 'rgba(220,38,38,0.5)' },
+    'HBO Max': { blurColor: 'rgba(147,51,234,0.5)' },
+    'Disney+': { blurColor: 'rgba(37,99,235,0.5)' },
+    'Amazon Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    'Prime Video': { blurColor: 'rgba(14,165,233,0.45)' },
+    Spotify: { blurColor: 'rgba(34,197,94,0.45)' },
+    'YouTube Premium': { blurColor: 'rgba(239,68,68,0.45)' },
+    Crunchyroll: { blurColor: 'rgba(249,115,22,0.45)' },
+    VIX: { blurColor: 'rgba(245,158,11,0.45)' },
+    Vix: { blurColor: 'rgba(245,158,11,0.45)' },
+    'Paramount+': { blurColor: 'rgba(29,78,216,0.5)' },
+    iCloud: { blurColor: 'rgba(56,189,248,0.45)' },
+    FLUJOTV: { blurColor: 'rgba(99,102,241,0.45)' },
 };
 
 function getProductTitle(product: Product) {
@@ -49,7 +51,7 @@ interface ConfirmModalProps {
 
 function ConfirmModal({ product, balance, onClose, onSuccess }: ConfirmModalProps) {
     const enough = balance >= product.priceGs;
-    const icon = PLATFORM_ICONS[product.platform] || { emoji: '📱', gradient: 'from-gray-900/60 to-gray-800/40' };
+    const config = PLATFORM_CONFIG[product.platform] || { blurColor: 'rgba(120,120,120,0.4)' };
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -121,13 +123,11 @@ function ConfirmModal({ product, balance, onClose, onSuccess }: ConfirmModalProp
 
                 {step === 1 ? (
                     <>
-                        {/* Product info */}
-                        <div className={`flex items-center gap-4 rounded-xl bg-gradient-to-r ${icon.gradient} p-4 border border-white/10`}>
-                            <span className="text-3xl">{icon.emoji}</span>
-                            <div>
-                                <p className="font-bold text-foreground">{getProductTitle(product)}</p>
-                                <p className="text-xs text-muted-foreground">30 días de acceso</p>
-                            </div>
+                        {/* Product info - Bokeh */}
+                        <div className="relative overflow-hidden rounded-xl p-4 text-center">
+                            <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse 80% 100% at 50% 0%, ${config.blurColor}, transparent 70%)` }} />
+                            <p className="relative font-bold text-foreground">{getProductTitle(product)}</p>
+                            <p className="relative text-xs text-muted-foreground mt-1">30 días de acceso</p>
                         </div>
 
                         {/* Balance check */}
@@ -400,25 +400,22 @@ export default function TiendaPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {products.map((product) => {
-                            const icon = PLATFORM_ICONS[product.platform] || { emoji: '📱', gradient: 'from-gray-900/60 to-gray-800/40' };
+                            const config = PLATFORM_CONFIG[product.platform] || { blurColor: 'rgba(120,120,120,0.4)' };
                             const canAfford = balance >= product.priceGs;
                             const hasSlots = product.availableSlots > 0;
 
                             return (
                                 <div
                                     key={`${product.id}-${product.sale_type}-${product.is_full_account}`}
-                                    className="overflow-hidden rounded-2xl border border-border/50 bg-card transition-all hover:border-border flex flex-col"
+                                    className="overflow-hidden rounded-2xl border border-white/[0.04] bg-[#111118] flex flex-col"
                                 >
-                                    {/* Platform header */}
-                                    <div className={`bg-gradient-to-br ${icon.gradient} px-5 py-5`}>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-3xl">{icon.emoji}</span>
-                                            <div>
-                                                <h3 className="text-lg font-bold text-foreground line-clamp-1">{getProductTitle(product)}</h3>
-                                            </div>
-                                        </div>
+                                    {/* Bokeh header */}
+                                    <div className="relative overflow-hidden px-4 py-6 text-center">
+                                        <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse 80% 100% at 50% 0%, ${config.blurColor}, transparent 70%)` }} />
+                                        <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 30% 20%, ${config.blurColor.replace(/[\d.]+\)$/, '0.3)')}, transparent 50%)` }} />
+                                        <h3 className="relative text-base font-bold text-white line-clamp-2">{getProductTitle(product)}</h3>
                                     </div>
 
                                     {/* Details */}
