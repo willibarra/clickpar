@@ -268,18 +268,22 @@ export function EditAccountModal({ account }: { account: Account }) {
             formData.set('email_password', emailPassword || '');
         }
 
-        const result = await updateMotherAccount(account.id, formData);
+        try {
+            const result = await updateMotherAccount(account.id, formData);
 
-        if (result.error) {
-            setError(result.error);
-            setLoading(false);
-        } else {
-            setLoading(false);
-            if ((result as any).notified) {
-                setSuccessMessage('✅ Guardado. Se enviará la actualización de credenciales a los clientes activos por WhatsApp.');
+            if (result.error) {
+                setError(result.error);
             } else {
-                setOpen(false);
+                if ((result as any).notified) {
+                    setSuccessMessage('✅ Guardado. Se enviará la actualización de credenciales a los clientes activos por WhatsApp.');
+                } else {
+                    setOpen(false);
+                }
             }
+        } catch (err: any) {
+            setError(err.message || 'Error inesperado al guardar');
+        } finally {
+            setLoading(false);
         }
     }
 
