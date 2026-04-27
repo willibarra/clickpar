@@ -23,6 +23,11 @@ export async function middleware(request: NextRequest) {
             return NextResponse.next({ request });
         }
 
+        // Magic link redirect routes: /m/{token}
+        if (pathname.startsWith('/m/')) {
+            return NextResponse.next({ request });
+        }
+
         // Any non-cliente route → redirect to customer portal
         if (!pathname.startsWith('/cliente')) {
             return NextResponse.redirect(new URL('/cliente', request.url));

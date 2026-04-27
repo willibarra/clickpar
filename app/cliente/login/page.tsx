@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Lock, Loader2, Zap, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
@@ -75,11 +75,21 @@ export default function PortalLoginPage() {
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
     // True while we verify whether the user is already authenticated
     const [checkingSession, setCheckingSession] = useState(true);
+    // Magic Link auto-login state
+    const [magicLinkLoading, setMagicLinkLoading] = useState(false);
     const captchaRef = useRef<HCaptcha>(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const supabase = createClient();
 
     const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || '';
+
+    // ── Magic Link error messages from redirect ──
+    const MAGIC_ERRORS: Record<string, string> = {
+        invalid: 'El enlace no es válido. Pedí uno nuevo a tu vendedor.',
+        used: 'Este enlace ya fue utilizado. Pedí uno nuevo.',
+        expired: 'El enlace expiró. Pedí uno nuevo a tu vendedor.',
+    };
 
     // ── Guard: if already authenticated, redirect immediately ─────────────
     useEffect(() => {
@@ -92,6 +102,50 @@ export default function PortalLoginPage() {
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ── Magic Link: auto-verify if ?magic={token_hash}&type=email ──
+    useEffect(() => {
+        const magicToken = searchParams.get('magic');
+        const tokenType = searchParams.get('type');
+        const magicError = searchParams.get('magic_error');
+
+        // Show redirect errors from the magic link handler
+        if (magicError && MAGIC_ERRORS[magicError]) {
+            setError(MAGIC_ERRORS[magicError]);
+            return;
+        }
+
+        if (!magicToken || tokenType !== 'email') return;
+
+        // Prevent double-execution
+        setMagicLinkLoading(true);
+        setError(null);
+
+        supabase.auth.verifyOtp({
+            token_hash: magicToken,
+            type: 'email',
+        }).then(({ error: verifyError }) => {
+            if (verifyError) {
+                console.error('[magic-link] verifyOtp error:', verifyError.message);
+                setError('El enlace mágico expiró o no es válido. Iniciá sesión con tu contraseña.');
+                setMagicLinkLoading(false);
+                // Clean the URL params to avoid re-triggering
+                router.replace('/cliente/login');
+                return;
+            }
+
+            // Success — log and redirect
+            fetch('/api/portal/log-access', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventType: 'magic_link_login', metadata: {} }),
+            }).catch(() => {}); // non-blocking
+
+            router.push('/cliente');
+            router.refresh();
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
 
     const selectedCountry = useMemo(
         () => COUNTRIES.find(c => c.code === countryCode) || COUNTRIES[0],
@@ -181,11 +235,16 @@ export default function PortalLoginPage() {
         }
     };
 
-    // While we verify the session, show a neutral loading screen
-    if (checkingSession) {
+    // While we verify the session or magic link, show a neutral loading screen
+    if (checkingSession || magicLinkLoading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-background">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="text-center space-y-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#86EFAC] mx-auto" />
+                    {magicLinkLoading && (
+                        <p className="text-sm text-muted-foreground animate-pulse">Ingresando con enlace mágico...</p>
+                    )}
+                </div>
             </div>
         );
     }

@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, BarChart2, AlertTriangle, Lock } from 'lucide-react';
+import { Pencil, Loader2, Trash2, Key, EyeOff, RefreshCw, Copy, Check, Link, BarChart2, AlertTriangle, Lock, Wand2, Clock, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { updateCustomer, deleteCustomer } from '@/lib/actions/customers';
@@ -48,6 +48,12 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
     const [panelDisabled, setPanelDisabled] = useState(customer.panel_disabled ?? false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [hasPortalAccount, setHasPortalAccount] = useState(!!customer.portal_user_id);
+
+    // ── Magic Link state ──
+    const [magicLink, setMagicLink] = useState<string | null>(null);
+    const [magicLinkExpiry, setMagicLinkExpiry] = useState<string | null>(null);
+    const [generatingMagicLink, setGeneratingMagicLink] = useState(false);
+    const [copiedMagicLink, setCopiedMagicLink] = useState(false);
 
     // Checks whether phone exists — required for portal password operations
     const hasPhone = !!customer.phone_number?.trim();
@@ -160,6 +166,102 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
         }
     }
 
+    // ── Magic Link handlers ──
+    async function handleGenerateMagicLink() {
+        setGeneratingMagicLink(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/admin/generate-magic-link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: customer.id }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setMagicLink(data.shortUrl);
+                setMagicLinkExpiry(data.expiresAt);
+            } else {
+                setError(data.error || 'No se pudo generar el enlace mágico');
+            }
+        } catch {
+            setError('Error de conexión');
+        } finally {
+            setGeneratingMagicLink(false);
+        }
+    }
+
+    async function handleCopyWithMagicLink() {
+        // Generate magic link first if not already generated
+        if (!magicLink) {
+            await handleGenerateMagicLink();
+            // After generation, we need to wait for state update
+            return;
+        }
+
+        // Fetch password if not already visible
+        if (!portalPassword) {
+            await handleShowPassword();
+        }
+
+        const phoneDisplay = formatPhoneDisplay(customer.phone_number);
+        const lines = [
+            `🔐 Acceso rápido a ClickPar`,
+            ``,
+            `🔗 Click aquí para ingresar:`,
+            magicLink,
+            `⏰ Este enlace expira en 30 minutos`,
+        ];
+
+        if (portalPassword) {
+            lines.push(
+                ``,
+                `📱 Datos de respaldo:`,
+                `Teléfono: ${phoneDisplay}`,
+                `🔑 Contraseña: ${portalPassword}`,
+                `🌐 Portal: https://clickpar.net/cliente/login`,
+            );
+        }
+
+        try {
+            await navigator.clipboard.writeText(lines.join('\n'));
+            setCopiedMagicLink(true);
+            setTimeout(() => setCopiedMagicLink(false), 2000);
+        } catch {
+            setError('No se pudo copiar al portapapeles');
+        }
+    }
+
+    // After magic link is generated, auto-copy if we were waiting
+    const [pendingCopy, setPendingCopy] = useState(false);
+
+    async function handleCopyWithMagicLinkFull() {
+        if (!magicLink) {
+            setPendingCopy(true);
+            await handleGenerateMagicLink();
+            return;
+        }
+        await handleCopyWithMagicLink();
+    }
+
+    // When magicLink becomes available and pendingCopy is true, auto-copy
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (magicLink && pendingCopy) {
+            setPendingCopy(false);
+            handleCopyWithMagicLink();
+        }
+    }, [magicLink, pendingCopy]);
+
+    function formatMagicLinkExpiry(): string {
+        if (!magicLinkExpiry) return '';
+        const expiresAt = new Date(magicLinkExpiry);
+        const now = new Date();
+        const diffMs = expiresAt.getTime() - now.getTime();
+        if (diffMs <= 0) return 'Expirado';
+        const mins = Math.ceil(diffMs / 60000);
+        return `${mins} min`;
+    }
+
     return (
         <Dialog open={open} onOpenChange={(v) => {
             setOpen(v);
@@ -168,6 +270,9 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                 setCopied(false); 
                 setDeleteConfirm(false);
                 setRegenerateConfirm(false);
+                setMagicLink(null);
+                setMagicLinkExpiry(null);
+                setCopiedMagicLink(false);
             }
             onOpenChangeProp?.(v);
         }}>
@@ -371,7 +476,7 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                     )}
 
                                     {/* Action buttons */}
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -418,6 +523,86 @@ export function EditCustomerModal({ customer, defaultOpen = false, onOpenChange:
                                             {copied ? '¡Copiado!' : 'Copiar datos'}
                                         </Button>
                                     </div>
+
+                                    {/* ── Magic Link Section ── */}
+                                    {hasPortalAccount && (
+                                        <div className="mt-3 space-y-2 rounded-lg border border-purple-400/20 bg-purple-400/5 p-3">
+                                            <div className="flex items-center gap-2">
+                                                <Wand2 className="h-4 w-4 text-purple-400" />
+                                                <span className="text-sm font-medium text-purple-300">Enlace Mágico</span>
+                                            </div>
+
+                                            {magicLink ? (
+                                                <div className="space-y-2">
+                                                    {/* Show generated link */}
+                                                    <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2">
+                                                        <ExternalLink className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                                                        <code className="flex-1 text-xs font-mono text-purple-300 truncate">
+                                                            {magicLink}
+                                                        </code>
+                                                        <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+                                                            <Clock className="h-3 w-3" />
+                                                            <span>{formatMagicLinkExpiry()}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={handleGenerateMagicLink}
+                                                            disabled={generatingMagicLink}
+                                                            className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10"
+                                                        >
+                                                            {generatingMagicLink ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            ) : (
+                                                                <RefreshCw className="h-3.5 w-3.5" />
+                                                            )}
+                                                            Regenerar enlace
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={handleCopyWithMagicLinkFull}
+                                                            className={`gap-1.5 transition-colors ${copiedMagicLink
+                                                                ? 'text-[#86EFAC] border-[#86EFAC]/30 bg-[#86EFAC]/10'
+                                                                : 'text-purple-400 border-purple-400/30 hover:bg-purple-400/10 hover:text-purple-300'
+                                                            }`}
+                                                        >
+                                                            {copiedMagicLink ? (
+                                                                <Check className="h-3.5 w-3.5" />
+                                                            ) : (
+                                                                <Copy className="h-3.5 w-3.5" />
+                                                            )}
+                                                            {copiedMagicLink ? '¡Copiado!' : 'Copiar con Magic Link'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleGenerateMagicLink}
+                                                        disabled={generatingMagicLink}
+                                                        className="gap-1.5 text-purple-400 border-purple-400/30 hover:bg-purple-400/10 hover:text-purple-300"
+                                                    >
+                                                        {generatingMagicLink ? (
+                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Wand2 className="h-3.5 w-3.5" />
+                                                        )}
+                                                        Generar Magic Link
+                                                    </Button>
+                                                    <span className="text-xs text-muted-foreground">Expira en 30 min</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
