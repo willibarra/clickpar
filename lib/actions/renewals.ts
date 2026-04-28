@@ -840,3 +840,94 @@ export async function queueBulkRenewalNotices(clients: Array<{
 }
 
 
+/**
+ * Inline edit a customer's name or phone directly from the renewals table.
+ * Validates uniqueness for phone numbers.
+ */
+export async function updateCustomerInline(
+    customerId: string,
+    field: 'full_name' | 'phone',
+    value: string
+) {
+    const supabase = await createAdminClient();
+
+    const trimmed = value.trim();
+    if (!trimmed) return { success: false, error: 'El valor no puede estar vacío' };
+
+    // Validate phone uniqueness if updating phone
+    if (field === 'phone') {
+        const { normalizePhone } = await import('@/lib/utils/phone');
+        const normalizedPhone = normalizePhone(trimmed);
+
+        const { data: existing } = await (supabase.from('customers') as any)
+            .select('id')
+            .eq('phone', normalizedPhone)
+            .neq('id', customerId)
+            .limit(1)
+            .single();
+
+        if (existing) {
+            return { success: false, error: `Ya existe otro cliente con el teléfono ${normalizedPhone}` };
+        }
+
+        const { error } = await (supabase.from('customers') as any)
+            .update({ phone: normalizedPhone })
+            .eq('id', customerId);
+
+        if (error) return { success: false, error: error.message };
+    } else {
+        const { error } = await (supabase.from('customers') as any)
+            .update({ [field]: trimmed })
+            .eq('id', customerId);
+
+        if (error) return { success: false, error: error.message };
+    }
+
+    revalidatePath('/renewals');
+    revalidatePath('/customers');
+    return { success: true };
+}
+
+
+/**
+ * Inline edit a sale's end_date (vencimiento) directly from the renewals table.
+ */
+export async function updateSaleEndDate(saleId: string, newEndDate: string) {
+    const supabase = await createAdminClient();
+
+    if (!newEndDate) return { success: false, error: 'Fecha inválida' };
+
+    // Validate date format (YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newEndDate)) {
+        return { success: false, error: 'Formato de fecha inválido' };
+    }
+
+    const { error } = await (supabase.from('sales') as any)
+        .update({ end_date: newEndDate })
+        .eq('id', saleId);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/renewals');
+    return { success: true };
+}
+
+/**
+ * Inline edit a sale's amount_gs directly from the renewals table.
+ */
+export async function updateSaleAmountInline(saleId: string, newAmountGs: number) {
+    const supabase = await createAdminClient();
+
+    if (isNaN(newAmountGs) || newAmountGs < 0) {
+        return { success: false, error: 'Monto inválido' };
+    }
+
+    const { error } = await (supabase.from('sales') as any)
+        .update({ amount_gs: newAmountGs })
+        .eq('id', saleId);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/renewals');
+    return { success: true };
+}

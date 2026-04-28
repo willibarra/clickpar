@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useState, useMemo, useTransition, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUsdtRate } from '@/lib/usdt-rate';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,12 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import {
     CalendarClock, RefreshCw, Check, AlertTriangle, Clock,
     ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users, Package, Filter, Loader2, Unlock, Copy, Search,
-    MessageSquare, MessageSquareOff, Send, Wand2
+    MessageSquare, MessageSquareOff, Send, Wand2, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice, markAccountsAsPossibleAutopay, markAccountsAsNoRenovar, confirmNoRenovar } from '@/lib/actions/renewals';
+import { bulkRenewAccounts, bulkRenewSubscriptions, bulkReleaseSubscriptions, sendRenewalNotice, markAccountsAsPossibleAutopay, markAccountsAsNoRenovar, confirmNoRenovar, updateCustomerInline, updateSaleEndDate, updateSaleAmountInline } from '@/lib/actions/renewals';
 import { logReminderCopied } from '@/lib/actions/sales';
 import { BatchSendModal } from "./batch-send-modal";
+import { useRowLocks } from '@/hooks/use-row-locks';
 
 type FilterType = 'all' | 'expired' | 'today' | 'yesterday' | 'tomorrow';
 type ClientFilterType = 'all' | 'expired' | 'today' | 'yesterday' | 'tomorrow';
@@ -135,6 +136,115 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
         canAutoMove: boolean;
     } | null>(null);
     const [movedClientsForWA, setMovedClientsForWA] = useState<any[]>([]);
+
+    // Row locking (Realtime Presence — server-managed, no race conditions)
+    const { lockRow, unlockRow, isLockedByOther, getLock, currentUserId, broadcastRefresh, recentlyUpdated } = useRowLocks();
+    // Inline editing: only name and phone are editable inline
+    const [editingField, setEditingField] = useState<{ saleId: string; field: 'name' | 'phone' } | null>(null);
+    const [savingField, setSavingField] = useState(false);
+    // Auto-unlock timer: release lock after 30s of no interaction
+    const lockTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Track which row was selected via row-click (separate from checkbox multi-select)
+    const rowClickSelectedRef = useRef<string | null>(null);
+
+    // Reset the auto-unlock timer (called on every interaction with a locked row)
+    const resetLockTimer = useCallback((saleId: string) => {
+        if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+        lockTimerRef.current = setTimeout(() => {
+            setEditingField((prev) => prev?.saleId === saleId ? null : prev);
+            unlockRow(saleId);
+            // Deselect the row on timeout
+            if (rowClickSelectedRef.current === saleId) {
+                rowClickSelectedRef.current = null;
+            }
+            setClientSelected(prev => {
+                const n = new Set(prev);
+                n.delete(saleId);
+                return n;
+            });
+        }, 30_000);
+    }, [unlockRow]);
+
+    // Click anywhere on a row → single-select + lock (deselect previous row-click, keep checkbox selections)
+    const handleRowClick = useCallback((saleId: string) => {
+        if (isLockedByOther(saleId)) return;
+        const acquired = lockRow(saleId);
+        if (!acquired) return;
+        resetLockTimer(saleId);
+
+        // Unlock + deselect the PREVIOUS row-click selection (BEFORE state update)
+        const prevRowClick = rowClickSelectedRef.current;
+        if (prevRowClick && prevRowClick !== saleId) {
+            unlockRow(prevRowClick);
+        }
+        rowClickSelectedRef.current = saleId;
+
+        setClientSelected(prev => {
+            const n = new Set(prev);
+            if (prevRowClick && prevRowClick !== saleId) {
+                n.delete(prevRowClick);
+            }
+            n.add(saleId);
+            return n;
+        });
+    }, [isLockedByOther, lockRow, resetLockTimer, unlockRow]);
+
+    const startEditing = useCallback((saleId: string, field: 'name' | 'phone') => {
+        // Don't allow editing if locked by another user
+        if (isLockedByOther(saleId)) return;
+        // Lock the row (may already be locked by us from row click)
+        const acquired = lockRow(saleId);
+        if (!acquired) return;
+        setEditingField({ saleId, field });
+        // Reset auto-unlock timer
+        resetLockTimer(saleId);
+    }, [isLockedByOther, lockRow, resetLockTimer]);
+
+    const stopEditing = useCallback((saleId: string) => {
+        setEditingField(null);
+        unlockRow(saleId);
+        if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+        // Also deselect the row
+        setClientSelected(prev => {
+            const n = new Set(prev);
+            n.delete(saleId);
+            return n;
+        });
+    }, [unlockRow]);
+
+    // Save inline edit to server (only name/phone)
+    const handleInlineSave = useCallback(async (
+        sub: any,
+        field: 'name' | 'phone',
+        value: string
+    ) => {
+        setSavingField(true);
+        try {
+            let result: any;
+            if (field === 'name') {
+                result = await updateCustomerInline(sub.customer?.id, 'full_name', value);
+            } else if (field === 'phone') {
+                result = await updateCustomerInline(sub.customer?.id, 'phone', value);
+            }
+
+            if (result?.success) {
+                toast.success('Guardado ✅');
+                // 1. Release lock first → other clients see unlock immediately
+                stopEditing(sub.id);
+                // 2. Then refresh data for self and notify others
+                router.refresh();
+                broadcastRefresh(sub.id);
+            } else {
+                toast.error('Error al guardar', { description: result?.error || 'Error desconocido' });
+                stopEditing(sub.id);
+            }
+        } catch (err: any) {
+            toast.error('Error', { description: err?.message || 'Error inesperado' });
+            stopEditing(sub.id);
+        } finally {
+            setSavingField(false);
+        }
+    }, [router, stopEditing, broadcastRefresh]);
 
     // Enrich subscriptions with expiry info
     const enrichedSubs = useMemo(() => {
@@ -403,17 +513,40 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
     };
 
     const toggleClient = (id: string) => {
+        const wasSelected = clientSelected.has(id);
+        if (wasSelected) {
+            // Deselecting → unlock the row
+            unlockRow(id);
+        } else {
+            // Selecting → lock the row (skip if another user holds it)
+            if (isLockedByOther(id)) return;
+            const acquired = lockRow(id);
+            if (!acquired) return;
+            resetLockTimer(id);
+        }
         setClientSelected(prev => {
             const n = new Set(prev);
-            n.has(id) ? n.delete(id) : n.add(id);
+            wasSelected ? n.delete(id) : n.add(id);
             return n;
         });
     };
     const toggleAllClients = () => {
         if (clientSelected.size === filteredSubs.length) {
+            // Deselect all → unlock all my locks
+            for (const id of clientSelected) {
+                unlockRow(id);
+            }
             setClientSelected(new Set());
         } else {
-            setClientSelected(new Set(filteredSubs.map((s: any) => s.id)));
+            // Select all → lock all rows not held by others
+            const newSelected = new Set<string>();
+            for (const s of filteredSubs as any[]) {
+                if (!isLockedByOther(s.id)) {
+                    lockRow(s.id);
+                    newSelected.add(s.id);
+                }
+            }
+            setClientSelected(newSelected);
         }
     };
 
@@ -1340,40 +1473,140 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                                 const account = slot?.mother_account;
                                 const badge = getStatusBadge(sub.daysUntilExpiry);
                                 const isSending = sendingNotice.has(sub.id);
+                                const rowLock = getLock(sub.id);
+                                const lockedByOther = isLockedByOther(sub.id);
+                                const isMyLock = rowLock && rowLock.userId === currentUserId;
+                                const isRecentlyUpdated = recentlyUpdated.has(sub.id);
 
                                 return (
                                     <div
                                         key={sub.id}
-                                        className={`flex flex-wrap items-start gap-2 px-3 py-3 md:grid md:grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] md:items-center md:px-4 border-b border-border/50 transition-colors ${clientSelected.has(sub.id) ? 'bg-[#86EFAC]/5' : 'hover:bg-[#1a1a1a]/50'
-                                            }`}
+                                        onClick={() => handleRowClick(sub.id)}
+                                        className={`flex flex-wrap items-start gap-2 px-3 py-3 md:grid md:grid-cols-[40px_1fr_1fr_110px_120px_90px_110px_80px] md:items-center md:px-4 border-b border-border/50 transition-colors relative cursor-pointer ${
+                                            isRecentlyUpdated
+                                                ? 'recently-updated-row'
+                                                : lockedByOther
+                                                    ? 'bg-blue-500/5 border-l-2 border-l-blue-400 opacity-70 cursor-not-allowed'
+                                                    : isMyLock
+                                                        ? 'bg-[#86EFAC]/5 border-l-2 border-l-[#86EFAC]'
+                                                        : clientSelected.has(sub.id)
+                                                            ? 'bg-[#86EFAC]/5'
+                                                            : 'hover:bg-[#1a1a1a]/50'
+                                        }`}
                                     >
-                                        <div>
+                                        {/* Lock indicator badge */}
+                                        {lockedByOther && rowLock && (
+                                            <div className="absolute top-1 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-semibold z-10 animate-pulse">
+                                                <Lock className="h-3 w-3" />
+                                                {rowLock.userName}
+                                            </div>
+                                        )}
+                                        {isMyLock && (
+                                            <div className="absolute top-1 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#86EFAC]/20 text-[#86EFAC] text-[10px] font-semibold z-10">
+                                                <Lock className="h-3 w-3" />
+                                                Tú
+                                            </div>
+                                        )}
+
+                                        {/* Checkbox */}
+                                        <div onClick={(e) => e.stopPropagation()}>
                                             <Checkbox
                                                 checked={clientSelected.has(sub.id)}
                                                 onCheckedChange={() => toggleClient(sub.id)}
+                                                disabled={lockedByOther}
                                             />
                                         </div>
-                                        {/* Cliente */}
-                                        <div>
-                                            <p className="font-medium text-foreground flex items-center gap-1.5">
-                                                {customer?.full_name || 'N/A'}
-                                                {customer?.customer_type === 'creador' && (
-                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">🎬</span>
-                                                )}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">{customer?.phone || ''}</p>
+
+                                        {/* Cliente — Nombre editable + Teléfono editable */}
+                                        <div className="min-w-0">
+                                            {/* Nombre */}
+                                            {editingField?.saleId === sub.id && editingField?.field === 'name' ? (
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="w-full bg-transparent border border-[#86EFAC]/50 rounded px-1.5 py-0.5 text-sm font-medium text-foreground outline-none focus:ring-1 focus:ring-[#86EFAC]/60"
+                                                    defaultValue={customer?.full_name || ''}
+                                                    placeholder="Nombre..."
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value.trim();
+                                                        if (val && val !== (customer?.full_name || '')) {
+                                                            handleInlineSave(sub, 'name', val);
+                                                        } else {
+                                                            stopEditing(sub.id);
+                                                        }
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                        if (e.key === 'Escape') stopEditing(sub.id);
+                                                    }}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => !lockedByOther && startEditing(sub.id, 'name')}
+                                                    disabled={lockedByOther}
+                                                    className={`font-medium text-foreground flex items-center gap-1.5 text-left truncate ${
+                                                        lockedByOther ? 'cursor-not-allowed' : 'hover:text-[#86EFAC] cursor-text transition-colors'
+                                                    }`}
+                                                    title={lockedByOther ? `Bloqueado por ${rowLock?.userName}` : 'Click para editar nombre'}
+                                                >
+                                                    {customer?.full_name || 'N/A'}
+                                                    {customer?.customer_type === 'creador' && (
+                                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">🎬</span>
+                                                    )}
+                                                </button>
+                                            )}
+                                            {/* Teléfono */}
+                                            {editingField?.saleId === sub.id && editingField?.field === 'phone' ? (
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="w-full bg-transparent border border-[#86EFAC]/50 rounded px-1.5 py-0.5 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-[#86EFAC]/60 mt-0.5"
+                                                    defaultValue={customer?.phone || ''}
+                                                    placeholder="595..."
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value.trim();
+                                                        if (val && val !== (customer?.phone || '')) {
+                                                            handleInlineSave(sub, 'phone', val);
+                                                        } else {
+                                                            stopEditing(sub.id);
+                                                        }
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                        if (e.key === 'Escape') stopEditing(sub.id);
+                                                    }}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => !lockedByOther && startEditing(sub.id, 'phone')}
+                                                    disabled={lockedByOther}
+                                                    className={`text-xs text-muted-foreground text-left truncate ${
+                                                        lockedByOther ? 'cursor-not-allowed' : 'hover:text-[#86EFAC] cursor-text transition-colors'
+                                                    }`}
+                                                    title={lockedByOther ? `Bloqueado por ${rowLock?.userName}` : 'Click para editar teléfono'}
+                                                >
+                                                    {customer?.phone || '—'}
+                                                </button>
+                                            )}
                                         </div>
-                                        {/* Plataforma + Perfil del cliente */}
+
+                                        {/* Plataforma + Perfil del cliente (read-only) */}
                                         <div>
                                             <p className="text-sm font-medium">{account?.platform || 'N/A'}</p>
                                             <p className="text-xs text-muted-foreground truncate">
                                                 {slot?.slot_identifier || account?.email || ''}
                                             </p>
                                         </div>
+
                                         {/* Vencimiento */}
                                         <div className="text-sm">
                                             {sub.expiryDate ? formatDateES(new Date(sub.expiryDate + 'T12:00:00')) : '—'}
                                         </div>
+
                                         {/* Estado */}
                                         <div>
                                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${badge.color}`}>
@@ -1381,8 +1614,9 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                                                 {badge.label}
                                             </span>
                                         </div>
-                                        {/* Monto – editable */}
-                                        <div className="text-sm font-medium">
+
+                                        {/* Monto – editable (local override for copy) */}
+                                        <div className="text-sm font-medium" onClick={(e) => e.stopPropagation()}>
                                             {sub.is_canje ? (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[11px] font-semibold">
                                                     🎬 Canje
@@ -1422,6 +1656,7 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                                                 </button>
                                             )}
                                         </div>
+
                                         {/* Aviso WhatsApp */}
                                         <div>
                                             {sub.lastNotified ? (
@@ -1450,16 +1685,18 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                                                 </div>
                                             )}
                                         </div>
+
                                         {/* Botón Enviar Aviso WA + Copiar */}
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 onClick={() => handleCopyNotice(sub)}
                                                 title="Copiar recordatorio"
+                                                disabled={lockedByOther}
                                                 className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all
                                                     ${copiedReminders.has(sub.id)
                                                         ? 'bg-[#86EFAC]/20 text-[#86EFAC]'
                                                         : 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/40 hover:text-orange-200'
-                                                    }`}
+                                                    } ${lockedByOther ? 'opacity-40 cursor-not-allowed' : ''}`}
                                             >
                                                 {copiedReminders.has(sub.id)
                                                     ? <Check className="h-3 w-3" />
@@ -1468,8 +1705,8 @@ export function RenewalsView({ accounts, subscriptions }: RenewalsViewProps) {
                                             </button>
                                             <button
                                                 onClick={() => handleSendNotice(sub.id)}
-                                                disabled={isSending || !customer?.phone}
-                                                title={!customer?.phone ? 'Sin teléfono registrado' : 'Enviar aviso por WhatsApp'}
+                                                disabled={isSending || !customer?.phone || lockedByOther}
+                                                title={lockedByOther ? `Bloqueado por ${rowLock?.userName}` : !customer?.phone ? 'Sin teléfono registrado' : 'Enviar aviso por WhatsApp'}
                                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all
                                                     bg-green-600/20 text-green-300 hover:bg-green-600/40 hover:text-green-200
                                                     disabled:opacity-40 disabled:cursor-not-allowed"
